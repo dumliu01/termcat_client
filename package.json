@@ -3,7 +3,7 @@
   "version": "0.1.12",
   "description": "TermCat - Remote Terminal Management Tool",
   "main": "dist/main/main.js",
-  "author": "TermCat Team",
+  "author": "TermCat Team <3959920542@qq.com>",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "vite",
