@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/images/termcat_screen_02.png" alt="TermCat Terminal" width="100%" />
+  <img src="assets/images/termcat_screen_2.png" alt="TermCat Terminal" width="100%" />
 </p>
 
 ## Features
