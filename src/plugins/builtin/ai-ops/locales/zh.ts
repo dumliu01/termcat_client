@@ -32,7 +32,7 @@ export const zh = {
   modeAsk: 'Ask',
   modeAgent: 'Agent',
   modeCode: 'Code',
-  modeCodex: 'Codex',
+  modeXAgent: 'X-Agent',
   attachContext: 'Attach context and plan steps...',
   askOrAttach: 'Ask or attach logs for analysis...',
   stopTask: '终止任务',

@@ -34,7 +34,7 @@ export const en: typeof zh = {
   modeAsk: 'Ask',
   modeAgent: 'Agent',
   modeCode: 'Code',
-  modeCodex: 'Codex',
+  modeXAgent: 'X-Agent',
   attachContext: 'Attach context and plan steps...',
   askOrAttach: 'Ask or attach logs for analysis...',
   stopTask: 'Stop Task',

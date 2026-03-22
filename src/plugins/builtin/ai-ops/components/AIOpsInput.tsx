@@ -170,7 +170,7 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
       case 'code':
         return t.modeCode;
       case 'codex':
-        return t.modeCodex;
+        return t.modeXAgent;
       default:
         return t.modeAsk;
     }

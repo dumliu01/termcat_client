@@ -101,8 +101,6 @@ TermCat Client 遵循 Electron 三进程模型：
 
 AI Agent SDK（`src/core/ai-agent/`）是独立的、无 UI 依赖的模块，可在 Electron 和 CLI 环境中复用。
 
-详细架构文档参见 [`claude_refs/ARCHITECTURE.md`](claude_refs/ARCHITECTURE.md)。
-
 ## 环境要求
 
 - **Node.js** >= 18
