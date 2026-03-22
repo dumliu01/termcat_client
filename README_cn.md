@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/termcat_pure_512.png" alt="TermCat" width="120" />
+  <img src="assets/termcat_icon.png" alt="TermCat" width="120" />
 </p>
 
 <h1 align="center">TermCat</h1>
@@ -26,9 +26,13 @@
 
 ## 截图
 
-<!-- TODO: 添加截图或 GIF 演示 -->
-<!-- ![主面板](docs/screenshots/dashboard.png) -->
-<!-- ![终端](docs/screenshots/terminal.png) -->
+<p align="center">
+  <img src="assets/images/termcat_screen.png" alt="TermCat 主面板" width="100%" />
+</p>
+
+<p align="center">
+  <img src="assets/images/termcat_screen_2.png" alt="TermCat 终端" width="100%" />
+</p>
 
 ## 功能特性
 

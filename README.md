@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/termcat_pure_512.png" alt="TermCat" width="120" />
+  <img src="assets/termcat_icon.png" alt="TermCat" width="120" />
 </p>
 
 <h1 align="center">TermCat</h1>
@@ -26,9 +26,13 @@
 
 ## Screenshots
 
-<!-- TODO: Add screenshots or GIF demos here -->
-<!-- ![Dashboard](docs/screenshots/dashboard.png) -->
-<!-- ![Terminal](docs/screenshots/terminal.png) -->
+<p align="center">
+  <img src="assets/images/termcat_screen.png" alt="TermCat Dashboard" width="100%" />
+</p>
+
+<p align="center">
+  <img src="assets/images/termcat_screen_02.png" alt="TermCat Terminal" width="100%" />
+</p>
 
 ## Features
 
