@@ -1,0 +1,43 @@
+{
+  "name": "termcat-plugin-server-dashboard",
+  "version": "1.0.0",
+  "description": "服务器概览面板 — 展示 UI 贡献点模板系统的外部插件示例",
+  "termcat": {
+    "displayName": "Server Dashboard",
+    "description": "使用 UI 贡献点模板渲染服务器概览面板，演示外部插件如何使用 registerPanel / setPanelData",
+    "entry": "dist/extension.js",
+    "activationEvents": [
+      "onSSHConnect"
+    ],
+    "permissions": [
+      "terminal.read",
+      "ssh.exec",
+      "host.read",
+      "monitor.read"
+    ],
+    "contributes": {
+      "commands": [
+        {
+          "id": "serverDashboard.refresh",
+          "title": "刷新服务器概览",
+          "icon": "refresh-cw"
+        }
+      ],
+      "settings": {
+        "serverDashboard.refreshInterval": {
+          "type": "number",
+          "default": 10,
+          "description": "自动刷新间隔（秒）"
+        }
+      },
+      "i18n": {
+        "zh": {
+          "serverDashboard.refresh": "刷新服务器概览"
+        },
+        "en": {
+          "serverDashboard.refresh": "Refresh Server Dashboard"
+        }
+      }
+    }
+  }
+}

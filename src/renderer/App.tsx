@@ -1,0 +1,741 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Sidebar } from '@/features/shared/components/Sidebar';
+import { Dashboard } from '@/features/dashboard/components/Dashboard';
+import { TerminalView } from '@/features/terminal/components/TerminalView';
+import { TerminalTabBar } from '@/features/terminal/components/TerminalTabBar';
+import { LoginView } from '@/features/auth/components/LoginView';
+const SettingsView = React.lazy(() => import('@/features/settings/components/SettingsView').then(m => ({ default: m.SettingsView })));
+const ExtensionsView = React.lazy(() => import('@/features/extensions/components/ExtensionsView').then(m => ({ default: m.ExtensionsView })));
+const PaymentModalNew = React.lazy(() => import('@/features/payment/components/PaymentModalNew').then(m => ({ default: m.PaymentModalNew })));
+const UpdateModal = React.lazy(() => import('@/features/shared/components/UpdateModal').then(m => ({ default: m.UpdateModal })));
+import type { UpdateVersionInfo } from '@/features/shared/components/UpdateModal';
+import { Host, ViewState, Session, TierType } from '@/utils/types';
+import { THEME_CONFIG } from '@/utils/constants';
+import { Terminal, Monitor, Loader2, KeyRound, Cloud } from 'lucide-react';
+const HostConfigModal = React.lazy(() => import('@/features/dashboard/components/HostConfigModal').then(m => ({ default: m.HostConfigModal })));
+import { Header } from '@/features/shared/components/Header';
+import { hostService, StorageMode } from '@/core/host/hostService';
+import { authService } from '@/core/auth/authService';
+import { apiService } from '@/base/http/api';
+import { commerceService } from '@/core/commerce/commerceService';
+import { logger, LOG_MODULE } from '@/base/logger/logger';
+import { useI18n } from '@/base/i18n/I18nContext';
+import { VERSION_NUMBER, versionToNumber } from '@/utils/version';
+import { PluginStatusBar } from '@/features/shared/components/PluginStatusBar';
+import { PluginNotifications } from '@/features/shared/components/PluginNotifications';
+import { activateBuiltinPlugins, panelDataStore } from '@/plugins/builtin';
+import { builtinPluginManager } from '@/plugins/builtin/builtin-plugin-manager';
+import { AI_OPS_EVENTS } from '@/plugins/builtin/events';
+import { AIServiceProvider } from '@/features/shared/contexts/AIServiceContext';
+import { useSessionManager } from '@/features/terminal/hooks/useSessionManager';
+import { useHostManager } from '@/features/dashboard/hooks/useHostManager';
+import { useUserAuth } from '@/features/auth/hooks/useUserAuth';
+import { useAppSettings } from '@/features/settings/hooks/useAppSettings';
+
+const App: React.FC = () => {
+  const { language, setLanguage, t } = useI18n();
+  const [activeView, setActiveView] = useState<ViewState>('dashboard');
+  const [settingsInitialTab, setSettingsInitialTab] = useState<string | undefined>(undefined);
+
+  // Payment Modal State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentType, setPaymentType] = useState<'bones' | 'gems' | 'vip_month' | 'vip_year'>('bones');
+  const [paymentAmount, setPaymentAmount] = useState(0);
+  const [paymentTierId, setPaymentTierId] = useState<string | undefined>();
+
+  // 版本更新弹窗
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateVersionInfo | null>(null);
+
+  // Tab 右键 → 主机配置弹窗
+  const [hostConfigSession, setHostConfigSession] = useState<Session | null>(null);
+
+  // 连接前编辑（用户名为空的 host 需要先配置）
+  const [pendingConnectHost, setPendingConnectHost] = useState<Host | null>(null);
+  const [editingPendingHost, setEditingPendingHost] = useState<Host | null>(null);
+
+  // --- Hooks ---
+  const settings = useAppSettings();
+  const sessionManager = useSessionManager(setActiveView);
+  const hostManager = useHostManager();
+
+  const userAuth = useUserAuth({
+    setHosts: hostManager.setHosts,
+    setGroups: hostManager.setGroups,
+    setProxies: hostManager.setProxies,
+    setStorageMode: hostManager.setStorageMode,
+    loadProxies: hostManager.loadProxies,
+    resetSessions: sessionManager.resetSessions,
+    setActiveView,
+  });
+
+  // 包装 handleConnect：用户名为空时弹出配置窗口
+  const handleConnect = useCallback((host: Host) => {
+    if (!host.username) {
+      setPendingConnectHost(host);
+      return;
+    }
+    sessionManager.handleConnect(host);
+  }, [sessionManager.handleConnect]);
+
+  // 复制 Tab：委托 sessionManager 处理，上层不关心 local / ssh 差异
+  const handleDuplicateSession = useCallback(
+    (session: Session) => sessionManager.duplicateSession(session),
+    [sessionManager.duplicateSession],
+  );
+
+  const handleOpenPayment = useCallback((type: 'bones' | 'gems' | 'vip_month' | 'vip_year', amount: number, tierId?: string) => {
+    setPaymentType(type);
+    setPaymentAmount(amount);
+    setPaymentTierId(tierId);
+    setShowPaymentModal(true);
+  }, []);
+
+  // 重命名 session
+  const handleRenameSession = useCallback((sessionId: string, name: string | undefined) => {
+    sessionManager.setActiveSessions(prev => prev.map(s =>
+      s.id === sessionId ? { ...s, customName: name } : s
+    ));
+  }, [sessionManager.setActiveSessions]);
+
+  // --- 激活内置插件 + 注册外部插件面板 IPC 桥接 ---
+  useEffect(() => {
+    activateBuiltinPlugins();
+
+    const cleanups: (() => void)[] = [];
+    const electron = (window as any).electron;
+    if (electron?.plugin) {
+      cleanups.push(
+        electron.plugin.onPanelRegister?.((data: any) => {
+          panelDataStore.registerPanel(data.pluginId, data.options);
+        }) || (() => {}),
+        electron.plugin.onPanelUnregister?.((data: any) => {
+          panelDataStore.unregisterPanel(data.panelId);
+        }) || (() => {}),
+        electron.plugin.onPanelSetData?.((data: any) => {
+          panelDataStore.setPanelData(data.panelId, data.sections);
+        }) || (() => {}),
+        electron.plugin.onPanelUpdateSection?.((data: any) => {
+          panelDataStore.updateSection(data.panelId, data.sectionId, data.data);
+        }) || (() => {}),
+        electron.plugin.onSSHExec?.((data: any) => {
+          const { sessionId, command, responseChannel } = data;
+          (window as any).electron.sshExecute(sessionId, command)
+            .then((result: { output: string; exitCode: number }) => {
+              electron.plugin.sendResponse(responseChannel, { exitCode: result.exitCode, stdout: result.output, stderr: '' });
+            })
+            .catch((err: Error) => {
+              electron.plugin.sendResponse(responseChannel, { exitCode: 1, stdout: '', stderr: err.message });
+            });
+        }) || (() => {}),
+      );
+
+      electron.plugin.getCachedPanels?.()?.then?.((cached: any) => {
+        if (!cached) return;
+        for (const reg of cached.registrations || []) {
+          panelDataStore.registerPanel(reg.pluginId, reg.options);
+        }
+        for (const pd of cached.panelData || []) {
+          panelDataStore.setPanelData(pd.panelId, pd.sections);
+        }
+      });
+    }
+
+    return () => cleanups.forEach(fn => fn());
+  }, []);
+
+  // --- 监听菜单导航事件 ---
+  useEffect(() => {
+    const electron = (window as any).electron;
+    if (!electron?.onNavigate) return;
+    return electron.onNavigate((view: string, tab?: string) => {
+      setActiveView(view as ViewState);
+      if (view === 'settings' && tab) {
+        setSettingsInitialTab(tab);
+      } else {
+        setSettingsInitialTab(undefined);
+      }
+    });
+  }, []);
+
+  // --- 监听 AI 面板打开会员中心事件 ---
+  useEffect(() => {
+    const disposable = builtinPluginManager.on(AI_OPS_EVENTS.OPEN_MEMBERSHIP, () => {
+      setSettingsInitialTab('membership');
+      setActiveView('settings');
+    });
+    return () => disposable.dispose();
+  }, []);
+
+  // --- 初始化数据 ---
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        let savedUser = authService.getUser();
+        let serverSeqs: import('@/core/commerce/types').SyncSeqs | null = null;
+
+        // 如果有缓存的用户信息，先验证 token 有效性
+        if (savedUser) {
+          try {
+            const profileResp = await apiService.getUserProfile() as any;
+            // getUserProfile 现在返回 { user, seqs }
+            const profile = profileResp?.user ?? profileResp;
+            serverSeqs = profileResp?.seqs ?? null;
+
+            // token 有效，用服务端最新数据更新本地缓存
+            savedUser = {
+              ...savedUser,
+              gems: profile?.gems ?? savedUser.gems ?? 10,
+              tier: (profile?.tier || savedUser.tier || 'Standard') as TierType,
+              tierExpiry: profile?.tier_expiry || savedUser.tierExpiry,
+            };
+            if (!savedUser.tier) savedUser.tier = 'Standard';
+            authService.setUser(savedUser);
+            // 启动自动续期（含增量同步回调）
+            authService.startAutoRefresh(
+              () => apiService.refreshToken(),
+              undefined,
+              (seqs) => {
+                hostService.syncBySeqs(seqs).then(result => {
+                  if (result.changed.hosts) hostManager.setHosts(result.hosts);
+                  if (result.changed.groups && result.groups.length > 0) hostManager.setGroups(result.groups);
+                  if (result.changed.proxies) hostManager.setProxies(result.proxies);
+                }).catch(() => {});
+                commerceService.handleLoginSeqs(seqs);
+              },
+            );
+            logger.info(LOG_MODULE.APP, 'app.init.token_valid', 'Cached token validated, auto-login success', {
+              user_id: savedUser.id,
+            });
+          } catch (err) {
+            // token 失效，清除缓存并弹出登录页
+            logger.info(LOG_MODULE.APP, 'app.init.token_invalid', 'Cached token invalid, redirecting to login', {
+              user_id: savedUser.id,
+              error: err instanceof Error ? err.message : 'Unknown error',
+            });
+            authService.logout();
+            savedUser = null;
+            userAuth.setShowLogin(true);
+          }
+        }
+
+        hostService.setUserScope(savedUser?.id || null);
+
+        if (savedUser) {
+          if (savedUser.gems === undefined) savedUser.gems = 10;
+          if (!savedUser.tier) savedUser.tier = 'Standard';
+          userAuth.setUser(savedUser);
+        }
+
+        const savedMode = savedUser ? hostService.getMode() : StorageMode.LOCAL;
+        const isLocalMode = savedMode === StorageMode.LOCAL;
+        if (savedUser) {
+          hostManager.setStorageMode(isLocalMode ? 'local' : 'server');
+        }
+        hostService.setMode(savedUser ? savedMode : StorageMode.LOCAL);
+
+        // 已登录用户 + Cloud 模式：使用 seq 增量同步
+        if (savedUser && !isLocalMode && serverSeqs) {
+          const [syncResult, _modelsResult, versionResult] = await Promise.allSettled([
+            hostService.syncBySeqs(serverSeqs),
+            userAuth.fetchAIModels(),
+            this_fetchVersionCheck(),
+          ]);
+
+          if (syncResult.status === 'fulfilled') {
+            hostManager.setHosts(syncResult.value.hosts);
+            if (syncResult.value.groups.length > 0) {
+              hostManager.setGroups(syncResult.value.groups);
+            }
+            hostManager.setProxies(syncResult.value.proxies);
+            const c = syncResult.value.changed;
+            logger.info(LOG_MODULE.APP, 'app.init.seq_sync', 'Incremental sync completed', {
+              hosts_changed: c.hosts, groups_changed: c.groups, proxies_changed: c.proxies,
+              hosts_count: syncResult.value.hosts.length,
+            });
+          } else {
+            // seq 同步失败，fallback 到全量加载本地缓存
+            logger.warn(LOG_MODULE.APP, 'app.init.seq_sync_failed', 'Seq sync failed, loading from cache', {
+              error: syncResult.reason instanceof Error ? syncResult.reason.message : 'Unknown error',
+            });
+            const [hosts, groups] = await Promise.all([hostService.getHosts(), hostService.getGroups()]);
+            hostManager.setHosts(hosts);
+            if (groups.length > 0) hostManager.setGroups(groups);
+          }
+
+          // 商业化配置 seq 同步
+          commerceService.handleLoginSeqs(serverSeqs);
+
+          handleVersionResult(versionResult);
+        } else {
+          // 游客模式 / 本地模式 / 无 seqs：走原有全量加载逻辑
+          const [hostResult, _modelsResult, _proxiesResult, versionResult] = await Promise.allSettled([
+            (async () => {
+              const hosts = await hostService.getHosts();
+              return { success: true as const, hosts };
+            })(),
+            savedUser ? userAuth.fetchAIModels() : Promise.resolve(),
+            savedUser && !isLocalMode ? hostManager.loadProxies() : Promise.resolve(),
+            this_fetchVersionCheck(),
+          ]);
+
+          if (hostResult.status === 'fulfilled') {
+            const result = hostResult.value as { success: boolean; hosts: Host[]; error?: string };
+            if (result.success) {
+              hostManager.setHosts(result.hosts);
+            }
+          } else {
+            const loadedHosts = await hostService.getHosts();
+            hostManager.setHosts(loadedHosts);
+          }
+
+          // Load groups
+          try {
+            const loadedGroups = await hostService.getGroups();
+            if (loadedGroups.length > 0) {
+              const m = new Map<string, typeof loadedGroups[0]>();
+              for (const g of loadedGroups) m.set(g.id, g);
+              hostManager.setGroups(Array.from(m.values()));
+            } else if (!savedUser) {
+              const defaults = userAuth.getDefaultGroups(t);
+              hostManager.setGroups(defaults);
+              for (const group of defaults) await hostService.addGroup(group);
+            }
+          } catch (e) {
+            logger.warn(LOG_MODULE.APP, 'app.init.groups_failed', 'Failed to load groups', { error: e instanceof Error ? e.message : 'Unknown error' });
+          }
+
+          // Default hosts for guests
+          if (!savedUser || isLocalMode) {
+            const currentHosts = await hostService.getHosts();
+            if (currentHosts.length === 0) {
+              const defaultHosts = userAuth.getDefaultHosts(t);
+              for (const host of defaultHosts) await hostService.addHost(host);
+              hostManager.setHosts(defaultHosts);
+            }
+          }
+
+          handleVersionResult(versionResult);
+        }
+
+        // Load saved settings
+        settings.loadSavedSettings();
+      } catch (e) {
+        logger.error(LOG_MODULE.APP, 'app.storage.init_failed', 'Storage initialization failed', { module: LOG_MODULE.MAIN, error: 1, msg: e instanceof Error ? e.message : 'Unknown error' });
+      }
+    };
+
+    // 版本检查（提取为复用函数）
+    const this_fetchVersionCheck = async (): Promise<UpdateVersionInfo | null> => {
+      const VERSION_CHECK_CACHE_KEY = 'termcat_version_check_cache';
+      const CACHE_TTL = 24 * 60 * 60 * 1000;
+      let versionData: UpdateVersionInfo | null = null;
+      const cached = localStorage.getItem(VERSION_CHECK_CACHE_KEY);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached) as { ts: number; data: UpdateVersionInfo };
+          if (Date.now() - parsed.ts < CACHE_TTL && parsed.data?.version) {
+            versionData = parsed.data;
+          }
+        } catch { /* ignore */ }
+      }
+      if (!versionData) {
+        const data = await apiService.getLatestVersion();
+        logger.info(LOG_MODULE.APP, 'app.version_check.fetched', 'Fetched latest version from server', {
+          server_version: data?.version || '',
+          current_version: VERSION_NUMBER,
+        });
+        if (data?.version) {
+          versionData = {
+            version: data.version,
+            download_url: data.download_url || '',
+            release_notes: data.release_notes || '',
+            update_mode: data.update_mode || 'optional',
+            min_version: data.min_version || '',
+            update_method: data.update_method || '',
+            created_at: data.created_at || '',
+          };
+          localStorage.setItem(VERSION_CHECK_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: versionData }));
+        }
+      }
+      return versionData;
+    };
+
+    const handleVersionResult = (versionResult: PromiseSettledResult<UpdateVersionInfo | null | void>) => {
+      if (versionResult.status === 'fulfilled' && versionResult.value) {
+        const versionData = versionResult.value as UpdateVersionInfo;
+        const VERSION_SKIP_KEY = 'termcat_skip_version';
+        if (versionToNumber(versionData.version) > VERSION_NUMBER) {
+          const belowMinVersion = versionData.min_version && versionToNumber(versionData.min_version) > VERSION_NUMBER;
+          if (belowMinVersion) {
+            setUpdateInfo({ ...versionData, update_mode: 'force' });
+            setShowUpdateModal(true);
+          } else if (versionData.update_mode === 'silent') {
+            // no-op
+          } else if (versionData.update_mode === 'force') {
+            setUpdateInfo(versionData);
+            setShowUpdateModal(true);
+          } else {
+            const skippedVersion = localStorage.getItem(VERSION_SKIP_KEY);
+            if (skippedVersion !== versionData.version) {
+              setUpdateInfo(versionData);
+              setShowUpdateModal(true);
+            }
+          }
+        }
+      } else if (versionResult.status === 'rejected') {
+        logger.warn(LOG_MODULE.APP, 'app.version_check.failed', 'Version check failed', { error: versionResult.reason instanceof Error ? versionResult.reason.message : 'Unknown error' });
+      }
+    };
+
+    initializeData();
+  }, []);
+
+  // AIServiceProvider value
+  const aiServiceValue = useMemo(() => ({
+    user: userAuth.user,
+    availableModels: userAuth.availableModels,
+    availableModes: userAuth.availableModes,
+  }), [userAuth.user, userAuth.availableModels, userAuth.availableModes]);
+
+  const activeSession = sessionManager.activeSessions.find(s => s.id === sessionManager.currentSessionId);
+
+  if (userAuth.showLogin) return (
+    <>
+      <style>{settings.themeStyles}</style>
+      <LoginView onLogin={userAuth.handleLogin} language={language} theme={settings.theme} />
+    </>
+  );
+
+  return (
+    <AIServiceProvider value={aiServiceValue}>
+    <div className="flex h-screen overflow-hidden font-sans select-none" style={{ backgroundColor: 'var(--bg-main)' }}>
+      <style>{settings.themeStyles}</style>
+
+      <Header
+        activeSessionName={activeSession?.host.name}
+        activeView={activeView}
+        minimalPanelStates={settings.minimalPanelStates}
+        setMinimalPanelStates={settings.setMinimalPanelStates}
+        isMinimalMode={settings.isMinimalMode}
+        setIsMinimalMode={settings.setIsMinimalMode}
+        setActiveView={setActiveView}
+        user={userAuth.user}
+        onLoginRequest={() => userAuth.setShowLogin(true)}
+        onLogout={userAuth.handleLogout}
+        language={language}
+        setLanguage={setLanguage}
+        terminalSessionCount={sessionManager.activeSessions.length}
+      />
+
+      {!settings.isMinimalMode && (
+        <Sidebar
+          activeView={activeView}
+          setActiveView={setActiveView}
+          language={language}
+          setLanguage={setLanguage}
+          user={userAuth.user}
+          onLogout={userAuth.handleLogout}
+          onLoginRequest={() => userAuth.setShowLogin(true)}
+          terminalCount={sessionManager.activeSessions.length}
+        />
+      )}
+
+      <main className={`flex-1 flex flex-col relative overflow-hidden ${settings.isMinimalMode ? 'pt-10' : ''}`} style={{ backgroundColor: 'var(--bg-main)' }}>
+        {activeView === 'terminal' && sessionManager.activeSessions.length > 0 && (
+          <TerminalTabBar
+            sessions={sessionManager.activeSessions}
+            currentSessionId={sessionManager.currentSessionId}
+            onSelectSession={sessionManager.setCurrentSessionId}
+            onCloseSession={sessionManager.closeSession}
+            onConnect={handleConnect}
+            onDuplicateSession={handleDuplicateSession}
+            onReorderSessions={sessionManager.setActiveSessions}
+            onOpenHostConfig={setHostConfigSession}
+            dragTabRef={sessionManager.dragTabRef}
+            dragOverTabId={sessionManager.dragOverTabId}
+            setDragOverTabId={sessionManager.setDragOverTabId}
+            renamingTabId={sessionManager.renamingTabId}
+            setRenamingTabId={sessionManager.setRenamingTabId}
+            renameValue={sessionManager.renameValue}
+            setRenameValue={sessionManager.setRenameValue}
+            onRenameSession={handleRenameSession}
+            hosts={hostManager.hosts}
+            groups={hostManager.groups}
+            isMinimalMode={settings.isMinimalMode}
+            onLocalConnect={() => sessionManager.handleLocalConnect()}
+          />
+        )}
+
+        <div className="flex-1 relative overflow-hidden" style={{ isolation: 'isolate' }}>
+          {/* 所有终端 tab 始终保持挂载和渲染，仅通过 z-index 控制层叠顺序，避免切换时重绘闪烁 */}
+          {sessionManager.activeSessions.map((session) => {
+            const isActive = sessionManager.currentSessionId === session.id;
+            return (
+              <div
+                key={session.id}
+                className="absolute inset-0 flex flex-col"
+                data-tab-inactive={isActive ? undefined : ''}
+                style={{
+                  pointerEvents: isActive ? 'auto' : 'none',
+                  zIndex: isActive ? 2 : 0,
+                  transform: 'translateZ(0)',
+                  contain: 'layout paint',
+                }}
+              >
+                <TerminalView
+                  host={session.host}
+                  onClose={() => {
+                    const sessionId = session.id;
+                    sessionManager.setActiveSessions(prev => {
+                      const newSessions = prev.filter(s => s.id !== sessionId);
+                      if (newSessions.length === 0) setActiveView('dashboard');
+                      return newSessions;
+                    });
+                    sessionManager.setCurrentSessionId(prev => {
+                      if (prev === sessionId) return null;
+                      return prev;
+                    });
+                  }}
+                  theme={settings.theme}
+                  terminalTheme={settings.terminalTheme}
+                  terminalFontSize={settings.terminalFontSize}
+                  isActive={isActive}
+                  defaultFocusTarget={settings.defaultFocusTarget}
+                  minimalPanelStates={settings.minimalPanelStates}
+                  onMinimalPanelStatesChange={settings.setMinimalPanelStates}
+                  initialDirectory={session.initialDirectory}
+                  onConnectionReady={(connId) => {
+                    sessionManager.setActiveSessions(prev => prev.map(s =>
+                      s.id === session.id ? { ...s, connectionId: connId } : s
+                    ));
+                  }}
+                />
+              </div>
+            );
+          })}
+
+          {activeView === 'terminal' && sessionManager.activeSessions.length === 0 && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg-main)]">
+              <div className="w-24 h-24 mb-6 rounded-3xl bg-indigo-500/10 flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.1)]">
+                <Terminal className="w-10 h-10 text-indigo-500/80" />
+              </div>
+              <h2 className="text-xl font-black text-[var(--text-main)] tracking-tight mb-2">
+                {t.terminal.noActiveTerminals}
+              </h2>
+              <p className="text-sm font-medium text-[var(--text-dim)] mb-8 text-center max-w-sm">
+                {t.terminal.noActiveTerminalsDesc}
+              </p>
+              <button
+                onClick={() => setActiveView('dashboard')}
+                className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-500 transition-all active:scale-95 shadow-xl shadow-indigo-600/20"
+              >
+                <Monitor className="w-4 h-4" />
+                {t.terminal.goToHostList}
+              </button>
+            </div>
+          )}
+
+          {activeView === 'dashboard' && (
+            <div className="absolute inset-0 z-50 bg-[var(--bg-main)]">
+              <Dashboard
+                hosts={hostManager.hosts}
+                groups={hostManager.groups}
+                proxies={hostManager.proxies}
+                onConnect={handleConnect}
+                onLocalConnect={() => sessionManager.handleLocalConnect()}
+                onDelete={hostManager.deleteHost}
+                onAdd={hostManager.addHost}
+                onUpdate={hostManager.updateHost}
+                onAddGroup={hostManager.addGroup}
+                onDeleteGroup={hostManager.deleteGroup}
+                onUpdateGroup={hostManager.updateGroup}
+                onAddProxy={hostManager.addProxy}
+                onUpdateProxy={hostManager.updateProxy}
+                onDeleteProxy={hostManager.deleteProxy}
+                language={language}
+                isGuest={!userAuth.user}
+                storageMode={userAuth.user ? hostManager.storageMode : undefined}
+                onStorageModeChange={userAuth.user ? hostManager.handleStorageModeChange : undefined}
+              />
+            </div>
+          )}
+
+          {activeView === 'settings' && (
+            <div className="absolute inset-0 z-50 bg-[var(--bg-main)]">
+              <React.Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" size={24} /></div>}>
+                <SettingsView
+                user={userAuth.user}
+                updateUserState={userAuth.updateUserState}
+                handleLogout={userAuth.handleLogout}
+                setShowLogin={userAuth.setShowLogin}
+                language={language}
+                setLanguage={setLanguage}
+                theme={settings.theme}
+                setTheme={settings.setTheme}
+                terminalTheme={settings.terminalTheme}
+                setTerminalTheme={settings.setTerminalTheme}
+                terminalFontSize={settings.terminalFontSize}
+                setTerminalFontSize={settings.setTerminalFontSize}
+                terminalFontFamily={settings.terminalFontFamily}
+                setTerminalFontFamily={settings.setTerminalFontFamily}
+                defaultFocusTarget={settings.defaultFocusTarget}
+                setDefaultFocusTarget={settings.setDefaultFocusTarget}
+                onOpenPayment={handleOpenPayment}
+                initialTab={settingsInitialTab as any}
+                />
+              </React.Suspense>
+            </div>
+          )}
+
+          {activeView === 'extensions' && (
+            <div className="absolute inset-0 z-50 bg-[var(--bg-main)]">
+              <React.Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" size={24} /></div>}>
+                <ExtensionsView />
+              </React.Suspense>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* 主机配置弹窗（从 Tab 右键菜单触发） */}
+      {hostConfigSession && (
+        <React.Suspense fallback={null}>
+        <HostConfigModal
+          host={hostConfigSession.host}
+          groups={hostManager.groups}
+          proxies={hostManager.proxies}
+          onClose={() => setHostConfigSession(null)}
+          onSave={(updatedHost) => {
+            hostManager.updateHost(updatedHost);
+            sessionManager.setActiveSessions(prev => prev.map(s =>
+              s.host.id === updatedHost.id ? { ...s, host: updatedHost } : s
+            ));
+            setHostConfigSession(null);
+          }}
+          onAddProxy={hostManager.addProxy}
+          onUpdateProxy={hostManager.updateProxy}
+          onDeleteProxy={hostManager.deleteProxy}
+        />
+        </React.Suspense>
+      )}
+
+      {/* 连接前提示弹窗：用户名为空的 host 需要先配置 */}
+      {pendingConnectHost && !editingPendingHost && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="w-full max-w-sm bg-[var(--bg-card)] rounded-[2rem] border border-[var(--border-color)] p-8 shadow-2xl animate-in zoom-in-95">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-5">
+                <KeyRound className="w-7 h-7 text-amber-500" />
+              </div>
+              <h3 className="text-base font-black text-[var(--text-main)] mb-2">{t.dashboard.hostNeedCredentials}</h3>
+              <p className="text-xs text-[var(--text-dim)] leading-relaxed mb-8">{t.dashboard.hostNeedCredentialsDesc}</p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setPendingConnectHost(null)}
+                  className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] hover:text-[var(--text-main)] transition-colors rounded-xl hover:bg-black/5"
+                >
+                  {t.common.cancel}
+                </button>
+                <button
+                  onClick={() => setEditingPendingHost(pendingConnectHost)}
+                  className="flex-1 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 transition-colors"
+                >
+                  {t.dashboard.goToEdit}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 连接前编辑弹窗：配置 host 后自动连接 */}
+      {editingPendingHost && (
+        <React.Suspense fallback={null}>
+        <HostConfigModal
+          host={editingPendingHost}
+          groups={hostManager.groups}
+          proxies={hostManager.proxies}
+          onClose={() => { setEditingPendingHost(null); setPendingConnectHost(null); }}
+          onSave={(updatedHost) => {
+            hostManager.updateHost(updatedHost);
+            setEditingPendingHost(null);
+            setPendingConnectHost(null);
+            if (updatedHost.username) {
+              handleConnect(updatedHost);
+            }
+          }}
+          onAddProxy={hostManager.addProxy}
+          onUpdateProxy={hostManager.updateProxy}
+          onDeleteProxy={hostManager.deleteProxy}
+        />
+        </React.Suspense>
+      )}
+
+      {showPaymentModal && (
+        <React.Suspense fallback={null}>
+        <PaymentModalNew
+          show={showPaymentModal}
+          type={paymentType === 'bones' ? 'gems' : paymentType}
+          amount={paymentAmount}
+          tierId={paymentTierId}
+          onClose={() => setShowPaymentModal(false)}
+          onPaymentSuccess={userAuth.handlePaymentSuccess}
+        />
+        </React.Suspense>
+      )}
+
+      {/* 版本更新弹窗 */}
+      {showUpdateModal && updateInfo && (
+        <React.Suspense fallback={null}>
+        <UpdateModal
+          versionInfo={updateInfo}
+          onClose={() => setShowUpdateModal(false)}
+          onSkipVersion={(v) => {
+            localStorage.setItem('termcat_skip_version', v);
+            setShowUpdateModal(false);
+          }}
+        />
+        </React.Suspense>
+      )}
+
+      {/* 首次登录云端同步提示 */}
+      {userAuth.showCloudSyncPrompt && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="w-full max-w-sm bg-[var(--bg-card)] rounded-[2rem] border border-[var(--border-color)] p-8 shadow-2xl animate-in zoom-in-95">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mb-5">
+                <Cloud className="w-7 h-7 text-indigo-500" />
+              </div>
+              <h3 className="text-base font-black text-[var(--text-main)] mb-2">{t.dashboard.cloudSyncPromptTitle}</h3>
+              <p className="text-xs text-[var(--text-dim)] leading-relaxed mb-8">{t.dashboard.cloudSyncPromptDesc}</p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => userAuth.setShowCloudSyncPrompt(false)}
+                  className="flex-1 py-3 text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] hover:text-[var(--text-main)] transition-colors rounded-xl hover:bg-black/5"
+                >
+                  {t.dashboard.cloudSyncLater}
+                </button>
+                <button
+                  onClick={() => {
+                    hostManager.handleStorageModeChange('server');
+                    userAuth.setShowCloudSyncPrompt(false);
+                  }}
+                  className="flex-1 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 transition-colors"
+                >
+                  {t.dashboard.cloudSyncEnable}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <PluginStatusBar />
+      <PluginNotifications />
+    </div>
+    </AIServiceProvider>
+  );
+};
+
+export default App;

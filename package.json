@@ -1,0 +1,123 @@
+{
+  "name": "termcat",
+  "version": "0.1.10",
+  "description": "TermCat - Remote Terminal Management Tool",
+  "main": "dist/main/main.js",
+  "author": "TermCat Team",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && electron-builder",
+    "build:win": "vite build && electron-builder --win",
+    "build:mac": "vite build && electron-builder --mac --x64",
+    "build:mac-arm64": "vite build && electron-builder --mac --arm64",
+    "build:mac-universal": "vite build && electron-builder --mac --universal",
+    "build:linux": "vite build && electron-builder --linux",
+    "build:clean": "rimraf release dist",
+    "preview": "vite preview",
+    "electron:dev": "npm run dev",
+    "electron:build": "vite build && electron-builder",
+    "cli": "npx tsx src/modules/ai-agent/cli/cli-agent.ts",
+    "postinstall": "npx electron-rebuild -f -w node-pty --arch arm64"
+  },
+  "dependencies": {
+    "@codemirror/lang-cpp": "^6.0.3",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-go": "^6.0.1",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-java": "^6.0.2",
+    "@codemirror/lang-javascript": "^6.2.4",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lang-php": "^6.0.2",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/lang-yaml": "^6.1.2",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "axios": "^1.6.0",
+    "codemirror": "^6.0.2",
+    "i18next": "^23.7.0",
+    "iconv-lite": "^0.7.2",
+    "lucide-react": "^0.562.0",
+    "node-pty": "^1.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-i18next": "^13.5.0",
+    "react-markdown": "^9.1.0",
+    "react-virtuoso": "^4.18.1",
+    "remark-gfm": "^4.0.1",
+    "ssh-config": "^5.1.0",
+    "ssh2": "^1.15.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0",
+    "xterm-addon-unicode11": "^0.6.0",
+    "xterm-addon-web-links": "^0.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/ssh2": "^1.11.21",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.23",
+    "concurrently": "^8.2.0",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0",
+    "postcss": "^8.5.6",
+    "rimraf": "^5.0.5",
+    "rollup-plugin-visualizer": "^7.0.1",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vite-plugin-electron": "^0.28.0",
+    "wait-on": "^7.2.0",
+    "ws": "^8.19.0"
+  },
+  "build": {
+    "appId": "com.termcat.app",
+    "productName": "TermCat",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json",
+      "node_modules/node-pty/**/*"
+    ],
+    "npmRebuild": true,
+    "buildDependenciesFromSource": true,
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon/AppIcon.icns",
+      "singleArchFiles": "dist/**/*.js"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/termcat_icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.xz"
+      ],
+      "category": "Development",
+      "icon": "assets/termcat_icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
