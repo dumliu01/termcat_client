@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <a href="https://termcat.uniline.site">Homepage</a> &bull;
   <a href="README_cn.md">中文文档</a>
 </p>
 
