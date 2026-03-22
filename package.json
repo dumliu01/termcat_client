@@ -18,7 +18,7 @@
     "electron:dev": "npm run dev",
     "electron:build": "vite build && electron-builder",
     "cli": "npx tsx src/modules/ai-agent/cli/cli-agent.ts",
-    "postinstall": "npx electron-rebuild -f -w node-pty --arch arm64"
+    "postinstall": "npx @electron/rebuild -f -w node-pty"
   },
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.3",
