@@ -44,7 +44,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   initialTab
 }) => {
   const { t } = useI18n();
-  const [settingsTab, setSettingsTab] = useState<'personal' | 'membership' | 'appearance' | 'operation' | 'plugins' | 'help'>(initialTab || 'membership');
+  const [settingsTab, setSettingsTab] = useState<'personal' | 'membership' | 'appearance' | 'operation' | 'plugins' | 'help'>(initialTab || 'personal');
 
   useEffect(() => {
     if (initialTab) setSettingsTab(initialTab);
@@ -59,7 +59,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <h2 className="text-2xl font-black mb-3 text-[var(--text-main)]">{t.settings.signInRequired}</h2>
           <p className="text-sm text-[var(--text-dim)] mb-8 max-w-xs">{t.settings.loginToManage}</p>
-          <button onClick={() => setShowLogin(true)} className="bg-indigo-600 text-white px-10 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-500 transition-all shadow-[0_15px_40px_rgba(99,102,241,0.3)] active:scale-95">
+          <button onClick={() => setShowLogin(true)} className="bg-indigo-600 text-white px-10 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-500 transition-all shadow-[0_15px_40px_rgba(99,102,241,0.3)] active:scale-95" data-testid="settings-login-btn">
             {t.settings.loginNow}
           </button>
         </div>
@@ -69,7 +69,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     switch (settingsTab) {
       case 'personal':
         return (
-          <PersonalCenter user={user} updateUserState={updateUserState} handleLogout={handleLogout} />
+          <PersonalCenter user={user} updateUserState={updateUserState} handleLogout={handleLogout} onOpenPayment={onOpenPayment} />
         );
 
       case 'membership':
@@ -109,33 +109,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   return (
     <div className="h-full flex flex-col overflow-hidden animate-in fade-in duration-500 bg-[var(--bg-main)]">
-      <div className="px-10 py-10 border-b shrink-0 flex items-center justify-between bg-[var(--bg-sidebar)]/40 backdrop-blur-xl" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="flex items-center gap-6">
-          <div className="w-16 h-16 bg-indigo-500/10 rounded-[1.5rem] flex items-center justify-center text-indigo-400 shadow-2xl border border-indigo-500/20">
-            <Settings className="w-8 h-8" />
+      <div className="px-8 py-5 border-b shrink-0 flex items-center justify-between bg-[var(--bg-sidebar)]/40 backdrop-blur-xl" style={{ borderColor: 'var(--border-color)' }}>
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-indigo-400 border border-indigo-500/20">
+            <Settings className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-3xl font-black text-[var(--text-main)] tracking-tight">{t.settings.pageTitle}</h1>
-            <p className="text-sm text-[var(--text-dim)] font-medium mt-1">{t.settings.pageSubtitle}</p>
+            <h1 className="text-xl font-black text-[var(--text-main)] tracking-tight">{t.settings.pageTitle}</h1>
+            <p className="text-xs text-[var(--text-dim)] font-medium">{t.settings.pageSubtitle}</p>
           </div>
         </div>
       </div>
       <div className="flex-1 flex overflow-hidden">
-        <aside className="w-72 border-r shrink-0 flex flex-col p-6 gap-2 bg-[var(--bg-sidebar)]/20 backdrop-blur-xl" style={{ borderColor: 'var(--border-color)' }}>
+        <aside className="w-56 border-r shrink-0 flex flex-col p-4 gap-1 bg-[var(--bg-sidebar)]/20 backdrop-blur-xl" style={{ borderColor: 'var(--border-color)' }}>
           {[
-            { id: 'membership', icon: Crown, label: t.commerce.membershipCenter },
+            // v2: membership tab hidden (code preserved for future re-enable)
+            // { id: 'membership', icon: Crown, label: t.commerce.membershipCenter },
             { id: 'personal', icon: UserCircle, label: t.settings.tabAccount },
             { id: 'appearance', icon: Palette, label: t.settings.tabAppearance },
             // { id: 'operation', icon: Keyboard, label: t.settings.tabShortcuts },
-            { id: 'plugins', icon: Puzzle, label: '插件管理' },
+            { id: 'plugins', icon: Puzzle, label: t.settings.tabPlugins },
             { id: 'help', icon: HelpCircle, label: t.settings.tabSupport }
           ].map(tab => (
-            <button key={tab.id} onClick={() => setSettingsTab(tab.id as any)} className={`flex items-center gap-4 px-6 py-4 rounded-2xl text-xs font-black transition-all ${settingsTab === tab.id ? 'bg-indigo-600 text-white shadow-[0_10px_30px_rgba(99,102,241,0.3)]' : 'text-[var(--text-dim)] hover:bg-black/5 hover:text-[var(--text-main)]'}`}><tab.icon className={`w-4 h-4 ${settingsTab === tab.id ? 'text-white' : ''}`} />{tab.label}</button>
+            <button key={tab.id} onClick={() => setSettingsTab(tab.id as any)} className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-black transition-all ${settingsTab === tab.id ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-[var(--text-dim)] hover:bg-black/5 hover:text-[var(--text-main)]'}`} data-testid={`settings-tab-${tab.id}`}><tab.icon className={`w-4 h-4 ${settingsTab === tab.id ? 'text-white' : ''}`} />{tab.label}</button>
           ))}
           <div className="mt-auto pt-6 border-t border-[var(--border-color)]"><div className="flex items-center gap-4 px-6 py-2 opacity-20 hover:opacity-40 transition-opacity"><Hash className="w-4 h-4 text-[var(--text-main)]" /><span className="text-[10px] font-black uppercase tracking-[0.3em] italic text-[var(--text-main)]">{VERSION_STRING}</span></div></div>
         </aside>
-        <div key={settingsTab} className="flex-1 overflow-y-auto no-scrollbar p-10">
-          <div className="max-w-5xl mx-auto pb-24">{renderContent()}</div>
+        <div key={settingsTab} className="flex-1 overflow-y-auto no-scrollbar p-6" data-testid="settings-content">
+          <div className="max-w-4xl mx-auto pb-10">{renderContent()}</div>
         </div>
       </div>
     </div>

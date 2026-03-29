@@ -1,10 +1,10 @@
 /**
- * 风险等级颜色工具函数
+ * Risk level color utility functions
  */
 
 import type { RiskLevel, StepStatus } from '../types';
 
-/** 风险等级 → Tailwind 色值 class */
+/** Risk level → Tailwind color class */
 export function getRiskColor(risk?: RiskLevel | string): string {
   switch (risk) {
     case 'low':
@@ -18,7 +18,7 @@ export function getRiskColor(risk?: RiskLevel | string): string {
   }
 }
 
-/** 步骤状态 → 背景色 */
+/** Step status → background color */
 export function getStepStatusBgColor(status?: StepStatus | string): string {
   switch (status) {
     case 'completed':

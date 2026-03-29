@@ -6,8 +6,8 @@ import { DarwinMonitor } from './monitors/darwinMonitor';
 import { WindowsMonitor } from './monitors/windowsMonitor';
 
 /**
- * 环形缓冲区：固定容量，push O(1)，toArray O(n)
- * 替代 Array + shift() 避免频繁数组移位开销
+ * Circular buffer: fixed capacity, push O(1), toArray O(n)
+ * Alternative to Array + shift() to avoid frequent array reordering overhead
  */
 class CircularBuffer {
   private buffer: number[];
@@ -23,7 +23,7 @@ class CircularBuffer {
   push(value: number): void {
     const idx = (this.head + this.size) % this.capacity;
     if (this.size === this.capacity) {
-      // 缓冲区满，覆盖最老的元素
+      // Buffer full, overwrite oldest element
       this.buffer[this.head] = value;
       this.head = (this.head + 1) % this.capacity;
     } else {
@@ -42,8 +42,8 @@ class CircularBuffer {
 }
 
 /**
- * 根据 osType 创建对应的 OS 监控器
- * osType 来自 SSH 连接的 OSInfo.osType，形如 "linux/ubuntu"、"macos"、"windows" 等
+ * Create corresponding OS monitor based on osType
+ * osType comes from SSH connection's OSInfo.osType, e.g. "linux/ubuntu", "macos", "windows", etc.
  */
 function createOSMonitor(osType?: string): IOSMonitor {
   const os = (osType || '').toLowerCase();
@@ -64,7 +64,7 @@ export class SystemMonitorService {
   private _isRunning: boolean = false;
   private monitor: IOSMonitor;
 
-  // 历史数据存储 - 使用环形缓冲区，避免 shift() 的 O(n) 开销
+  // Historical data storage - using circular buffer to avoid O(n) shift() overhead
   private netUpHistory = new CircularBuffer(100);
   private netDownHistory = new CircularBuffer(100);
   private pingHistory = new CircularBuffer(100);
@@ -84,8 +84,8 @@ export class SystemMonitorService {
   }
 
   /**
-   * 开始监控系统信息
-   * @param intervalMs 更新间隔（毫秒），默认3秒
+   * Start system monitoring
+   * @param intervalMs Update interval (milliseconds), default 3 seconds
    */
   start(intervalMs: number = 3000) {
     if (this._isRunning) {
@@ -98,17 +98,17 @@ export class SystemMonitorService {
       connection_id: this.connectionId,
     });
 
-    // 立即执行一次
+    // Execute immediately once
     this.fetchSystemMetrics();
 
-    // 定期更新
+    // Update periodically
     this.intervalId = setInterval(() => {
       this.fetchSystemMetrics();
     }, intervalMs);
   }
 
   /**
-   * 停止监控
+   * Stop monitoring
    */
   stop() {
     if (this.intervalId) {
@@ -122,7 +122,7 @@ export class SystemMonitorService {
   }
 
   /**
-   * 获取系统指标
+   * Fetch system metrics
    */
   private async fetchSystemMetrics() {
     try {
@@ -133,14 +133,14 @@ export class SystemMonitorService {
 
       const command = this.monitor.buildCommand();
 
-      // 测量 SSH 往返时间作为本机到 host 的网络延迟
+      // Measure SSH round-trip time as network latency from local to host
       const rttStart = Date.now();
       const result = await window.electron.sshExecute(this.connectionId, command);
       const rttMs = Date.now() - rttStart;
 
       if (result.output) {
         const metrics = this.buildMetrics(result.output);
-        // 使用 SSH 往返时间作为本机到 host 的延迟（除以2近似单程）
+        // Use SSH round-trip time as latency from local to host (divide by 2 for one-way approximation)
         metrics.ping = Math.round(rttMs / 2);
         if (this.hasPingData) {
           this.pingHistory.push(metrics.ping);
@@ -156,7 +156,7 @@ export class SystemMonitorService {
   }
 
   /**
-   * 构建 metrics 对象：委托 OS Monitor 解析，然后处理网络速率等公共逻辑
+   * Build metrics object: delegate to OS Monitor for parsing, then handle common logic like network speed
    */
   private buildMetrics(output: string): SystemMetrics {
     const metrics: SystemMetrics = {
@@ -184,10 +184,10 @@ export class SystemMonitorService {
     };
 
     try {
-      // 委托各 OS 监控器解析命令输出
+      // Delegate to OS monitors for command output parsing
       const netSample = this.monitor.parseMetrics(output, metrics);
 
-      // 网络速率计算（公共逻辑）
+      // Network speed calculation (common logic)
       if (netSample) {
         metrics.ethName = netSample.interfaceName;
 
@@ -215,7 +215,7 @@ export class SystemMonitorService {
       });
     }
 
-    // 将历史数据复制到返回的 metrics 对象中
+    // Copy historical data to returned metrics object
     metrics.netUpHistory = this.netUpHistory.toArray();
     metrics.netDownHistory = this.netDownHistory.toArray();
     metrics.pingHistory = this.pingHistory.toArray();

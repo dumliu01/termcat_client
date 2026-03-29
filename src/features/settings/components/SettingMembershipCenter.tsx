@@ -14,13 +14,13 @@ interface MembershipCenterProps {
   onOpenPayment: (type: 'bones' | 'vip_month' | 'vip_year', amount: number, tierId?: string) => void;
 }
 
-/** 将 tier id 映射到支付类型 */
+/** Maps tier ID to payment type */
 const getPaymentType = (tierId: string, period: 'monthly' | 'yearly'): 'vip_month' | 'vip_year' => {
-  // 目前后端只支持 vip_month / vip_year，后续扩展 SVIP 可在此映射
+  // Currently backend only supports vip_month / vip_year, can extend for SVIP here
   return period === 'monthly' ? 'vip_month' : 'vip_year';
 };
 
-/** 兜底静态 tier 配置（服务端配置不可用时使用） */
+/** Fallback static tier config (used when server config is unavailable) */
 const FALLBACK_TIERS: TierConfig[] = [
   {
     id: 'Standard',
@@ -60,7 +60,7 @@ const FALLBACK_TIERS: TierConfig[] = [
   },
 ];
 
-/** 本地 feature 显示名兜底（服务端 feature_meta 不可用时使用） */
+/** Local fallback feature display names (used when server feature_meta is unavailable) */
 const FALLBACK_FEATURE_META: Record<string, Record<string, string>> = {
   smart_completion:      { zh: '智能命令补全', en: 'Smart Command Completion' },
   cloud_sync:            { zh: '云端数据同步', en: 'Cloud Data Sync' },
@@ -82,12 +82,12 @@ const FALLBACK_FEATURE_META: Record<string, Record<string, string>> = {
   max_2500_hosts:        { zh: '最高2500个主机限制', en: 'Max 2500 Hosts' },
 };
 
-/** 获取 feature 显示名：优先使用服务端 feature_meta，其次本地兜底 */
+/** Gets feature display name: prioritizes server feature_meta, then local fallback */
 const getFeatureName = (featureId: string, language: string): string => {
-  // 先查服务端
+  // Check server first
   const serverName = commerceService.getFeatureDisplayName(featureId, language);
   if (serverName !== featureId) return serverName;
-  // 本地兜底
+  // Local fallback
   const local = FALLBACK_FEATURE_META[featureId];
   if (local) return local[language] || local['en'] || featureId;
   return featureId;
@@ -101,7 +101,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
   useEffect(() => {
-    // 每次打开会员界面都拉取最新商业化配置
+    // Fetch latest commerce config every time membership page opens
     commerceService.fetchConfig();
     const unsubscribe = commerceService.onChange(() => {
       setConfig(commerceService.getConfig());
@@ -112,7 +112,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
   const allTiers = (config?.tiers && config.tiers.length > 0) ? config.tiers : FALLBACK_TIERS;
   const currentTierConfig = allTiers.find(t => t.id === user.tier) ?? null;
 
-  // DEBUG: 追踪数据来源
+  // DEBUG: Track data source
   console.log('[MembershipCenter] config source:', config ? 'server/cache' : 'null (using FALLBACK)');
   console.log('[MembershipCenter] config?.tiers count:', config?.tiers?.length);
   console.log('[MembershipCenter] allTiers source:', (config?.tiers && config.tiers.length > 0) ? 'server' : 'FALLBACK_TIERS');
@@ -123,11 +123,11 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
     console.log('[MembershipCenter] feature_meta keys:', Object.keys(config.feature_meta));
   }
 
-  // 分离免费 tier 和付费 tier
+  // Separate free and paid tiers
   const freeTier = allTiers.find(t => t.price_monthly === 0);
   const paidTiers = allTiers.filter(t => t.price_monthly > 0);
 
-  // 年付节省百分比（取第一个付费 tier 计算，用于 toggle 上展示）
+  // Yearly savings percentage (calculated from first paid tier, displayed on toggle)
   const yearlySavings = paidTiers[0] && paidTiers[0].price_yearly > 0 && paidTiers[0].price_monthly > 0
     ? Math.round((1 - paidTiers[0].price_yearly / (paidTiers[0].price_monthly * 12)) * 100)
     : 0;
@@ -135,15 +135,15 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
   const isAdFree = currentTierConfig?.ad_free ?? false;
 
   /**
-   * 计算 tier 的展示用 features：
-   * - 如果 features 已包含 all_standard / all_pro 等继承标记，直接使用
-   * - 如果是服务端下发的展开列表（无继承标记），自动与前一个 tier 做差集折叠
+   * Calculates display features for a tier:
+   * - If features contain all_standard / all_pro etc. inheritance tags, use directly
+   * - If it's a flat list from server (no inheritance tags), auto-fold with previous tier difference
    */
   const getDisplayFeatures = (tier: TierConfig, tierIdx: number): string[] => {
     const hasInheritTag = tier.features.some(f => f.startsWith('all_'));
     if (hasInheritTag || tierIdx === 0) return tier.features;
 
-    // 服务端下发的展开列表 → 自动折叠
+    // Server flat list -> auto-fold
     const prevTier = allTiers[tierIdx - 1];
     if (!prevTier) return tier.features;
 
@@ -151,11 +151,11 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
     const inherited = tier.features.filter(f => prevSet.has(f));
     const unique = tier.features.filter(f => !prevSet.has(f));
 
-    // 只有当继承了前一个 tier 的大部分 features 时才折叠
+    // Only fold when inheriting most features from previous tier
     if (inherited.length >= prevTier.features.length * 0.5) {
       const prevName = prevTier.name[language] || prevTier.name['en'] || prevTier.id;
       const inheritTag = `__inherit_${prevTier.id}`;
-      // 注册临时显示名
+      // Register temporary display name
       FALLBACK_FEATURE_META[inheritTag] = {
         zh: `所有${prevName}功能`,
         en: `All ${prevTier.name['en'] || prevTier.id} Features`,
@@ -166,7 +166,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
     return tier.features;
   };
 
-  /** 渲染 tier 的 feature 列表 */
+  /** Renders tier feature list */
   const renderTierFeatures = (tier: TierConfig, color: string, tierIdx: number) => {
     const features = getDisplayFeatures(tier, tierIdx);
     return (
@@ -183,13 +183,13 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
     );
   };
 
-  /** 首个付费 tier 的月价（用于"解锁VIP"按钮的金额） */
+  /** First paid tier monthly price (for "Unlock VIP" button amount) */
   const firstPaidTier = paidTiers[0];
   const unlockMonthlyPrice = firstPaidTier?.price_monthly ?? 19.8;
 
   return (
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* 积分余额卡片 */}
+      {/* Gems Balance Card */}
       <section className="bg-[var(--bg-card)] p-8 rounded-[2.5rem] border border-[var(--border-color)] shadow-xl relative overflow-hidden group">
         <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none transition-transform group-hover:scale-110">
           <Cat className="w-32 h-32 text-indigo-500" />
@@ -218,7 +218,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
         </div>
       </section>
 
-      {/* 会员订阅中心 */}
+      {/* Membership Subscription Center */}
       <section className="space-y-6">
         <div className="flex flex-col md:flex-row items-center justify-between px-2 gap-4 relative">
           <div className="flex items-center gap-3 md:w-auto shrink-0">
@@ -235,7 +235,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
             )}
           </div>
 
-          {/* 月/年切换 */}
+          {/* Monthly/Yearly Toggle */}
           <div className="flex items-center bg-[var(--bg-main)] p-1 rounded-xl border border-[var(--border-color)] md:absolute md:left-1/2 md:-translate-x-1/2">
             <button
               onClick={() => setBillingCycle('monthly')}
@@ -261,13 +261,13 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
           {allTiers.map((tier, idx) => {
             const isCurrent = user.tier === tier.id;
             const isFree = tier.price_monthly === 0;
-            const isEnabled = tier.enabled !== false; // 未配置默认为 true
+            const isEnabled = tier.enabled !== false; // Defaults to true if not configured
             const tierName = tier.name[language] || tier.name['en'] || tier.id;
             const isLastPaid = !isFree && idx === allTiers.length - 1;
             const price = isFree ? 0 : (billingCycle === 'monthly' ? tier.price_monthly : tier.price_yearly);
             const priceSuffix = isFree ? t.settings.forever : (billingCycle === 'monthly' ? t.settings.perMonth : t.settings.perYear);
 
-            // 卡片容器样式
+            // Card container styles
             const cardClass = isCurrent
               ? isFree
                 ? 'bg-indigo-500/5 border-indigo-500/30 ring-2 ring-indigo-500/50'
@@ -285,7 +285,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
                 key={tier.id}
                 className={`p-8 rounded-[2rem] border transition-all flex flex-col relative overflow-hidden group ${cardClass}`}
               >
-                {/* 右上角角标 */}
+                {/* Top right badge */}
                 {isCurrent ? (
                   <div className={`absolute top-0 right-0 ${isFree ? 'bg-indigo-500' : 'bg-amber-500'} text-white text-[9px] font-black uppercase tracking-widest px-4 py-2 rounded-bl-2xl shadow-lg flex items-center gap-1`}>
                     <Check className="w-3 h-3" /> {t.settings.currentVersion}
@@ -296,7 +296,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
                   </div>
                 ) : null}
 
-                {/* 标题 */}
+                {/* Title */}
                 <div className="mb-8">
                   <h4 className="text-lg font-black text-[var(--text-main)] mb-1 flex items-center gap-2">
                     {tierName}
@@ -307,10 +307,10 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
                   </p>
                 </div>
 
-                {/* Feature 列表 */}
+                {/* Feature List */}
                 {renderTierFeatures(tier, isFree ? 'text-emerald-500' : 'text-amber-500', idx)}
 
-                {/* 价格 + 按钮 */}
+                {/* Price + Button */}
                 <div className="mt-auto">
                   <div className="text-2xl font-black text-[var(--text-main)] mb-6 tracking-tighter">
                     ¥{price} <span className="text-xs font-bold opacity-40">{priceSuffix}</span>
@@ -353,7 +353,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
         </div>
       </section>
 
-      {/* 私有模型高级配置 */}
+      {/* Private Model Advanced Config */}
       <section className="bg-[var(--bg-card)] p-8 rounded-[2.5rem] border border-[var(--border-color)] shadow-xl relative overflow-hidden">
         <div className="flex items-center justify-between mb-8">
           <h4 className="text-sm font-black flex items-center gap-3 text-[var(--text-main)]">
@@ -400,7 +400,7 @@ export const MembershipCenter: React.FC<MembershipCenterProps> = ({
         )}
       </section>
 
-      {/* 免广告体验开关 */}
+      {/* Ad-Free Experience Toggle */}
       <section className="bg-[var(--bg-card)] p-8 rounded-[2.5rem] border border-[var(--border-color)] shadow-xl relative overflow-hidden">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">

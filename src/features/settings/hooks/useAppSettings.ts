@@ -1,7 +1,7 @@
 /**
- * 应用设置 Hook
+ * App Settings Hook
  *
- * 管理主题、终端主题、字体大小、极简模式等持久化设置。
+ * Manages persisted settings like theme, terminal theme, font size, minimal mode, etc.
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -21,7 +21,7 @@ export function useAppSettings() {
     return saved === 'terminal' ? 'terminal' : 'input';
   });
 
-  // 面板状态（AI 面板默认显示）
+  // Panel states (AI panel visible by default)
   const [minimalPanelStates, setMinimalPanelStates] = useState<MinimalPanelStates>(() => {
     const saved = localStorage.getItem('termcat_minimal_panel_states');
     if (saved) {
@@ -30,14 +30,14 @@ export function useAppSettings() {
     return { sidebar: false, ai: true, bottom: false };
   });
 
-  // 极简模式：隐藏侧边栏，导航移至顶部标题栏（首次运行默认开启）
+  // Minimal mode: hide sidebar, move navigation to top title bar (enabled by default on first run)
   const [isMinimalMode, setIsMinimalMode] = useState<boolean>(() => {
     const saved = localStorage.getItem('termcat_minimal_mode');
     if (saved === null) return true;
     return saved === 'true';
   });
 
-  // 初始化时从 localStorage 加载主题设置
+  // Load theme settings from localStorage on initialization
   const loadSavedSettings = () => {
     const savedTheme = localStorage.getItem('termcat_theme') as ThemeType;
     if (savedTheme && THEME_CONFIG[savedTheme]) setTheme(savedTheme);

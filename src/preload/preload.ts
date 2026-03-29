@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electron', {
   sshExecute: (connectionId: string, command: string, options?: { useLoginShell?: boolean }) => ipcRenderer.invoke('ssh-execute', connectionId, command, options),
   sshDisconnect: (connectionId: string) => ipcRenderer.invoke('ssh-disconnect', connectionId),
   sshCreateShell: (connectionId: string, encoding?: string) => ipcRenderer.invoke('ssh-create-shell', connectionId, encoding),
+  sshCloseShell: (shellId: string) => ipcRenderer.invoke('ssh-close-shell', shellId),
   sshShellWrite: (connectionId: string, data: string) => ipcRenderer.invoke('ssh-shell-write', connectionId, data),
   sshShellResize: (connectionId: string, cols: number, rows: number) => ipcRenderer.invoke('ssh-shell-resize', connectionId, cols, rows),
   sshIsConnected: (connectionId: string) => ipcRenderer.invoke('ssh-is-connected', connectionId),
@@ -26,49 +27,56 @@ contextBridge.exposeInMainWorld('electron', {
   sshFocusTerminal: (connectionId: string) => ipcRenderer.invoke('ssh-focus-terminal', connectionId),
   sshGetOSInfo: (connectionId: string) => ipcRenderer.invoke('ssh-get-os-info', connectionId),
 
-  // 发送终端获得焦点事件（用户手动点击终端时触发）
+  // Emit terminal focus gained event (triggered when user clicks terminal manually)
   sendTerminalFocusGained: (connectionId: string) => {
     //console.log('[Preload] Sending terminal-focus-gained event, connectionId:', connectionId);
     ipcRenderer.send('terminal-focus-gained', connectionId);
   },
 
-  // 监听焦点事件（双击Ctrl切换到终端模式时触发）
+  // Listen for focus terminal event (triggered when double-pressing Ctrl to switch to terminal mode)
   onFocusTerminal: (callback: (connectionId: string) => void) => {
     const listener = (_event: any, connectionId: string) => callback(connectionId);
     ipcRenderer.on('focus-terminal', listener);
     return () => ipcRenderer.removeListener('focus-terminal', listener);
   },
 
-  // 监听终端获得焦点事件（用户手动点击终端时触发）
+  // Listen for terminal focus gained event (triggered when user clicks terminal manually)
   onTerminalFocusGained: (callback: (connectionId: string) => void) => {
     const listener = (_event: any, connectionId: string) => callback(connectionId);
     ipcRenderer.on('terminal-focus-gained', listener);
     return () => ipcRenderer.removeListener('terminal-focus-gained', listener);
   },
 
-  // 监听 shell 数据
+  // Listen for shell data
   onShellData: (callback: (connectionId: string, data: string) => void) => {
     const listener = (_event: any, connectionId: string, data: string) => callback(connectionId, data);
     ipcRenderer.on('ssh-shell-data', listener);
-    // 返回取消监听的函数
+    // Returns function to unsubscribe
     return () => ipcRenderer.removeListener('ssh-shell-data', listener);
   },
 
-  // 监听 shell 关闭
+  // Listen for shell close
   onShellClose: (callback: (connectionId: string) => void) => {
     const listener = (_event: any, connectionId: string) => callback(connectionId);
     ipcRenderer.on('ssh-shell-close', listener);
     return () => ipcRenderer.removeListener('ssh-shell-close', listener);
   },
 
-  // [DEBUG] 监听 shell 调试信息
+  // Listen for system resume (after sleep/lock screen)
+  onSystemResumed: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('system-resumed', listener);
+    return () => ipcRenderer.removeListener('system-resumed', listener);
+  },
+
+  // [DEBUG] Listen for shell debug info
   onShellDebug: (callback: (connectionId: string, debugInfo: any) => void) => {
     const listener = (_event: any, connectionId: string, debugInfo: any) => callback(connectionId, debugInfo);
     ipcRenderer.on('ssh-shell-debug', listener);
     return () => ipcRenderer.removeListener('ssh-shell-debug', listener);
   },
 
-  // 文件传输API
+  // File transfer API
   uploadFile: (connectionId: string, localPath: string, remotePath: string) =>
     ipcRenderer.invoke('file-upload', connectionId, localPath, remotePath),
 
@@ -81,39 +89,39 @@ contextBridge.exposeInMainWorld('electron', {
   downloadDirectory: (connectionId: string, remotePath: string, localPath: string) =>
     ipcRenderer.invoke('file-download-dir', connectionId, remotePath, localPath),
 
-  // 监听传输进度
+  // Listen for transfer progress
   onTransferProgress: (callback: (data: any) => void) => {
     const listener = (_event: any, data: any) => callback(data);
     ipcRenderer.on('transfer-progress', listener);
     return () => ipcRenderer.removeListener('transfer-progress', listener);
   },
 
-  // 监听传输完成
+  // Listen for transfer complete
   onTransferComplete: (callback: (data: any) => void) => {
     const listener = (_event: any, data: any) => callback(data);
     ipcRenderer.on('transfer-complete', listener);
     return () => ipcRenderer.removeListener('transfer-complete', listener);
   },
 
-  // 监听传输开始
+  // Listen for transfer start
   onTransferStart: (callback: (data: any) => void) => {
     const listener = (_event: any, data: any) => callback(data);
     ipcRenderer.on('transfer-start', listener);
     return () => ipcRenderer.removeListener('transfer-start', listener);
   },
 
-  // 监听传输错误
+  // Listen for transfer error
   onTransferError: (callback: (data: any) => void) => {
     const listener = (_event: any, data: any) => callback(data);
     ipcRenderer.on('transfer-error', listener);
     return () => ipcRenderer.removeListener('transfer-error', listener);
   },
 
-  // 文件对话框
+  // File dialog
   showSaveDialog: (options: any) => ipcRenderer.invoke('show-save-dialog', options),
   showOpenDialog: (options: any) => ipcRenderer.invoke('show-open-dialog', options),
 
-  // 隧道功能
+  // Tunnel functionality
   tunnelStart: (connectionId: string, config: TunnelConfig) =>
     ipcRenderer.invoke('tunnel-start', connectionId, config),
   tunnelStop: (connectionId: string, tunnelId: string) =>
@@ -123,7 +131,7 @@ contextBridge.exposeInMainWorld('electron', {
   tunnelGetStatuses: (connectionId: string) =>
     ipcRenderer.invoke('tunnel-get-statuses', connectionId),
 
-  // 监听隧道状态更新
+  // Listen for tunnel status update
   onTunnelStatusUpdate: (callback: (connectionId: string, status: TunnelStatus) => void) => {
     const listener = (_event: any, connectionId: string, status: TunnelStatus) =>
       callback(connectionId, status);
@@ -131,21 +139,21 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener('tunnel-status-update', listener);
   },
 
-  // 监听 termcat:// 协议回调（第三方登录）
+  // Listen for termcat:// protocol callback (third-party login)
   onAuthCallback: (callback: (data: { token: string; user: string }) => void) => {
     const listener = (_event: any, data: { token: string; user: string }) => callback(data);
     ipcRenderer.on('auth-callback', listener);
     return () => ipcRenderer.removeListener('auth-callback', listener);
   },
 
-  // 监听菜单导航事件
+  // Listen for menu navigation event
   onNavigate: (callback: (view: string, tab?: string) => void) => {
     const listener = (_event: any, view: string, tab?: string) => callback(view, tab);
     ipcRenderer.on('navigate-to', listener);
     return () => ipcRenderer.removeListener('navigate-to', listener);
   },
 
-  // 获取终端会话当前工作目录（统一接口，屏蔽 local/ssh 差异）
+  // Get terminal session current working directory (unified interface, abstract local/ssh differences)
   getSessionCwd: async (connectionId: string, connectionType: 'local' | 'ssh'): Promise<string | null> => {
     try {
       if (connectionType === 'local') {
@@ -159,13 +167,19 @@ contextBridge.exposeInMainWorld('electron', {
     }
   },
 
-  // 打开外部链接
+  // Desktop notification (system-level, shown when window is not focused)
+  showNotification: (options: { title: string; body: string }) =>
+    ipcRenderer.invoke('notification:show', options),
+
+  // Open external URL
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
 
-  // 插件系统
+  // Plugin system
   plugin: {
     invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
     getCachedPanels: () => ipcRenderer.invoke('plugin:get-cached-panels'),
+    getSettings: (pluginId: string) => ipcRenderer.invoke('plugin:get-settings', pluginId),
+    setSetting: (pluginId: string, key: string, value: unknown) => ipcRenderer.invoke('plugin:set-setting', pluginId, key, value),
     installFromUrl: (packageUrl: string, pluginName: string) => ipcRenderer.invoke('plugin:install', packageUrl, pluginName),
     uninstall: (pluginId: string) => ipcRenderer.invoke('plugin:uninstall', pluginId),
     onStateChanged: (callback: (data: any) => void) => {
@@ -183,7 +197,7 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('plugin:statusbar:updated', listener);
       return () => ipcRenderer.removeListener('plugin:statusbar:updated', listener);
     },
-    // 插件请求 Renderer 执行操作时的回调注册
+    // Callback registration when plugin requests renderer to perform operations
     onTerminalWrite: (callback: (data: { sessionId: string; data: string }) => void) => {
       const listener = (_event: any, data: any) => callback(data);
       ipcRenderer.on('plugin:terminal:write', listener);
@@ -199,9 +213,9 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('plugin:ssh:exec', listener);
       return () => ipcRenderer.removeListener('plugin:ssh:exec', listener);
     },
-    // 响应插件请求
+    // Respond to plugin requests
     sendResponse: (channel: string, data: any) => ipcRenderer.send(channel, data),
-    // 外部插件面板操作（Main → Renderer）
+    // External plugin panel operations (Main -> Renderer)
     onPanelRegister: (callback: (data: any) => void) => {
       const listener = (_event: any, data: any) => callback(data);
       ipcRenderer.on('plugin:panel:register', listener);
@@ -222,15 +236,31 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('plugin:panel:updateSection', listener);
       return () => ipcRenderer.removeListener('plugin:panel:updateSection', listener);
     },
+    getLocalAgentStatus: () => ipcRenderer.invoke('plugin:get-local-agent-status'),
+    onLocalAgentStarted: (callback: (data: { port: number; wsUrl: string; models?: any[] }) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on('local-agent:started', listener);
+      return () => ipcRenderer.removeListener('local-agent:started', listener);
+    },
+    onLocalAgentStopped: (callback: () => void) => {
+      const listener = () => callback();
+      ipcRenderer.on('local-agent:stopped', listener);
+      return () => ipcRenderer.removeListener('local-agent:stopped', listener);
+    },
   },
 
-  // 日志文件
+  // Log file
   log: {
     write: (line: string) => ipcRenderer.send('log:write', line),
     getLogDir: () => ipcRenderer.invoke('log:get-dir') as Promise<string>,
   },
 
-  // 会话记录
+  // License / device fingerprint
+  license: {
+    getMachineId: () => ipcRenderer.invoke('license:getMachineId') as Promise<string>,
+  },
+
+  // Chat history
   chatHistory: {
     create: (header: any) => ipcRenderer.invoke('chat-history:create', header),
     append: (userId: string, convId: string, createdAt: number, message: any) =>
@@ -244,7 +274,7 @@ contextBridge.exposeInMainWorld('electron', {
     delete: (userId: string, fileName: string) => ipcRenderer.invoke('chat-history:delete', userId, fileName),
   },
 
-  // 本地终端
+  // Local terminal
   localTerminal: {
     create: (options: { shell?: string; args?: string[]; cwd?: string; env?: Record<string, string>; cols: number; rows: number }) =>
       ipcRenderer.invoke('local-pty-create', options),
@@ -260,6 +290,10 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.invoke('local-pty-get-cwd', ptyId),
     write: (ptyId: string, data: string) =>
       ipcRenderer.send('local-pty-write', ptyId, data),
+    healthCheck: (ptyId: string): Promise<boolean> =>
+      ipcRenderer.invoke('local-pty-health-check', ptyId),
+    rebuild: (ptyId: string, cols: number, rows: number): Promise<{ newPtyId: string } | null> =>
+      ipcRenderer.invoke('local-pty-rebuild', ptyId, cols, rows),
     onData: (callback: (ptyId: string, data: string) => void) => {
       const handler = (_event: any, ptyId: string, data: string) => callback(ptyId, data);
       ipcRenderer.on('local-pty-data', handler);
@@ -272,7 +306,7 @@ contextBridge.exposeInMainWorld('electron', {
     },
   },
 
-  // 本地文件系统
+  // Local file system
   localFs: {
     list: (path: string) => ipcRenderer.invoke('local-fs-list', path),
     tree: (path: string, maxDepth: number) => ipcRenderer.invoke('local-fs-tree', path, maxDepth),
@@ -291,7 +325,7 @@ contextBridge.exposeInMainWorld('electron', {
     copyDir: (src: string, dest: string) => ipcRenderer.invoke('local-fs-copy-dir', src, dest),
   },
 
-  // 本地命令执行（系统监控等使用）
+  // Local command execution (used by system monitor, etc.)
   localExec: (command: string) =>
     ipcRenderer.invoke('local-exec', command),
 });
@@ -365,6 +399,7 @@ declare global {
       sshExecute: (connectionId: string, command: string, options?: { useLoginShell?: boolean }) => Promise<{ output: string; exitCode: number }>;
       sshDisconnect: (connectionId: string) => Promise<{ success: boolean }>;
       sshCreateShell: (connectionId: string, encoding?: string) => Promise<string>;
+      sshCloseShell: (shellId: string) => Promise<{ success: boolean }>;
       sshShellWrite: (connectionId: string, data: string) => Promise<{ success: boolean }>;
       sshShellResize: (connectionId: string, cols: number, rows: number) => Promise<{ success: boolean }>;
       sshIsConnected: (connectionId: string) => Promise<boolean>;
@@ -376,7 +411,7 @@ declare global {
       sshGetOSInfo: (connectionId: string) => Promise<{ osType: string; osVersion: string; kernel: string; shell: string } | null>;
       sendTerminalFocusGained: (connectionId: string) => void;
 
-      // 焦点事件监听器
+      // Focus event listener
       onFocusTerminal: (callback: (connectionId: string) => void) => () => void;
       onTerminalFocusGained: (callback: (connectionId: string) => void) => () => void;
 
@@ -384,6 +419,7 @@ declare global {
       onShellData: (callback: (connectionId: string, data: string) => void) => () => void;
       onShellClose: (callback: (connectionId: string) => void) => () => void;
       onShellDebug: (callback: (connectionId: string, debugInfo: any) => void) => () => void;
+      onSystemResumed: (callback: () => void) => () => void;
 
       // File transfer methods
       uploadFile: (connectionId: string, localPath: string, remotePath: string) => Promise<string>;
@@ -413,6 +449,9 @@ declare global {
       // Auth callback (termcat:// protocol)
       onAuthCallback: (callback: (data: { token: string; user: string }) => void) => () => void;
 
+      // Desktop notification
+      showNotification: (options: { title: string; body: string }) => Promise<void>;
+
       // Open external URL
       openExternal: (url: string) => Promise<void>;
 
@@ -421,6 +460,8 @@ declare global {
         invoke: (channel: string, ...args: any[]) => Promise<any>;
         installFromUrl: (packageUrl: string, pluginName: string) => Promise<{ success: boolean; error?: string }>;
         uninstall: (pluginId: string) => Promise<{ success: boolean; error?: string }>;
+        getSettings: (pluginId: string) => Promise<{ success: boolean; settings?: Record<string, any>; values?: Record<string, unknown>; error?: string }>;
+        setSetting: (pluginId: string, key: string, value: unknown) => Promise<{ success: boolean; error?: string }>;
         onStateChanged: (callback: (data: any) => void) => () => void;
         onNotification: (callback: (data: any) => void) => () => void;
         onStatusBarUpdated: (callback: () => void) => () => void;
@@ -432,12 +473,20 @@ declare global {
         onPanelUnregister: (callback: (data: any) => void) => () => void;
         onPanelSetData: (callback: (data: any) => void) => () => void;
         onPanelUpdateSection: (callback: (data: any) => void) => () => void;
+        getLocalAgentStatus: () => Promise<{ port: number; wsUrl: string } | null>;
+        onLocalAgentStarted: (callback: (data: { port: number; wsUrl: string; models?: any[] }) => void) => () => void;
+        onLocalAgentStopped: (callback: () => void) => () => void;
       };
 
       // Log file
       log: {
         write: (line: string) => void;
         getLogDir: () => Promise<string>;
+      };
+
+      // License / device fingerprint
+      license: {
+        getMachineId: () => Promise<string>;
       };
 
       // Chat history
@@ -481,6 +530,8 @@ declare global {
         getShells: () => Promise<Array<{ name: string; path: string; args?: string[] }>>;
         getDefaultShell: () => Promise<{ name: string; path: string; args?: string[] }>;
         write: (ptyId: string, data: string) => void;
+        healthCheck: (ptyId: string) => Promise<boolean>;
+        rebuild: (ptyId: string, cols: number, rows: number) => Promise<{ newPtyId: string } | null>;
         onData: (callback: (ptyId: string, data: string) => void) => () => void;
         onClose: (callback: (ptyId: string, exitCode: number) => void) => () => void;
       };

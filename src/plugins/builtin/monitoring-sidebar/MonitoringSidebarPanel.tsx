@@ -1,8 +1,8 @@
 /**
- * 监控侧栏面板组件（插件版）
+ * Monitoring sidebar panel component (Plugin version)
  *
- * 从 src/components/MonitoringSidebar.tsx 迁移而来。
- * 现在作为内置插件的 React 组件，自行管理 SystemMonitorService 生命周期。
+ * Migrated from src/components/MonitoringSidebar.tsx.
+ * Now as a builtin plugin's React component, manages SystemMonitorService lifecycle independently.
  */
 
 import React, { useRef, useEffect, useState, useMemo } from 'react';
@@ -12,7 +12,7 @@ import { SystemMonitorService } from './services/systemMonitorService';
 import { useT } from './i18n';
 import type { SidebarPanelProps } from '../types';
 
-// 默认空指标
+// Default empty metrics
 const EMPTY_METRICS: SystemMetrics = {
   cpu: 0, cpuCores: 0, memPercent: 0, memUsed: '--', memTotal: '--',
   swapPercent: 0, swapUsed: '--', swapTotal: '--', load: '--', uptime: '--',
@@ -36,11 +36,11 @@ export const MonitoringSidebarPanel: React.FC<SidebarPanelProps> = React.memo(({
   const [chartWidth, setChartWidth] = useState(200);
   const monitorRef = useRef<SystemMonitorService | null>(null);
 
-  // 管理 SystemMonitorService 生命周期
+  // Manage SystemMonitorService lifecycle
   useEffect(() => {
     if (!connectionId) return;
 
-    // 获取 OS 信息并启动监控
+    // Get OS info and start monitoring
     window.electron.sshGetOSInfo(connectionId).then((osInfo) => {
       const { SSHCmdExecutor } = require('@/core/terminal/SSHCmdExecutor');
       const monitor = new SystemMonitorService(new SSHCmdExecutor(connectionId), (m) => {
@@ -48,7 +48,7 @@ export const MonitoringSidebarPanel: React.FC<SidebarPanelProps> = React.memo(({
       }, host.hostname, osInfo?.osType);
       monitorRef.current = monitor;
 
-      // 如果当前可见且活跃，立即启动
+      // If currently visible and active, start immediately
       if (isVisible && isActive) {
         monitor.start(3000);
       }
@@ -62,7 +62,7 @@ export const MonitoringSidebarPanel: React.FC<SidebarPanelProps> = React.memo(({
     };
   }, [connectionId, host.hostname]);
 
-  // 根据可见性和活跃状态控制监控启停
+  // Control monitoring start/stop based on visibility and active state
   useEffect(() => {
     const monitor = monitorRef.current;
     if (!monitor) return;
@@ -75,7 +75,7 @@ export const MonitoringSidebarPanel: React.FC<SidebarPanelProps> = React.memo(({
     }
   }, [isActive, isVisible]);
 
-  // 监听图表容器宽度变化
+  // Listen for chart container width changes
   useEffect(() => {
     if (!isVisible || !chartContainerRef.current) return;
 
@@ -89,7 +89,7 @@ export const MonitoringSidebarPanel: React.FC<SidebarPanelProps> = React.memo(({
     return () => resizeObserver.disconnect();
   }, [isVisible]);
 
-  // 计算网络图表的Y轴最大值和刻度
+  // Calculate Y-axis max value and ticks for network chart
   const networkChartData = useMemo(() => {
     const upData = metrics.netUpHistory || [];
     const downData = metrics.netDownHistory || [];

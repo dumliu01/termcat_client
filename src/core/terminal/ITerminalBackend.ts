@@ -1,8 +1,8 @@
 /**
- * 抽象终端后端接口
+ * Abstract terminal backend interface
  *
- * SSH 终端和本地终端各自独立实现此接口，
- * 上层组件仅依赖此接口。
+ * SSH and local terminals each implement this interface independently,
+ * upper-layer components only depend on this interface.
  */
 
 import {
@@ -24,4 +24,6 @@ export interface ITerminalBackend {
   onData(callback: TerminalDataCallback): void;
   onClose(callback: TerminalCloseCallback): void;
   dispose(): void;
+  /** Update backend ID after rebuild (optional, used for local PTY recovery) */
+  updateId?(newId: string): Promise<void>;
 }

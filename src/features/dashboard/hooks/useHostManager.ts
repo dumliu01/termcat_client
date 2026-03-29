@@ -1,5 +1,5 @@
 /**
- * 主机 / 分组 / 代理 CRUD Hook
+ * Host / Group / Proxy CRUD Hook
  */
 
 import { useState, useCallback } from 'react';
@@ -49,7 +49,7 @@ export function useHostManager() {
   const addHost = useCallback(async (host: Host) => {
     const currentUser = authService.getUser();
     if (!currentUser && hosts.length >= 2) {
-      setSyncStatus('游客最多添加 2 台主机，请登录解锁更多');
+      setSyncStatus('Guests can add at most 2 hosts, please login to unlock more');
       setTimeout(() => setSyncStatus(''), 3000);
       return;
     }
@@ -57,14 +57,14 @@ export function useHostManager() {
       await hostService.addHost(host);
       const updatedHosts = await hostService.getHosts();
       setHosts(updatedHosts);
-      setSyncStatus('Host 已保存');
+      setSyncStatus('Host saved');
       setTimeout(() => setSyncStatus(''), 3000);
     } catch (error) {
       logger.error(LOG_MODULE.APP, 'app.host.add_failed', 'Failed to add host', {
         error: 1,
         msg: error instanceof Error ? error.message : 'Unknown error',
       });
-      setSyncStatus('保存失败：' + (error instanceof Error ? error.message : '未知错误'));
+      setSyncStatus('Save failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setTimeout(() => setSyncStatus(''), 3000);
     }
   }, [hosts]);
@@ -74,14 +74,14 @@ export function useHostManager() {
       await hostService.updateHost(updatedHost.id, updatedHost);
       const updatedHosts = await hostService.getHosts();
       setHosts(updatedHosts);
-      setSyncStatus('Host 已更新');
+      setSyncStatus('Host updated');
       setTimeout(() => setSyncStatus(''), 3000);
     } catch (error) {
       logger.error(LOG_MODULE.APP, 'app.host.update_failed', 'Failed to update host', {
         error: 1,
         msg: error instanceof Error ? error.message : 'Unknown error',
       });
-      setSyncStatus('更新失败：' + (error instanceof Error ? error.message : '未知错误'));
+      setSyncStatus('Update failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setTimeout(() => setSyncStatus(''), 3000);
     }
   }, []);
@@ -91,14 +91,14 @@ export function useHostManager() {
       await hostService.deleteHost(id);
       const updatedHosts = await hostService.getHosts();
       setHosts(updatedHosts);
-      setSyncStatus('Host 已删除');
+      setSyncStatus('Host deleted');
       setTimeout(() => setSyncStatus(''), 3000);
     } catch (error) {
       logger.error(LOG_MODULE.APP, 'app.host.delete_failed', 'Failed to delete host', {
         error: 1,
         msg: error instanceof Error ? error.message : 'Unknown error',
       });
-      setSyncStatus('删除失败：' + (error instanceof Error ? error.message : '未知错误'));
+      setSyncStatus('Delete failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setTimeout(() => setSyncStatus(''), 3000);
     }
   }, []);
@@ -154,10 +154,10 @@ export function useHostManager() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setSyncStatus('配置已导出');
+      setSyncStatus('Config exported');
       setTimeout(() => setSyncStatus(''), 3000);
     } catch (error) {
-      setSyncStatus('导出失败：' + (error instanceof Error ? error.message : '未知错误'));
+      setSyncStatus('Export failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       setTimeout(() => setSyncStatus(''), 3000);
     }
   }, []);
@@ -177,12 +177,12 @@ export function useHostManager() {
           const updatedGroups = await hostService.getGroups();
           setHosts(updatedHosts);
           setGroups(updatedGroups);
-          setSyncStatus('配置已导入');
+          setSyncStatus('Config imported');
         } else {
-          setSyncStatus('导入失败：' + (result.error || '未知错误'));
+          setSyncStatus('Import failed: ' + (result.error || 'Unknown error'));
         }
       } catch (error) {
-        setSyncStatus('导入失败：' + (error instanceof Error ? error.message : '未知错误'));
+        setSyncStatus('Import failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
       }
       setTimeout(() => setSyncStatus(''), 3000);
     };
@@ -190,7 +190,7 @@ export function useHostManager() {
   }, []);
 
   /**
-   * 切换存储模式：切换后从新数据源加载数据，不做任何跨模式数据迁移
+   * Switch storage mode: after switching, load data from new data source, no cross-mode data migration
    */
   const handleStorageModeChange = useCallback(async (mode: 'local' | 'server') => {
     if (mode === storageMode) return;
@@ -198,7 +198,7 @@ export function useHostManager() {
     setStorageMode(mode);
     hostService.setMode(mode === 'server' ? StorageMode.CLOUD : StorageMode.LOCAL);
 
-    // 从新的数据源加载
+    // Load from new data source
     const loadedHosts = await hostService.getHosts();
     setHosts(loadedHosts);
     const loadedGroups = await hostService.getGroups();

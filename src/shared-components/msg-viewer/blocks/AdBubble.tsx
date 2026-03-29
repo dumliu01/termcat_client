@@ -1,8 +1,8 @@
 /**
- * 广告消息气泡（双渲染模式）
+ * Ad message bubble (dual rendering mode)
  *
- * - api 模式：Markdown + CTA 按钮
- * - script 模式：iframe sandbox
+ * - api mode: Markdown + CTA button
+ * - script mode: iframe sandbox
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';

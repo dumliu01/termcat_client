@@ -1,7 +1,7 @@
 /**
- * AI 助手文本气泡
+ * AI assistant text bubble
  *
- * 支持流式输出、分段渲染（stable + tail）和 Markdown。
+ * Supports streaming output, segmented rendering (stable + tail) and Markdown.
  */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -28,7 +28,7 @@ export const AssistantTextBubble: React.FC<Props> = React.memo(({ block, languag
     if (isStreaming) setAutoScroll(true);
   }, [isStreaming]);
 
-  // 分段渲染：stable 不重渲染，只有 tail 每帧重新解析
+  // Segmented rendering: stable content doesn't re-render, only tail re-parses each frame
   const { stableContent, tailContent } = useMemo(() => {
     if (!isStreaming || content.length === 0) {
       return { stableContent: content, tailContent: '' };
@@ -62,7 +62,7 @@ export const AssistantTextBubble: React.FC<Props> = React.memo(({ block, languag
 
   return (
     <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300 items-start">
-      {/* 头部 */}
+      {/* Header */}
       <div className="flex items-center gap-2 px-2">
         <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-emerald-500/10 text-emerald-500">
           <Sparkles className="w-3.5 h-3.5" />
@@ -72,7 +72,7 @@ export const AssistantTextBubble: React.FC<Props> = React.memo(({ block, languag
         </span>
       </div>
 
-      {/* 消息体 */}
+      {/* Message body */}
       <div className="max-w-[90%] p-4 rounded-2xl bg-black/20 border border-white/5 text-[var(--text-main)] rounded-tl-none select-text space-y-3">
         {isStreaming && (
           <div className="flex items-center gap-2 pb-2 border-b border-white/5">

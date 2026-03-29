@@ -1,7 +1,7 @@
 /**
- * 本地终端后端
+ * Local terminal backend
  *
- * 封装 Local PTY IPC 调用，实现 ITerminalBackend 接口。
+ * Wraps Local PTY IPC calls, implements ITerminalBackend interface.
  */
 
 import { ITerminalBackend } from './ITerminalBackend';
@@ -97,6 +97,47 @@ export class LocalTerminalBackend implements ITerminalBackend {
   resize(cols: number, rows: number): void {
     if (!window.electron?.localTerminal || !this._id) return;
     window.electron.localTerminal.resize(this._id, cols, rows);
+  }
+
+  /**
+   * Update PTY ID after rebuild (e.g., recovery from sleep).
+   * Re-registers IPC listeners for the new PTY ID.
+   */
+  async updateId(newPtyId: string): Promise<void> {
+    // Cleanup old listeners
+    for (const cleanup of this._cleanupFns) {
+      cleanup();
+    }
+    this._cleanupFns = [];
+
+    this._id = newPtyId;
+    this._isConnected = true;
+
+    // Re-register listeners for new PTY ID
+    if (window.electron?.localTerminal) {
+      const unsubData = window.electron.localTerminal.onData((ptyId, data) => {
+        if (ptyId === this._id) {
+          for (const cb of this._dataCallbacks) {
+            cb(data);
+          }
+        }
+      });
+      this._cleanupFns.push(unsubData);
+
+      const unsubClose = window.electron.localTerminal.onClose((ptyId) => {
+        if (ptyId === this._id) {
+          this._isConnected = false;
+          for (const cb of this._closeCallbacks) {
+            cb();
+          }
+        }
+      });
+      this._cleanupFns.push(unsubClose);
+    }
+
+    log.info('local-backend.id_updated', 'LocalTerminalBackend ID updated after rebuild', {
+      new_pty_id: newPtyId,
+    });
   }
 
   onData(callback: TerminalDataCallback): void {

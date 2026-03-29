@@ -3,10 +3,10 @@ import { SyncSeqs } from '@/core/commerce/types';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
 /**
- * 本地存储服务
- * 负责将 Host / Group / Proxy 信息保存到 localStorage
+ * Local Storage Service
+ * Responsible for saving Host / Group / Proxy info to localStorage
  *
- * local 模式和 cloud 模式使用完全独立的 localStorage key，互不干扰。
+ * local mode and cloud mode use completely independent localStorage keys, no interference.
  */
 class HostStorageService {
   private HOSTS_KEY = 'termcat_hosts';
@@ -19,8 +19,8 @@ class HostStorageService {
   private storageMode: 'local' | 'server' = 'local';
 
   /**
-   * 设置用户作用域，切换存储 key 前缀
-   * userId 为 null 时使用游客作用域 (guest)
+   * Set user scope, switch storage key prefix
+   * When userId is null, use guest scope
    */
   setUserScope(userId: string | null): void {
     this.userScope = userId ? String(userId) : 'guest';
@@ -28,8 +28,8 @@ class HostStorageService {
   }
 
   /**
-   * 设置存储模式，local 和 server 使用完全独立的 localStorage key
-   * （后缀 _local / _server，两套 key 互不干扰）
+   * Set storage mode, local and server use completely independent localStorage keys
+   * (suffix _local / _server, two sets of keys do not interfere)
    */
   setStorageMode(mode: 'local' | 'server'): void {
     this.storageMode = mode;
@@ -37,7 +37,7 @@ class HostStorageService {
   }
 
   /**
-   * 根据当前 userScope + storageMode 计算 localStorage key
+   * Calculate localStorage key based on current userScope + storageMode
    */
   private updateKeys(): void {
     const scope = this.userScope;
@@ -49,7 +49,7 @@ class HostStorageService {
     this.SEQS_KEY = `termcat_sync_seqs_${scope}`;
   }
 
-  // ==================== Host 操作 ====================
+  // ==================== Host Operations ====================
 
   getHosts(): Host[] {
     try {
@@ -73,7 +73,7 @@ class HostStorageService {
         error: 1,
         msg: error instanceof Error ? error.message : 'Unknown error',
       });
-      throw new Error('本地保存失败');
+      throw new Error('Failed to save locally');
     }
   }
 
@@ -107,7 +107,7 @@ class HostStorageService {
     return hosts.find(h => h.id === id) || null;
   }
 
-  // ==================== Group 操作 ====================
+  // ==================== Group Operations ====================
 
   getGroups(): HostGroup[] {
     try {
@@ -131,7 +131,7 @@ class HostStorageService {
         error: 1,
         msg: error instanceof Error ? error.message : 'Unknown error',
       });
-      throw new Error('本地保存失败');
+      throw new Error('Failed to save locally');
     }
   }
 
@@ -172,7 +172,7 @@ class HostStorageService {
     return filteredGroups;
   }
 
-  // ==================== Proxy 操作 ====================
+  // ==================== Proxy Operations ====================
 
   getProxies(): Proxy[] {
     try {
@@ -195,7 +195,7 @@ class HostStorageService {
     }
   }
 
-  // ==================== Seq 增量同步 ====================
+  // ==================== Seq Incremental Sync ====================
 
   getSeqs(): SyncSeqs | null {
     try {
@@ -210,11 +210,11 @@ class HostStorageService {
     localStorage.setItem(this.SEQS_KEY, JSON.stringify(seqs));
   }
 
-  // ==================== 清除服务器缓存 ====================
+  // ==================== Clear Server Cache ====================
 
   /**
-   * 仅清除服务器模式下的缓存数据（hosts_server / groups_server / proxies_server / seqs）
-   * 不影响本地模式的数据（hosts_local / groups_local）
+   * Only clear cache data in server mode (hosts_server / groups_server / proxies_server / seqs)
+   * Does not affect data in local mode (hosts_local / groups_local)
    */
   clearServerCache(userId: string): void {
     const prefix = `termcat_hosts_${userId}_server`;
@@ -232,7 +232,7 @@ class HostStorageService {
     logger.info(LOG_MODULE.HTTP, 'storage.server_cache.cleared', 'Server cache cleared', { user_id: userId });
   }
 
-  // ==================== 工具 ====================
+  // ==================== Utilities ====================
 
   clear(): void {
     localStorage.removeItem(this.HOSTS_KEY);

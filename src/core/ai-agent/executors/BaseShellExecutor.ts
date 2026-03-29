@@ -1,16 +1,16 @@
 /**
- * Shell 命令执行器基类
+ * Shell Command Executor Base Class
  *
- * 封装交互式 shell 的通用执行逻辑：
- * - 命令标记注入与检测（<<<EXIT_CODE>>>、<<<CMD_END>>>）
- * - 分页器自动退出
- * - 交互式提示检测与响应
- * - 命令超时
+ * Encapsulates common execution logic for interactive shell:
+ * - Command marker injection and detection (<<<EXIT_CODE>>>, <<<CMD_END>>>)
+ * - Pager auto-exit
+ * - Interactive prompt detection and response
+ * - Command timeout
  *
- * 子类只需实现底层 IO：
- *   writeRaw(data)       - 向 shell 写入数据
- *   setupShell()         - 建立 shell 连接
- *   onShellDataSetup()   - 注册数据监听，返回 unsubscribe 函数
+ * Subclasses only need to implement low-level IO:
+ *   writeRaw(data)       - Write data to shell
+ *   setupShell()         - Establish shell connection
+ *   onShellDataSetup()   - Register data listener, return unsubscribe function
  */
 
 import { EventEmitter } from '../EventEmitter';
@@ -29,34 +29,34 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
   protected commandResolver: ((result: CommandResult) => void) | null = null;
   protected commandRejecter: ((error: Error) => void) | null = null;
 
-  // 交互式提示状态
+  // Interactive prompt state
   protected waitingForInteraction = false;
   protected interactionTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  // 命令回显剥离状态：防止 [?2004l] 截断多次触发导致标记丢失
+  // Command echo stripping state: prevent [?2004l] truncation triggering multiple times causing marker loss
   protected echoStripped = false;
 
-  // 远程/本地 shell 类型（bash/zsh/powershell/pwsh/cmd），用于生成兼容的命令标记
+  // Remote/local shell type (bash/zsh/powershell/pwsh/cmd), used to generate compatible command markers
   protected shellType: string | undefined;
 
-  // 命令超时定时器：必须在命令完成时清除，防止僵尸定时器跨命令污染
+  // Command timeout timer: must be cleared when command completes, prevent zombie timers cross-command pollution
   protected commandTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // ==================== 子类必须实现 ====================
+  // ==================== Subclasses Must Implement ====================
 
-  /** 建立 shell 连接（连接 SSH、创建 shell 等） */
+  /** Establish shell connection (connect SSH, create shell, etc.) */
   protected abstract setupShell(): Promise<void>;
 
-  /** 向 shell 写入原始数据 */
+  /** Write raw data to shell */
   protected abstract writeRaw(data: string): Promise<void>;
 
   /**
-   * 注册 shell 数据监听，返回 unsubscribe 函数。
-   * 监听到数据后调用 this.handleShellData(data)。
+   * Register shell data listener, return unsubscribe function.
+   * When data is received, call this.handleShellData(data).
    */
   protected abstract onShellDataSetup(): () => void;
 
-  // ==================== 公共接口 ====================
+  // ==================== Public Interface ====================
 
   async initialize(): Promise<void> {
     if (this._isReady) return;
@@ -73,44 +73,44 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
     const timeoutMs = options?.timeoutMs ?? 600000;
     const isPowerShell = this.shellType === 'powershell' || this.shellType === 'pwsh';
 
-    // 去除前后空白和换行：AI 模型生成的命令可能带前导/尾部换行符，
-    // 发送到 shell 时前导 \n 会被解释为空行，导致 PowerShell 进入 >> 续行模式
+    // Trim whitespace and newlines: AI-generated commands may have leading/trailing newlines,
+    // sending to shell with leading \n causes PowerShell to enter >> continuation mode
     let finalCommand = command.trim();
 
-    // 以下处理仅适用于 bash/zsh 等 Unix shell，PowerShell 不需要
+    // The following processing only applies to bash/zsh etc., not needed for PowerShell
     if (!isPowerShell) {
-      // heredoc 转换：必须在 sudo 密码包装和标记追加之前执行，
-      // 否则 heredoc 终止符会被破坏导致命令挂死
+      // heredoc transformation: must run before sudo password wrapping and marker appending,
+      // otherwise heredoc terminator gets broken causing command to hang
       finalCommand = rewriteHeredoc(finalCommand) ?? finalCommand;
 
-      // 处理 sudo 密码
+      // Handle sudo password
       if (options?.password && isSudoCommand(finalCommand)) {
         finalCommand = buildCommandWithPassword(finalCommand, options.password);
       }
 
-      // 引号平衡检测：AI 模型常生成 echo 'today's value' 这类错误，
-      // 未关闭的引号会吞掉命令标记，导致 bash 显示 > 续行提示符永远挂死。
-      // 在添加标记前检测，快速失败而非让命令挂死等超时。
+      // Quote balance detection: AI models often generate commands like echo 'today's value',
+      // unclosed quotes swallow command markers, causing bash to show > continuation prompt and hang forever.
+      // Detect before adding markers, fail fast instead of letting command hang waiting for timeout.
       if (!hasBalancedQuotes(finalCommand)) {
         return Promise.reject(new Error(
           `Command has unbalanced quotes (will hang shell): ${finalCommand.substring(0, 200)}`
         ));
       }
 
-      // 子 shell 包裹：防止 AI 生成的命令中 exit N 杀死主 shell 导致标记丢失。
+      // Subshell wrapper: prevents AI-generated commands with exit N from killing main shell causing marker loss.
       if (options?.subshell) {
         finalCommand = `(${finalCommand})`;
       }
     }
 
-    // 添加标记（根据 shell 类型生成 bash 或 PowerShell 语法）
+    // Add markers (generate bash or PowerShell syntax based on shell type)
     const commandWithMarkers = buildCommandWithMarkers(finalCommand, this.shellType);
 
-    // 清空输出缓冲区，重置回显剥离状态
+    // Clear output buffer, reset echo stripping state
     this.outputBuffer = '';
     this.echoStripped = false;
 
-    // 清除上一条命令的僵尸定时器（如果有）
+    // Clear zombie timers from previous command (if any)
     if (this.commandTimeoutTimer) {
       clearTimeout(this.commandTimeoutTimer);
       this.commandTimeoutTimer = null;
@@ -124,7 +124,7 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
       this.commandResolver = resolve;
       this.commandRejecter = reject;
 
-      // 发送命令
+      // Send command
       this.writeRaw(commandWithMarkers).catch((error) => {
         if (this.commandTimeoutTimer) {
           clearTimeout(this.commandTimeoutTimer);
@@ -135,7 +135,7 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
         reject(error);
       });
 
-      // 超时
+      // Timeout
       this.commandTimeoutTimer = setTimeout(() => {
         this.commandTimeoutTimer = null;
         if (this.commandResolver) {
@@ -176,12 +176,12 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
     return this._isReady;
   }
 
-  /** 设置 shell 类型（bash/zsh/powershell/pwsh/cmd），影响命令标记语法 */
+  /** Set shell type (bash/zsh/powershell/pwsh/cmd), affects command marker syntax */
   setShellType(shell: string): void {
     this.shellType = shell;
   }
 
-  /** 直接写入数据到 shell（用于交互式响应） */
+  /** Write data directly to shell (for interactive response) */
   async writeToShell(data: string): Promise<void> {
     if (!this._isReady) {
       throw new Error('Shell not ready');
@@ -189,7 +189,7 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
     await this.writeRaw(data);
   }
 
-  /** 发送交互式响应（如 y/n） */
+  /** Send interactive response (e.g., y/n) */
   async sendInteractiveResponse(response: string): Promise<void> {
     this.waitingForInteraction = false;
     if (this.interactionTimeout) {
@@ -199,18 +199,18 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
     await this.writeRaw(response + '\n');
   }
 
-  // ==================== 内部：Shell 数据处理 ====================
+  // ==================== Internal: Shell Data Processing ====================
 
   protected handleShellData(data: string): void {
     this.outputBuffer += data;
 
-    // 通知外部有数据活动（用于 codex 模式心跳，重置后端超时）
+    // Notify external of data activity (used for X-Agent mode heartbeat, reset backend timeout)
     this.emit('data:activity');
 
-    // 清理命令回显（只在每条命令的首次 [?2004l] 出现时截断）
-    // [?2004l] 是 bash bracket paste mode disable 信号，在命令开始执行时发送一次。
-    // 如果不限制只截断一次，后续出现的 [?2004l]（如 sendInteractiveResponse 注入的
-    // y\n 被 bash 作为新命令处理时再次发送）会把已累积的命令标记截掉，导致命令挂死。
+    // Clean command echo (only strip on first [?2004l] appearance per command)
+    // [?2004l] is bash bracket paste mode disable signal, sent once when command starts executing.
+    // Without limiting to one strip, subsequent [?2004l] occurrences (e.g., from sendInteractiveResponse injecting
+    // y\n being processed by bash as new command sending again) would strip accumulated command markers, causing command to hang.
     if (!this.echoStripped && data.includes('[?2004l')) {
       const echoEndIndex = this.outputBuffer.lastIndexOf('[?2004l');
       if (echoEndIndex >= 0) {
@@ -219,7 +219,7 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
       }
     }
 
-    // 检测分页器（优先级最高）
+    // Detect pager (highest priority)
     const recentOutput = this.outputBuffer.slice(-500);
     if (detectPager(recentOutput)) {
       const now = Date.now();
@@ -230,7 +230,7 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
       }
     }
 
-    // 检测交互式提示
+    // Detect interactive prompts
     if (!this.waitingForInteraction) {
       const fullRecentOutput = this.outputBuffer.slice(-1000);
       const prompt = detectInteractivePrompt(fullRecentOutput);
@@ -238,7 +238,7 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
         this.waitingForInteraction = true;
         this.emit('interactive:prompt', prompt);
 
-        // 30 秒后自动响应 'y'
+        // Auto-respond with 'y' after 30 seconds
         this.interactionTimeout = setTimeout(() => {
           if (this.waitingForInteraction) {
             this.sendInteractiveResponse('y').catch(() => {});
@@ -246,7 +246,7 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
         }, 30000);
       }
     } else {
-      // 等待交互期间检测用户是否在终端直接输入
+      // During wait for interaction, detect if user directly inputs in terminal
       if (detectUserTerminalInput(data, this.outputBuffer)) {
         this.waitingForInteraction = false;
         if (this.interactionTimeout) {
@@ -256,7 +256,7 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
       }
     }
 
-    // 检测命令完成：[?2004h] 出现（shell 回到 prompt）
+    // Detect command completion: [?2004h] appears (shell returned to prompt)
     if (isCommandComplete(this.outputBuffer) && this.commandResolver) {
       if (this.commandTimeoutTimer) {
         clearTimeout(this.commandTimeoutTimer);

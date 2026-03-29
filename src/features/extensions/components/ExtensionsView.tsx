@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Blocks, Search, Download, Check, Star, Settings, ShieldCheck, FolderUp, Power, PowerOff, Loader2, AlertCircle, CheckCircle, RefreshCw, Heart, Package } from 'lucide-react';
+import { Blocks, Search, Download, Check, Star, Settings, ShieldCheck, FolderUp, Power, PowerOff, Loader2, AlertCircle, CheckCircle, RefreshCw, Heart, Package, ArrowLeft, Lock, ShoppingCart, Monitor, KeyRound } from 'lucide-react';
 import { useI18n } from '@/base/i18n/I18nContext';
 import { usePluginList } from '@/features/terminal/hooks/usePlugins';
 import { apiService } from '@/base/http/api';
 import type { PluginInfo } from '@/plugins/types';
+import { licenseService } from '@/core/license/licenseService';
+import { builtinPluginManager } from '@/plugins/builtin';
+import { AI_OPS_EVENTS } from '@/plugins/builtin/events';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
-// 服务端插件商店数据
+// Server plugin store data
 interface StorePlugin {
   id: string;
   name: string;
@@ -26,7 +29,7 @@ interface StorePlugin {
   featured: boolean;
 }
 
-// 用户已安装的服务端插件
+// User's installed server plugins
 interface UserServerPlugin {
   id: number;
   user_id: number;
@@ -44,21 +47,220 @@ const CATEGORY_COLORS: Record<string, string> = {
   other: 'text-green-500',
 };
 
+// ==================== 插件详情面板 ====================
+
+import { PluginSettingsForm } from './PluginSettingsForm';
+
+const PluginDetailView: React.FC<{
+  plugin: PluginInfo;
+  onBack: () => void;
+  onToggle: (plugin: PluginInfo) => void;
+  operating: boolean;
+  t: any;
+}> = ({ plugin, onBack, onToggle, operating, t }) => {
+  const hasSettings = plugin.manifest.contributes?.settings
+    && Object.keys(plugin.manifest.contributes.settings).length > 0;
+
+  const getStateLabel = (state: string): string => {
+    switch (state) {
+      case 'activated': return t.extensions.running;
+      case 'error': return t.extensions.error;
+      case 'deactivated': return t.extensions.stopped;
+      default: return t.extensions.installedState;
+    }
+  };
+
+  return (
+    <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+      {/* 顶部：返回 + 插件头信息 */}
+      <div className="flex items-start gap-4 mb-8">
+        <button
+          onClick={onBack}
+          className="mt-1 p-1.5 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-main)] hover:bg-[var(--bg-card)] transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 mb-1">
+            <h2 className="text-xl font-bold text-[var(--text-main)]">{plugin.manifest.displayName}</h2>
+            <span className="text-xs text-[var(--text-dim)] px-2 py-0.5 rounded bg-black/20">v{plugin.manifest.version}</span>
+            {plugin.builtin && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 font-medium">
+                {t.extensions.builtin}
+              </span>
+            )}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+              plugin.state === 'activated' ? 'bg-green-500/10 text-green-400' :
+              plugin.state === 'error' ? 'bg-red-500/10 text-red-400' :
+              'bg-black/20 text-[var(--text-dim)]'
+            }`}>
+              {getStateLabel(plugin.state)}
+            </span>
+          </div>
+          <p className="text-sm text-[var(--text-dim)] leading-relaxed">{plugin.manifest.description}</p>
+          {plugin.error && (
+            <p className="text-xs text-red-400 mt-2 p-2 rounded-lg bg-red-500/5 border border-red-500/10">{plugin.error}</p>
+          )}
+        </div>
+        {/* 启用/禁用按钮 */}
+        {plugin.disableable !== false && (
+          <button
+            onClick={() => onToggle(plugin)}
+            disabled={operating}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors shrink-0 ${
+              plugin.enabled
+                ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
+                : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
+            } disabled:opacity-50`}
+          >
+            {plugin.enabled ? (
+              <><PowerOff className="w-3.5 h-3.5" />{t.extensions.disable}</>
+            ) : (
+              <><Power className="w-3.5 h-3.5" />{t.extensions.enable}</>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* License 授权状态（通用：检测插件是否有需要 License 的模式） */}
+      {(() => {
+        // Find modes registered by this plugin that require license
+        const pluginModes = builtinPluginManager.getExtraModes()
+          .filter(m => m.pluginData?.licenseFeature);
+        if (pluginModes.length === 0) return null;
+
+        const cache = licenseService.getCache();
+        const unlocked = cache?.hasLicense && cache?.activated;
+        const firstLicensed = pluginModes[0];
+        const price = firstLicensed.pluginData?.licensePrice;
+        const product = firstLicensed.pluginData?.licenseProduct;
+        const lockedModeNames = pluginModes.map(m => m.name).join(' + ');
+
+        return (
+          <div className={`mb-8 rounded-xl border p-5 ${
+            unlocked
+              ? 'bg-green-500/5 border-green-500/20'
+              : 'bg-amber-500/5 border-amber-500/20'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {unlocked ? (
+                  <CheckCircle className="w-5 h-5 text-green-400" />
+                ) : (
+                  <Lock className="w-5 h-5 text-amber-400" />
+                )}
+                <div>
+                  <h4 className="text-sm font-bold text-[var(--text-main)]">
+                    {unlocked ? `${lockedModeNames} — 已激活` : `${lockedModeNames} — 未购买`}
+                  </h4>
+                  <p className="text-xs text-[var(--text-dim)] mt-0.5">
+                    {unlocked
+                      ? `${lockedModeNames} 已解锁`
+                      : `购买后解锁 ${lockedModeNames}`
+                    }
+                  </p>
+                </div>
+              </div>
+              {unlocked ? (
+                <div className="flex items-center gap-3 text-xs text-[var(--text-dim)]">
+                  <div className="flex items-center gap-1">
+                    <Monitor className="w-3 h-3" />
+                    <span>{cache?.machinesUsed || 0}/{cache?.machinesMax || 3} 台设备</span>
+                  </div>
+                  <span className="font-mono text-[10px]">{cache?.licenseKeyMasked}</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      licenseService.activateDevice().catch(() => {
+                        alert('激活失败，请确认当前账户已购买');
+                      });
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    激活
+                  </button>
+                  <button
+                    onClick={() => {
+                      builtinPluginManager.emit(AI_OPS_EVENTS.OPEN_PAYMENT, {
+                        type: product,
+                        amount: price,
+                      });
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-amber-500 text-black hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/20"
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5" />
+                    {price ? `购买 ¥${price}` : '购买'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 信息卡片 */}
+      <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4">
+          <h4 className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] mb-2">Permissions</h4>
+          {plugin.manifest.permissions.length > 0 ? (
+            <div className="flex gap-1.5 flex-wrap">
+              {plugin.manifest.permissions.map((perm) => (
+                <span key={perm} className="text-[10px] px-2 py-1 rounded-lg bg-black/20 border border-[var(--border-color)] text-[var(--text-dim)]">
+                  {perm}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-[var(--text-dim)] opacity-50">No permissions required</p>
+          )}
+        </div>
+        <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-4">
+          <h4 className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-dim)] mb-2">Activation</h4>
+          <div className="flex gap-1.5 flex-wrap">
+            {(plugin.manifest.activationEvents || []).map((evt) => (
+              <span key={evt} className="text-[10px] px-2 py-1 rounded-lg bg-black/20 border border-[var(--border-color)] text-[var(--text-dim)] font-mono">
+                {evt}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 设置区域 — 复用共享组件 */}
+      {hasSettings && (
+        <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-5">
+            <Settings className="w-4 h-4 text-indigo-400" />
+            <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-400">Settings</h4>
+          </div>
+          <PluginSettingsForm plugin={plugin} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==================== 主组件 ====================
+
 export const ExtensionsView: React.FC = () => {
   const { language, t } = useI18n();
   const { plugins, loading, refresh, enablePlugin, disablePlugin } = usePluginList(language);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'installed' | 'recommended'>('installed');
   const [operating, setOperating] = useState<string | null>(null);
+  const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 服务端商店数据
+  // Server store data
   const [storePlugins, setStorePlugins] = useState<StorePlugin[]>([]);
   const [storeLoading, setStoreLoading] = useState(false);
   const [userServerPlugins, setUserServerPlugins] = useState<UserServerPlugin[]>([]);
   const [sortBy, setSortBy] = useState<string>('downloads');
 
-  // 使用本地已安装插件列表判断安装状态（VS Code 风格）
+  // Use local installed plugin list to determine installation status (VS Code style)
   const localInstalledIds = new Set(plugins.map(p => p.manifest.id));
   const installedPluginIds = localInstalledIds;
 
@@ -93,7 +295,7 @@ export const ExtensionsView: React.FC = () => {
     fetchUserPlugins();
   }, [fetchUserPlugins]);
 
-  // VS Code 风格：从商店下载 .tgz 到本地安装
+  // VS Code style: Download .tgz from store to local install
   const handleInstallServerPlugin = async (pluginName: string, packageUrl: string) => {
     if (!packageUrl) return;
     setOperating(pluginName);
@@ -104,9 +306,9 @@ export const ExtensionsView: React.FC = () => {
       } else {
         logger.info(LOG_MODULE.PLUGIN, 'plugin.install.success', 'Plugin installed', { plugin: pluginName });
       }
-      // 刷新本地插件列表
+      // Refresh local plugin list
       await refresh();
-      // 同时在服务端记录安装（增加下载量等）
+      // Also record installation on server (increment download count etc.)
       try { await apiService.installServerPlugin(pluginName); } catch {}
     } catch (err: any) {
       logger.error(LOG_MODULE.PLUGIN, 'plugin.install.error', 'Plugin install error', { plugin: pluginName, error: err?.message });
@@ -115,7 +317,7 @@ export const ExtensionsView: React.FC = () => {
     }
   };
 
-  // VS Code 风格：删除本地插件目录
+  // VS Code style: Delete local plugin directory
   const handleUninstallServerPlugin = async (pluginName: string) => {
     setOperating(pluginName);
     try {
@@ -185,7 +387,7 @@ export const ExtensionsView: React.FC = () => {
     return `${n}`;
   };
 
-  // 过滤已安装插件（本地）
+  // Filter installed plugins (local)
   const filteredInstalled = plugins.filter(p =>
     !searchQuery ||
     p.manifest.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -263,8 +465,17 @@ export const ExtensionsView: React.FC = () => {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <div className="max-w-4xl mx-auto">
-            {activeTab === 'installed' ? (
-              /* 已安装插件列表 */
+            {/* 插件详情视图 */}
+            {selectedPluginId && plugins.find(p => p.manifest.id === selectedPluginId) ? (
+              <PluginDetailView
+                plugin={plugins.find(p => p.manifest.id === selectedPluginId)!}
+                onBack={() => setSelectedPluginId(null)}
+                onToggle={handleToggle}
+                operating={operating === selectedPluginId}
+                t={t}
+              />
+            ) : activeTab === 'installed' ? (
+              /* Installed Plugins List */
               loading ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="w-6 h-6 animate-spin text-[var(--text-dim)]" />
@@ -300,7 +511,8 @@ export const ExtensionsView: React.FC = () => {
                   {filteredInstalled.map((plugin) => (
                     <div
                       key={plugin.manifest.id}
-                      className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-5 hover:border-indigo-500/30 transition-colors flex items-center justify-between"
+                      onClick={() => setSelectedPluginId(plugin.manifest.id)}
+                      className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-2xl p-5 hover:border-indigo-500/30 transition-colors flex items-center justify-between cursor-pointer group"
                     >
                       <div className="flex items-center gap-4 min-w-0">
                         {getStateIcon(plugin)}
@@ -347,7 +559,7 @@ export const ExtensionsView: React.FC = () => {
                       </div>
                       {plugin.disableable !== false && (
                         <button
-                          onClick={() => handleToggle(plugin)}
+                          onClick={(e) => { e.stopPropagation(); handleToggle(plugin); }}
                           disabled={operating === plugin.manifest.id}
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
                             plugin.enabled
@@ -373,7 +585,7 @@ export const ExtensionsView: React.FC = () => {
                 </div>
               )
             ) : (
-              /* 插件商店列表 */
+              /* Plugin Store List */
               <>
                 <div className="flex items-center justify-end gap-2 mb-4">
                   <select
@@ -492,6 +704,7 @@ export const ExtensionsView: React.FC = () => {
           </div>
         </div>
       </div>
+
     </div>
   );
 };

@@ -29,17 +29,20 @@ import {
   AttachedFile as AgentAttachedFile,
 } from '@/core/ai-agent';
 import { AIOpsMessage } from '../types';
-import { AIOperationStep, AIModelType, AIModelInfo } from '@/utils/types';
+import { AIOperationStep, AIModelType, AIModelInfo, AIModeInfo } from '@/utils/types';
 import { AttachedFile } from '../types';
 import { ConversationData } from '@/core/chat/types';
 import { generateMessageId } from '../utils';
 import { serializeMsg } from '@/core/chat/utils';
 import { chatHistoryClientService } from '@/core/chat/chatHistoryService';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
+// useAIService no longer needed here - modeInfo is passed via options
 
 // ==================== 配置类型 ====================
 
 export interface UseAIAgentOptions {
+  /** Translate provider error code to localized message. Returns translated string or null. */
+  translateProviderError?: (code: string, params?: string) => string | null;
   /** 认证 token（用于创建任务级 WebSocket 连接） */
   token?: string;
   /** WebSocket URL（可选，默认从环境变量读取） */
@@ -62,6 +65,8 @@ export interface UseAIAgentOptions {
   connectionType?: 'ssh' | 'local';
   /** 本地终端的 PTY ID（关联模式用，用于复用用户终端） */
   terminalId?: string;
+  /** 当前模式的元信息（用于判断连接参数，plugin 模式使用 pluginData.wsUrl） */
+  modeInfo?: AIModeInfo;
 }
 
 // ==================== 返回类型 ====================
@@ -79,11 +84,11 @@ export interface UseAIAgentReturn {
   messages: AIOpsMessage[];
 
   // === 模式与配置 ===
-  mode: 'ask' | 'agent' | 'code' | 'codex';
+  mode: string;
   sshMode: SshMode;
   selectedModel: AIModelType;
   availableModels: AIModelInfo[];
-  setMode: (mode: 'ask' | 'agent' | 'code' | 'codex') => void;
+  setMode: (mode: string) => void;
   setSshMode: (mode: SshMode) => void;
   setSelectedModel: (model: AIModelType) => void;
 
@@ -132,10 +137,14 @@ export interface UseAIAgentReturn {
   resetSuggestions: () => void;
 
   // === 工具权限和用户反馈（Code 模式） ===
-  approveToolPermission: (permissionId: string) => void;
+  approveToolPermission: (permissionId: string, permanent?: boolean) => void;
   denyToolPermission: (permissionId: string, reason?: string) => void;
   acceptFeedback: () => void;
   continueFeedback: (message: string) => void;
+  /** Code 模式：是否有活跃的持久会话 */
+  hasCodeSession: boolean;
+  /** Code 模式：手动断开持久会话 */
+  disconnectCodeSession: () => void;
 
   // === Agent 实例（高级用途） ===
   agent: AIAgent | null;
@@ -144,9 +153,11 @@ export interface UseAIAgentReturn {
 // ==================== Hook 实现 ====================
 
 export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
-  const { token, wsUrl, userId, sessionId, hostId, hostName, language, initialModels, onGemsUpdated, connectionType, terminalId } = options;
+  const { token, wsUrl, userId, sessionId, hostId, hostName, language, initialModels, onGemsUpdated, connectionType, terminalId, modeInfo, translateProviderError } = options;
   const onGemsUpdatedRef = useRef(onGemsUpdated);
   onGemsUpdatedRef.current = onGemsUpdated;
+  const translateProviderErrorRef = useRef(translateProviderError);
+  translateProviderErrorRef.current = translateProviderError;
 
   // ==================== 核心实例 refs ====================
   const agentRef = useRef<AIAgent | null>(null);
@@ -168,14 +179,13 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   // ==================== 模式与配置 ====================
   const STORAGE_KEY_MODE = 'termcat_ai_mode';
   const STORAGE_KEY_MODEL = 'termcat_ai_model';
-  const validModes: Array<'ask' | 'agent' | 'code' | 'codex'> = ['ask', 'agent', 'code', 'codex'];
-
-  const [mode, _setMode] = useState<'ask' | 'agent' | 'code' | 'codex'>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY_MODE) as 'ask' | 'agent' | 'code' | 'codex' | null;
-    return saved && validModes.includes(saved) ? saved : 'ask';
+  const [mode, _setMode] = useState<string>(() => {
+    return localStorage.getItem(STORAGE_KEY_MODE) || 'ask';
   });
   const modeRef = useRef(mode);
-  const setMode = useCallback((m: 'ask' | 'agent' | 'code' | 'codex') => {
+  const modeInfoRef = useRef(modeInfo);
+  modeInfoRef.current = modeInfo;
+  const setMode = useCallback((m: string) => {
     _setMode(m);
     modeRef.current = m;
     localStorage.setItem(STORAGE_KEY_MODE, m);
@@ -227,6 +237,9 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   const [showInsufficientGems, setShowInsufficientGems] = useState(false);
   const [showAgentSuggestion, setShowAgentSuggestion] = useState(false);
 
+  // ==================== Plugin mode detection ====================
+  const isPluginMode = modeInfo?.source === 'plugin';
+
   // ==================== 会话记录 ====================
   const [convId, setConvId] = useState<string | null>(null);
   const [convCreatedAt, setConvCreatedAt] = useState<number>(0);
@@ -251,6 +264,10 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   const submittedChoicesRef = useRef<Set<string>>(new Set());
   // 暂存 token 使用信息，等 task:complete 时再应用到最终消息
   const pendingTokenUsageRef = useRef<TokenUsage | null>(null);
+  /** Code 模式：一轮结束后等待用户在主输入框继续提问（连接保持） */
+  const codeFeedbackWaitingRef = useRef(false);
+  /** Code 模式：是否有活跃的持久会话（用于 UI 显示"断开"按钮） */
+  const [hasCodeSession, setHasCodeSession] = useState(false);
   const confirmExecuteRef = useRef<((step: AIOperationStep & { needsConfirmation?: boolean }) => void) | null>(null);
 
   // ==================== 获取远程 OS 信息 ====================
@@ -338,11 +355,22 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   // ==================== 为每个任务创建 Agent 并绑定事件 ====================
   const setupAgentForTask = useCallback((conn: AIAgentConnection): AIAgent => {
     const currentMode = modeRef.current;
-    const agentMode: AIAgentMode = currentMode === 'ask' ? 'normal' : currentMode as AIAgentMode;
+    // Plugin modes declare agentMode in pluginData (e.g. local-code → 'code')
+    const currentModeInfoSnap = modeInfoRef.current;
+    const resolvedMode = currentModeInfoSnap?.pluginData?.agentMode || currentMode;
+    const agentMode: AIAgentMode = resolvedMode === 'ask' ? 'normal' : resolvedMode as AIAgentMode;
+    logger.info(LOG_MODULE.AI, 'ai.mode.resolved', 'Mode resolved for task', {
+      ui_mode: currentMode,
+      modeInfo_id: currentModeInfoSnap?.id,
+      pluginData_agentMode: currentModeInfoSnap?.pluginData?.agentMode,
+      resolved_mode: resolvedMode,
+      agent_mode: agentMode,
+    });
+    const actualModel = selectedModel;
     const osInfo = osInfoRef.current;
     const agent = new AIAgent(conn, {
       mode: agentMode,
-      model: selectedModel,
+      model: actualModel,
       sessionId: sessionId || '',
       hostId,
       language,
@@ -365,13 +393,21 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
       executor.on('interactive:prompt', (prompt: string) => {
         setWaitingForInteraction(true);
         setInteractionPrompt(prompt);
+        notify('TermCat - 交互确认', prompt || '远程服务器等待确认');
       });
 
       logger.debug(LOG_MODULE.AI, 'ai.executor.created', 'Executor created', {
         session_id: sessionId,
         executor_type: connectionType || 'ssh',
+        ssh_mode: sshMode,
+        shell_id: (executor as any).shellId || (executor as any).ptyId || 'unknown',
       });
     }
+
+    // ==================== 桌面通知辅助 ====================
+    const notify = (title: string, body: string) => {
+      window.electron.showNotification({ title, body });
+    };
 
     // ==================== 绑定 Agent 事件 ====================
 
@@ -576,6 +612,11 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
         }];
       });
 
+      // 桌面通知：步骤等待确认
+      if (detail.status === 'waiting_confirm' && !detail.autoExecute) {
+        notify('TermCat - 等待确认', detail.description || detail.command || '操作步骤等待确认执行');
+      }
+
       // 自动执行：服务端标记 auto_execute 时自动确认执行
       if (detail.autoExecute && detail.status === 'waiting_confirm' && detail.command) {
         setTimeout(() => {
@@ -592,6 +633,7 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
     // 执行请求
     agent.on('execute:request', (stepIndex: number, command: string, risk: RiskLevel, description: string, taskId: string) => {
       setIsLoading(false);
+      notify('TermCat - 等待确认执行', description || command);
 
       // 更新 operation 消息状态
       setMessages(prev => {
@@ -633,6 +675,7 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
 
     // 用户选择请求
     agent.on('choice:request', (stepIndex: number, data: ChoiceData, taskId: string) => {
+      notify('TermCat - 需要选择', data.question || '请做出选择');
       setMessages(prev => [...prev, {
         id: generateMessageId(),
         role: 'assistant' as const,
@@ -728,12 +771,27 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
         onGemsUpdatedRef.current?.(gemsRemaining);
       }
 
-      // 任务完成，关闭任务连接
-      closeTaskConnection();
+      // 持久会话模式（pluginData.persistSession）：不关闭连接，保持上下文
+      const persistSession = modeInfoRef.current?.pluginData?.persistSession;
+      if (codeFeedbackWaitingRef.current) {
+        // 已经在等待续轮的持久会话，不关闭
+      } else if (persistSession) {
+        // 持久会话模式：标记可继续
+        codeFeedbackWaitingRef.current = true;
+        setHasCodeSession(true);
+      } else {
+        // 普通模式：正常关闭连接
+        closeTaskConnection();
+      }
     });
 
     // 任务错误
-    agent.on('task:error', (error: string, code?: number) => {
+    agent.on('task:error', (error: string, code?: number | string, errorParams?: string) => {
+      // Translate provider error code to localized message if available
+      if (code && typeof code === 'string' && translateProviderErrorRef.current) {
+        const translated = translateProviderErrorRef.current(code, errorParams);
+        if (translated) error = translated;
+      }
       // 积分不足（code 1301）：同步余额为 0 + 显示充值弹窗
       if (code === 1301) {
         onGemsUpdatedRef.current?.(0);
@@ -829,34 +887,74 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
     });
 
     // 工具权限请求（Code 模式）
-    agent.on('tool:permission_request', (permissionId: string, toolName: string, toolInput: Record<string, any>, taskId: string, toolUseId: string, risk?: string, description?: string) => {
-      setMessages(prev => [...prev, {
-        id: generateMessageId(),
-        role: 'assistant' as const,
-        content: '',
-        taskState: {
-          taskId,
-          taskType: 'tool_use' as const,
-          status: 'waiting_tool_permission',
+    // SDK 先发 TOOL_USE 再发 TOOL_PERMISSION_REQUEST（同一 toolUseId），
+    // 找到已有的 tool_use 消息并更新其状态，避免创建重复消息
+    agent.on('tool:permission_request', (permissionId: string, toolName: string, toolInput: Record<string, any>, taskId: string, toolUseId: string, risk?: string, description?: string, title?: string, allowPermanent?: boolean) => {
+      notify('TermCat - 需要授权', title || description || `工具 ${toolName} 请求执行权限`);
+      setMessages(prev => {
+        // 查找已有的 tool_use 消息（由 TOOL_USE 事件创建，toolUseId 匹配）
+        let existingIdx = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].taskState?.taskType === 'tool_use' && prev[i].taskState?.toolUseId === toolUseId) {
+            existingIdx = i;
+            break;
+          }
+        }
+        if (existingIdx >= 0) {
+          // 更新已有消息：添加 permissionId，切换状态为 waiting_tool_permission
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            taskState: {
+              ...updated[existingIdx].taskState!,
+              status: 'waiting_tool_permission',
+              permissionId,
+              permissionTitle: title || '',
+              allowPermanent: allowPermanent || false,
+              stepRisk: (risk as 'low' | 'medium' | 'high') || updated[existingIdx].taskState!.stepRisk,
+              stepDescription: description || updated[existingIdx].taskState!.stepDescription || '',
+            },
+          };
+          return updated;
+        }
+        // 没找到已有消息（理论上不应发生），创建新消息
+        return [...prev, {
+          id: generateMessageId(),
+          role: 'assistant' as const,
           content: '',
-          toolName,
-          toolInput,
-          toolUseId, // SDK 的 tool_use_id，用于匹配 tool_result
-          permissionId, // 权限确认 ID，用于审批/拒绝
-          stepRisk: (risk as 'low' | 'medium' | 'high') || undefined,
-          stepDescription: description || '',
-        },
-        timestamp: Date.now(),
-      }]);
+          taskState: {
+            taskId,
+            taskType: 'tool_use' as const,
+            status: 'waiting_tool_permission',
+            content: '',
+            toolName,
+            toolInput,
+            toolUseId,
+            permissionId,
+            permissionTitle: title || '',
+            allowPermanent: allowPermanent || false,
+            stepRisk: (risk as 'low' | 'medium' | 'high') || undefined,
+            stepDescription: description || '',
+          },
+          timestamp: Date.now(),
+        }];
+      });
     });
 
-    // 用户反馈请求（Code 模式）— 每轮结束时显示本轮 token 消耗
-    agent.on('feedback:request', (taskId: string) => {
+    // 持久会话模式一轮结束 — 不弹反馈卡，直接允许在主输入框继续提问（连接保持）
+    agent.on('feedback:request', (_taskId: string) => {
       const tokenUsage = pendingTokenUsageRef.current;
       pendingTokenUsageRef.current = null;
 
+      // 持久会话模式（pluginData.persistSession）：保持连接，标记可续轮
+      if (modeInfoRef.current?.pluginData?.persistSession) {
+        codeFeedbackWaitingRef.current = true;
+        setHasCodeSession(true);
+      }
+      setIsLoading(false);
+
+      // 更新最后一条消息为 completed（附带 tokenUsage），不显示 feedback 卡片
       setMessages(prev => {
-        // 更新最后一条消息的状态为 waiting_feedback，并附带本轮 tokenUsage
         const updated = [...prev];
         const lastIdx = updated.length - 1;
         if (lastIdx >= 0 && updated[lastIdx]?.taskState) {
@@ -864,7 +962,7 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
             ...updated[lastIdx],
             taskState: {
               ...updated[lastIdx].taskState!,
-              status: 'waiting_feedback',
+              status: 'completed',
               ...(tokenUsage ? { tokenUsage } : {}),
             },
           };
@@ -881,6 +979,35 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   /** 发送消息（懒建连：首次发消息时按需建立连接） */
   const sendMessage = useCallback(async (input: string) => {
     if (!input.trim() || isLoading) return;
+
+    // Code 模式续轮：复用现有连接，不创建新连接
+    if (codeFeedbackWaitingRef.current && agentRef.current) {
+      codeFeedbackWaitingRef.current = false;
+      const now = Date.now();
+      const userMsg: AIOpsMessage = {
+        id: generateMessageId(),
+        role: 'user',
+        content: input,
+        timestamp: now,
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setIsLoading(true);
+      setAIStatus('thinking');
+      pendingTokenUsageRef.current = null;
+
+      // 持久化用户消息
+      const currentUserId = userIdRef.current;
+      const currentConvId = convIdRef.current;
+      const currentCreatedAt = convCreatedAtRef.current;
+      if (currentUserId && currentConvId) {
+        chatHistoryClientService.appendMessage(currentUserId, currentConvId, currentCreatedAt, serializeMsg(userMsg))
+          .then(() => setSavedMsgCount(prev => prev + 1))
+          .catch(() => {});
+      }
+
+      agentRef.current.continueFeedback(input);
+      return;
+    }
 
     const now = Date.now();
 
@@ -957,12 +1084,34 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
     closeTaskConnection();
 
     // 创建新的任务级 WebSocket 连接
-    const resolvedWsUrl = wsUrl
-      || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_AI_WS_BASE_URL)
-      || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_BASE_URL)
-      || 'ws://localhost:5001';
+    // Plugin mode (e.g. local-agent): use pluginData.wsUrl; Server mode: use configured wsUrl
+    const resolvedWsUrl = isPluginMode && modeInfo?.pluginData?.wsUrl
+      ? modeInfo.pluginData.wsUrl
+      : (wsUrl
+        || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_AI_WS_BASE_URL)
+        || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_WS_BASE_URL)
+        || 'ws://localhost:5001');
 
-    if (!token) {
+    // Plugin mode: check if API Key is not configured
+    if (isPluginMode && modeInfo?.pluginData?.needsConfig) {
+      setMessages(prev => [...prev, {
+        id: generateMessageId(),
+        role: 'assistant' as const,
+        content: '',
+        taskState: {
+          taskId: '',
+          taskType: 'answer' as const,
+          status: 'error' as const,
+          content: '',
+          error: '本地 AI Agent 尚未配置 API Key，请前往 设置 → 插件管理 → 本地 AI 运维 Agent → 设置，填入 API Key 后重试。',
+        },
+        timestamp: Date.now(),
+      }]);
+      setIsLoading(false);
+      return;
+    }
+
+    if (!isPluginMode && !token) {
       setMessages(prev => [...prev, {
         id: generateMessageId(),
         role: 'assistant' as const,
@@ -982,7 +1131,9 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
     }
 
     try {
-      const conn = new AIAgentConnection({ wsUrl: resolvedWsUrl, token });
+      // Plugin mode doesn't require auth token
+      const resolvedToken = isPluginMode ? (modeInfo?.pluginData?.token || token || 'local') : token!;
+      const conn = new AIAgentConnection({ wsUrl: resolvedWsUrl, token: resolvedToken });
       taskConnectionRef.current = conn;
       await conn.connect();
 
@@ -1018,10 +1169,12 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
       session_id: sessionId,
       content_length: input.length,
     });
-  }, [isLoading, attachedFiles, mode, selectedModel, hostId, hostName, sessionId, token, wsUrl, setupAgentForTask, closeTaskConnection]);
+  }, [isLoading, attachedFiles, mode, selectedModel, hostId, hostName, sessionId, token, wsUrl, isPluginMode, modeInfo, setupAgentForTask, closeTaskConnection]);
 
   /** 终止任务 */
   const stopTask = useCallback(() => {
+    codeFeedbackWaitingRef.current = false;
+    setHasCodeSession(false);
     closeTaskConnection();
     setIsLoading(false);
     setAIStatus('idle');
@@ -1044,6 +1197,15 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
         timestamp: Date.now(),
       }];
     });
+  }, [closeTaskConnection]);
+
+  /** Code 模式：手动断开持久会话 */
+  const disconnectCodeSession = useCallback(() => {
+    codeFeedbackWaitingRef.current = false;
+    setHasCodeSession(false);
+    closeTaskConnection();
+    setIsLoading(false);
+    setAIStatus('idle');
   }, [closeTaskConnection]);
 
   /** 确认执行命令 */
@@ -1305,7 +1467,7 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   }, []);
 
   /** 批准工具执行（Code 模式）— 支持 sudo 密码和高风险确认 */
-  const approveToolPermission = useCallback((permissionId: string) => {
+  const approveToolPermission = useCallback((permissionId: string, permanent?: boolean) => {
     const agent = agentRef.current;
     if (!agent) return;
 
@@ -1365,8 +1527,8 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
       }
     }
 
-    // 发送批准
-    agent.approveToolPermission(permissionId);
+    // 发送批准（permanent=true → "永久允许"，会在 session 内记住规则）
+    agent.approveToolPermission(permissionId, permanent);
 
     // 更新消息状态为执行中
     setMessages(prev => {
@@ -1448,6 +1610,9 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
 
   /** 新建会话（清空当前消息） */
   const newConversation = useCallback(() => {
+    codeFeedbackWaitingRef.current = false;
+    setHasCodeSession(false);
+    closeTaskConnection();
     setMessages([]);
     setConvId(null);
     setConvCreatedAt(0);
@@ -1519,8 +1684,9 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
 
   return {
     // 连接状态（任务级连接：发送消息时建连，任务结束后断连）
-    isConnected: isLoading,
-    connectionStatus: isLoading ? 'connected' as const : 'idle' as const,
+    // Code 模式持久会话期间即使 isLoading=false 也保持 connected
+    isConnected: isLoading || hasCodeSession,
+    connectionStatus: (isLoading || hasCodeSession) ? 'connected' as const : 'idle' as const,
 
     // AI 状态
     aiStatus,
@@ -1587,6 +1753,8 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
     denyToolPermission,
     acceptFeedback,
     continueFeedback,
+    hasCodeSession,
+    disconnectCodeSession,
 
     // Agent 实例
     agent: agentRef.current,

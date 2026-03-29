@@ -2,10 +2,10 @@
 /**
  * TermCat AI Agent CLI
  *
- * 基于 ai-agent 模块的命令行客户端，用于在终端中交互式测试 AI Agent。
- * 通过 SSH 直连目标主机执行命令，将结果回报给 agent_server。
+ * Command-line client based on ai-agent module, used for interactive testing of AI Agent in terminal.
+ * Executes commands by SSH directly to target host, reports results back to agent_server.
  *
- * 用法：
+ * Usage:
  *   npx tsx src/modules/ai-agent/cli/cli-agent.ts [options]
  *
  * Options:
@@ -25,7 +25,7 @@
  *   --log <file>          Write execution log to file (JSON Lines format)
  */
 
-// 必须在其他 import 之前安装 WebSocket
+// Must install WebSocket before other imports
 import { installWebSocket } from './NodeWebSocket';
 installWebSocket();
 
@@ -41,7 +41,7 @@ import { TerminalRenderer } from './TerminalRenderer';
 import type { OperationStep, ChoiceData, TokenUsage, RiskLevel, AIAgentMode, StepDetailEvent } from '../types';
 import type { ICommandExecutor } from '../ICommandExecutor';
 
-// ==================== 参数解析 ====================
+// ==================== Argument Parsing ====================
 
 interface CliOptions {
   server: string;
@@ -61,12 +61,12 @@ interface CliOptions {
 }
 
 /**
- * 解析布尔 flag，支持三种形式：
- *   --debug         → true（后面不跟值或跟其他 flag）
+ * Parse boolean flag, supports three forms:
+ *   --debug         → true (no value follows or followed by another flag)
  *   --debug true    → true
  *   --debug false   → false
  *
- * 返回 { value, skip }，skip 表示是否消费了下一个参数。
+ * Returns { value, skip }, where skip indicates whether next argument was consumed.
  */
 function parseBoolFlag(args: string[], currentIndex: number): { value: boolean; skip: boolean } {
   const next = args[currentIndex + 1];
@@ -76,7 +76,7 @@ function parseBoolFlag(args: string[], currentIndex: number): { value: boolean; 
   if (next === 'false') {
     return { value: false, skip: true };
   }
-  // 没有值或下一个是另一个 flag → 视为 true
+  // No value or next is another flag → treat as true
   return { value: true, skip: false };
 }
 
@@ -170,7 +170,7 @@ Options:
 `);
 }
 
-// ==================== 登录 ====================
+// ==================== Login ====================
 
 async function login(serverUrl: string, email: string, password: string): Promise<string> {
   const url = `${serverUrl}/api/v1/auth/login`;
@@ -193,7 +193,7 @@ async function login(serverUrl: string, email: string, password: string): Promis
   return token;
 }
 
-// ==================== Readline 工具 ====================
+// ==================== Readline Utilities ====================
 
 function createMainRL(): readline.Interface {
   return readline.createInterface({
@@ -209,7 +209,7 @@ function ask(rl: readline.Interface, question: string): Promise<string> {
   });
 }
 
-/** 复用主 readline 进行单次确认 */
+/** Reuse main readline for single confirmation */
 let _mainRl: readline.Interface | null = null;
 
 function setMainRL(rl: readline.Interface): void {
@@ -217,8 +217,8 @@ function setMainRL(rl: readline.Interface): void {
 }
 
 /**
- * confirmQuestion 支持取消机制。
- * 返回 null 表示被取消，调用方应跳过后续处理。
+ * confirmQuestion supports cancellation mechanism.
+ * Returns null if cancelled, caller should skip subsequent processing.
  */
 let _confirmGeneration = 0;
 let _activeConfirm: { gen: number; resolve: (v: string | null) => void } | null = null;
@@ -233,7 +233,7 @@ function confirmQuestion(prompt: string): Promise<string | null> {
     _activeConfirm = { gen, resolve };
     _mainRl.question(prompt, (answer) => {
       if (gen !== _confirmGeneration) {
-        // 已被取消（generation 不匹配），忽略用户输入
+        // Cancelled (generation doesn't match), ignore user input
         return;
       }
       _activeConfirm = null;
@@ -243,15 +243,15 @@ function confirmQuestion(prompt: string): Promise<string | null> {
 }
 
 /**
- * 取消当前活跃的 confirmQuestion。
- * 清除 readline 提示行，并以 null 解析 promise。
+ * Cancel currently active confirmQuestion.
+ * Clears readline prompt line, resolves promise with null.
  */
 function cancelActiveConfirm(): void {
   _confirmGeneration++;
   if (_activeConfirm) {
     const { resolve } = _activeConfirm;
     _activeConfirm = null;
-    // 清除当前行的提示文本
+    // Clear current line prompt text
     process.stderr.write('\r\x1b[K');
     resolve(null);
   }
@@ -297,7 +297,7 @@ function askPassword(rl: readline.Interface, prompt: string): Promise<string> {
   });
 }
 
-// ==================== 主程序 ====================
+// ==================== Main Program ====================
 
 async function main(): Promise<void> {
   const renderer = new TerminalRenderer();
@@ -312,7 +312,7 @@ async function main(): Promise<void> {
   let autoExecute = cliOpts.auto || false;
   const debug = cliOpts.debug || false;
 
-  // ==================== 日志文件 ====================
+  // ==================== Log File ====================
 
   let logStream: fs.WriteStream | null = null;
   if (cliOpts.logFile) {
@@ -334,7 +334,7 @@ async function main(): Promise<void> {
   const rl = createMainRL();
   setMainRL(rl);
 
-  // ==================== 登录 ====================
+  // ==================== Login ====================
 
   let email = cliOpts.email || '';
   let password = cliOpts.password || '';
@@ -356,7 +356,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // ==================== SSH 连接 ====================
+  // ==================== SSH Connection ====================
 
   let sshHost = cliOpts.sshHost || '';
   let sshUser = cliOpts.sshUser || '';
@@ -371,11 +371,11 @@ async function main(): Promise<void> {
     sshUser = await ask(rl, 'SSH User: ');
   }
 
-  // 认证方式：优先使用私钥，其次密码
+  // Auth method: prefer private key, then password
   let sshPrivateKey: string | undefined;
 
   if (sshKeyPath) {
-    // 命令行指定了私钥路径
+    // Private key path specified on command line
     const resolvedPath = sshKeyPath.startsWith('~')
       ? path.join(os.homedir(), sshKeyPath.slice(1))
       : path.resolve(sshKeyPath);
@@ -387,7 +387,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
   } else if (!sshPassword) {
-    // 未指定私钥也未指定密码，检查默认私钥文件
+    // No private key or password specified, check default private key files
     const defaultKeys = ['id_rsa', 'id_ed25519', 'id_ecdsa'];
     for (const keyName of defaultKeys) {
       const keyPath = path.join(os.homedir(), '.ssh', keyName);
@@ -397,12 +397,12 @@ async function main(): Promise<void> {
           renderer.printInfo(`Using default SSH key: ${keyPath}`);
           break;
         } catch {
-          // 无法读取，跳过
+          // Can't read, skip
         }
       }
     }
 
-    // 如果没有找到任何默认私钥，提示输入密码
+    // If no default private key found, prompt for password
     if (!sshPrivateKey) {
       sshPassword = await askPassword(rl, 'SSH Password (or use --ssh-key): ');
     }
@@ -432,7 +432,7 @@ async function main(): Promise<void> {
       renderer.printSuccess(`SSH connected to ${sshUser}@${sshHost}:${sshPort} (${authMethod})`);
       executor = sshExecutor;
 
-      // 检测远程服务器操作系统信息
+      // Detect remote server OS info
       osInfo = await sshExecutor.detectOSInfo();
       if (osInfo) {
         renderer.printInfo(`Remote OS: ${osInfo.osType} ${osInfo.osVersion} (${osInfo.shell})`);
@@ -451,7 +451,7 @@ async function main(): Promise<void> {
     executor = mock;
   }
 
-  // ==================== WebSocket 连接 ====================
+  // ==================== WebSocket Connection ====================
 
   const connection = new AIAgentConnection({
     wsUrl,
@@ -495,7 +495,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // ==================== 创建 Agent ====================
+  // ==================== Create Agent ====================
 
   const agent = new AIAgent(connection, {
     mode,
@@ -513,7 +513,7 @@ async function main(): Promise<void> {
     renderer.printInfo('Auto-execute mode enabled');
   }
 
-  // REPL ←→ 事件 协调
+  // REPL ↔ Event coordination
   let replResolve: (() => void) | null = null;
   let taskDone = false;
 
@@ -537,11 +537,11 @@ async function main(): Promise<void> {
     }
   }
 
-  // 交互请求去重：记录已显示的选择请求和执行请求
+  // Deduplicate interaction requests: track displayed choice requests and execution requests
   const displayedChoices = new Set<string>();
   const displayedExecutions = new Set<string>();
 
-  // 交互状态锁：防止多个交互提示同时争抢 readline
+  // Interaction state lock: prevent multiple interaction prompts competing for readline simultaneously
   let pendingInteraction: 'none' | 'execute' | 'choice' | 'interactive' = 'none';
 
   interface PendingItem {
@@ -578,13 +578,13 @@ async function main(): Promise<void> {
     }
   }
 
-  // ==================== 命令执行辅助 ====================
+  // ==================== Command Execution Helper ====================
 
   /**
-   * 执行命令并将结果发回 agent_server
+   * Execute command and report result back to agent_server
    *
-   * 服务端通过 step_detail 告知待执行命令，客户端执行后通过
-   * agent.submitExecuteResult() 回报结果。
+   * Server notifies pending command via step_detail, client executes and reports
+   * result via agent.submitExecuteResult().
    */
   async function executeAndReport(stepIndex: number, command: string): Promise<void> {
     renderer.startSpinner(`Executing: ${command}`);
@@ -593,7 +593,8 @@ async function main(): Promise<void> {
     try {
       const result = await executor.execute(command);
       renderer.stopSpinner();
-      // 命令执行完毕后，取消可能残留的交互式提示（executor 超时自动处理了，readline 还在等）
+      // After command execution completes, cancel any residual interactive prompts
+      // (executor timeout auto-handles, but readline is still waiting)
       if (pendingInteraction === 'interactive') {
         cancelActiveConfirm();
         pendingInteraction = 'none';
@@ -603,7 +604,7 @@ async function main(): Promise<void> {
       agent.submitExecuteResult(stepIndex, command, result);
     } catch (err: any) {
       renderer.stopSpinner();
-      // 命令执行失败后也取消残留的交互式提示
+      // Also cancel residual interactive prompts after command execution failure
       if (pendingInteraction === 'interactive') {
         cancelActiveConfirm();
         pendingInteraction = 'none';
@@ -619,12 +620,12 @@ async function main(): Promise<void> {
     }
   }
 
-  // ==================== 事件监听 ====================
+  // ==================== Event Listeners ====================
 
-  // 监听 executor 的交互式提示事件（仅 BaseShellExecutor 支持）
+  // Listen to executor's interactive prompt events (only BaseShellExecutor supports)
   if ('on' in executor && typeof executor.on === 'function') {
     executor.on('interactive:prompt', (prompt: string) => {
-      // 如果当前有交互正在进行，将交互请求排队
+      // If interaction is in progress, queue the interaction request
       if (pendingInteraction !== 'none') {
         pendingQueue.push({ type: 'interactive', prompt });
         return;
@@ -634,19 +635,19 @@ async function main(): Promise<void> {
       renderer.stopSpinner();
       console.log('\n');
       renderer.printWarning('⚠️  Command requires interactive confirmation:');
-      console.log('\x1b[90m' + prompt + '\x1b[0m'); // 灰色显示提示内容
+      console.log('\x1b[90m' + prompt + '\x1b[0m'); // Show prompt in gray
       console.log('');
       confirmQuestion('Your response [y/n] (or press Enter to auto-confirm "y" in 30s): ').then((response) => {
         if (response === null) {
-          // 被取消（命令已执行完毕），不需要再处理
-          // pendingInteraction 已在 cancelActiveConfirm 调用处重置
+          // Cancelled (command has completed), no need to process further
+          // pendingInteraction has been reset in cancelActiveConfirm call
           return;
         }
         if (response.trim() && 'sendInteractiveResponse' in executor && typeof executor.sendInteractiveResponse === 'function') {
-          // 用户输入了响应
+          // User entered response
           executor.sendInteractiveResponse(response.trim());
         }
-        // 如果用户没输入（直接回车），让 executor 的 30 秒超时自动处理
+        // If user didn't input (just pressed Enter), let executor's 30-second timeout handle it automatically
         pendingInteraction = 'none';
         processPendingQueue();
       });
@@ -685,19 +686,19 @@ async function main(): Promise<void> {
     renderer.printPlan(plan);
   });
 
-  // execute:request 事件（某些服务端版本可能发送此消息）
+  // execute:request event (some server versions may send this message)
   agent.on('execute:request', (stepIndex: number, command: string, risk: RiskLevel) => {
     renderer.stopSpinner();
-    if (autoExecute) return; // 自动模式下 AIAgent 内部处理
+    if (autoExecute) return; // AIAgent handles internally in auto mode
 
-    // 生成唯一标识，防止重复显示
+    // Generate unique key to prevent duplicate display
     const execKey = `${stepIndex}:${command}`;
     if (displayedExecutions.has(execKey)) {
-      return; // 已经显示过，忽略重复消息
+      return; // Already displayed, ignore duplicate message
     }
     displayedExecutions.add(execKey);
 
-    // 如果当前有交互正在进行，将执行请求排队
+    // If interaction is in progress, queue the execution request
     if (pendingInteraction !== 'none') {
       pendingQueue.push({ type: 'execute', stepIndex, command, risk });
       return;
@@ -706,7 +707,7 @@ async function main(): Promise<void> {
 
     const prompt = renderer.printExecutePrompt(stepIndex, command, risk);
     confirmQuestion(prompt).then((answer) => {
-      if (answer === null) return; // 被取消
+      if (answer === null) return; // Cancelled
       if (answer.toLowerCase() === 'n' || answer.toLowerCase() === 'no') {
         agent.cancelExecute(stepIndex);
         renderer.printWarning(`Step ${stepIndex + 1} cancelled`);
@@ -719,50 +720,50 @@ async function main(): Promise<void> {
   });
 
   /**
-   * step_detail 事件处理 —— 核心执行触发点
+   * step:detail event handling —— Core execution trigger point
    *
-   * 服务端协议：发送 step_detail（携带 command）表示"请客户端执行此命令"，
-   * 然后保持连接等待 confirm_execute 结果。
+   * Server protocol: sends step_detail (with command) to mean "please client execute this command",
+   * then keeps connection waiting for confirm_execute result.
    *
-   * 当 step_detail 携带 command 且 status 不是 completed/error 时，
-   * 视为执行请求。
+   * When step_detail carries command and status is not completed/error,
+   * treat as execution request.
    */
   agent.on('step:detail', (stepIndex: number, detail: StepDetailEvent) => {
-    // 已完成、已出错或已失败的步骤：结果由 executeAndReport 负责展示，此处跳过
+    // Completed, errored, or failed steps: result is displayed by executeAndReport, skip here
     if (detail.status === 'completed' || detail.status === 'error' || detail.status === 'failed') {
       return;
     }
 
-    // 有命令的步骤：触发执行
+    // Steps with command: trigger execution
     if (detail.command) {
       renderer.stopSpinner();
       const command = detail.command;
       const risk = detail.risk || 'low';
 
-      // 生成唯一标识，防止重复显示
+      // Generate unique key to prevent duplicate display
       const execKey = `${stepIndex}:${command}`;
       if (displayedExecutions.has(execKey)) {
-        return; // 已经显示过，忽略重复消息
+        return; // Already displayed, ignore duplicate message
       }
       displayedExecutions.add(execKey);
 
       if (autoExecute) {
-        // 自动模式：直接执行
+        // Auto mode: execute directly
         executeAndReport(stepIndex, command);
         return;
       }
 
-      // 如果当前有交互正在进行，将执行请求排队
+      // If interaction is in progress, queue the execution request
       if (pendingInteraction !== 'none') {
         pendingQueue.push({ type: 'execute', stepIndex, detail });
         return;
       }
       pendingInteraction = 'execute';
 
-      // 手动模式：确认后执行
+      // Manual mode: confirm then execute
       const prompt = renderer.printExecutePrompt(stepIndex, command, risk);
       confirmQuestion(prompt).then((answer) => {
-        if (answer === null) return; // 被取消
+        if (answer === null) return; // Cancelled
         if (answer.toLowerCase() === 'n' || answer.toLowerCase() === 'no') {
           agent.cancelExecute(stepIndex);
           renderer.printWarning(`Step ${stepIndex + 1} skipped`);
@@ -779,15 +780,15 @@ async function main(): Promise<void> {
     renderer.stopSpinner();
     if (autoExecute) return;
 
-    // 生成唯一标识，防止重复显示
+    // Generate unique key to prevent duplicate display
     const choiceKey = `${stepIndex}:${data.question}`;
     if (displayedChoices.has(choiceKey)) {
-      // 已经显示过这个选择请求，忽略重复消息
+      // Already displayed this choice request, ignore duplicate message
       return;
     }
     displayedChoices.add(choiceKey);
 
-    // 如果当前有交互正在进行，将选择请求排队
+    // If interaction is in progress, queue the choice request
     if (pendingInteraction !== 'none') {
       pendingQueue.push({ type: 'choice', stepIndex, data });
       return;
@@ -796,7 +797,7 @@ async function main(): Promise<void> {
 
     renderer.printChoicePrompt(data.question, data.options);
     confirmQuestion(`\nSelect (1-${data.options.length}): `).then((choiceStr) => {
-      if (choiceStr === null) return; // 被取消
+      if (choiceStr === null) return; // Cancelled
       const choiceIdx = parseInt(choiceStr, 10) - 1;
       if (choiceIdx >= 0 && choiceIdx < data.options.length) {
         agent.sendUserChoice(stepIndex, data.options[choiceIdx].value);
@@ -814,29 +815,29 @@ async function main(): Promise<void> {
 
   agent.on('task:complete', (summary: string) => {
     renderer.stopSpinner();
-    cancelActiveConfirm(); // 取消任何残留的 readline 提示
+    cancelActiveConfirm(); // Cancel any residual readline prompts
     renderer.printTaskComplete(summary);
     isStreaming = false;
-    displayedChoices.clear(); // 清理已显示的选择记录
-    displayedExecutions.clear(); // 清理已显示的执行记录
-    pendingInteraction = 'none'; // 重置交互锁
-    pendingQueue.length = 0; // 清空排队的交互请求
+    displayedChoices.clear(); // Clear displayed choice records
+    displayedExecutions.clear(); // Clear displayed execution records
+    pendingInteraction = 'none'; // Reset interaction lock
+    pendingQueue.length = 0; // Clear queued interaction requests
     notifyReplResume();
   });
 
   agent.on('task:error', (error: string) => {
     renderer.stopSpinner();
-    cancelActiveConfirm(); // 取消任何残留的 readline 提示
+    cancelActiveConfirm(); // Cancel any residual readline prompts
     renderer.printError(`Task error: ${error}`);
     isStreaming = false;
-    displayedChoices.clear(); // 清理已显示的选择记录
-    displayedExecutions.clear(); // 清理已显示的执行记录
-    pendingInteraction = 'none'; // 重置交互锁
-    pendingQueue.length = 0; // 清空排队的交互请求
+    displayedChoices.clear(); // Clear displayed choice records
+    displayedExecutions.clear(); // Clear displayed execution records
+    pendingInteraction = 'none'; // Reset interaction lock
+    pendingQueue.length = 0; // Clear queued interaction requests
     notifyReplResume();
   });
 
-  // ==================== REPL 循环 ====================
+  // ==================== REPL Loop ====================
 
   renderer.newLine();
   renderer.printModeInfo(mode, model);
@@ -854,7 +855,7 @@ async function main(): Promise<void> {
 
       if (!userInput) continue;
 
-      // 特殊命令
+      // Special commands
       if (userInput.startsWith('/')) {
         const parts = userInput.split(/\s+/);
         const cmd = parts[0].toLowerCase();
@@ -933,7 +934,7 @@ async function main(): Promise<void> {
         continue;
       }
 
-      // 发送问题，等待任务完成
+      // Send question, wait for task completion
       taskDone = false;
       if (debug) {
         renderer.printInfo(`[REPL] Sending question, ws=${connection.isConnected()}, agentStatus=${agent.getStatus()}`);

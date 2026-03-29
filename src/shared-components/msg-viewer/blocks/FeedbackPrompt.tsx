@@ -1,5 +1,5 @@
 /**
- * 任务完成反馈提示
+ * Task completion feedback prompt
  */
 
 import React, { useState } from 'react';

@@ -13,6 +13,7 @@ export const en: typeof zh = {
   connectionConnecting: 'Connecting',
   connectionConnected: 'Connected',
   connectionDisconnected: 'Disconnected',
+  disconnectSession: 'Disconnect',
 
   // Header actions
   newConversation: 'New Chat',

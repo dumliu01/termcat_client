@@ -44,11 +44,15 @@ export class PluginManager {
   /** 缓存外部插件的面板数据（Renderer reload 后可重放） */
   private panelDataCache = new Map<string, any[]>();
 
+  /** Bundled plugins directory (shipped with installer, read-only) */
+  private bundledPluginsDir: string;
+
   constructor() {
     const userDataPath = app.getPath('userData');
     this.pluginsDir = path.join(userDataPath, 'plugins');
     this.pluginDataDir = path.join(userDataPath, 'plugin-data');
     this.configPath = path.join(userDataPath, 'plugin-config.json');
+    this.bundledPluginsDir = path.join(process.resourcesPath || '', 'bundled-plugins');
     this.registry = new PluginRegistry();
     this.pluginConfig = { enabled: {}, settings: {} }; // Default, loaded async in initialize()
     this.mainBridge = this.createMainBridge();
@@ -57,6 +61,8 @@ export class PluginManager {
   /** 设置主窗口引用（用于 IPC 事件推送） */
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win;
+    // 补发在 mainWindow 就绪前暂存的事件
+    this.flushPendingMessages();
   }
 
   /** 获取注册表（供外部集成使用） */
@@ -77,13 +83,26 @@ export class PluginManager {
       this.loadConfig().then(config => { this.pluginConfig = config; }),
     ]);
 
-    // 1. 扫描并加载所有插件清单
-    await this.discoverPlugins();
+    // 1. 扫描并加载所有插件清单（bundled 优先，用户安装的覆盖同名 bundled）
+    await this.discoverPluginsFromDir(this.bundledPluginsDir, true);
+    await this.discoverPluginsFromDir(this.pluginsDir, false);
 
     // 2. 注册 IPC 处理器
     this.registerIPCHandlers();
 
-    // 3. 激活 onStartup 插件
+    // 3. 转发本地 Agent 插件事件到 Renderer（必须在 activateByEvent 之前注册，否则事件会丢失）
+    this.registry.addEventListener('*', 'local-agent:started', (data: unknown) => {
+      console.log('[PluginManager] Forwarding local-agent:started to renderer');
+      this.lastLocalAgentData = data;  // 缓存完整数据，供 getLocalAgentStatus 回退查询
+      this.sendToRenderer('local-agent:started', data);
+    });
+    this.registry.addEventListener('*', 'local-agent:stopped', (data: unknown) => {
+      console.log('[PluginManager] Forwarding local-agent:stopped to renderer');
+      this.lastLocalAgentData = null;
+      this.sendToRenderer('local-agent:stopped', data);
+    });
+
+    // 4. 激活 onStartup 插件
     await this.activateByEvent('onStartup');
 
     console.log(`[PluginManager] Initialized. ${this.plugins.size} plugins discovered.`);
@@ -91,18 +110,25 @@ export class PluginManager {
 
   // ==================== 插件发现 ====================
 
-  private async discoverPlugins(): Promise<void> {
+  /**
+   * Scan a directory for plugins.
+   * @param dir - Directory to scan
+   * @param isBundled - If true, these are read-only bundled plugins shipped with the installer.
+   *   User-installed plugins (isBundled=false) override bundled ones with the same id.
+   */
+  private async discoverPluginsFromDir(dir: string, isBundled: boolean): Promise<void> {
     let entries;
     try {
-      entries = await fs.promises.readdir(this.pluginsDir, { withFileTypes: true });
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch {
       return; // Directory doesn't exist
     }
 
     for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+      // Support symlink directories (common during development: ln -s)
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
 
-      const pluginDir = path.join(this.pluginsDir, entry.name);
+      const pluginDir = path.join(dir, entry.name);
       const pkgPath = path.join(pluginDir, 'package.json');
 
       try { await fs.promises.access(pkgPath); } catch { continue; }
@@ -110,6 +136,9 @@ export class PluginManager {
       try {
         const manifest = await this.parseManifest(pluginDir, pkgPath);
         if (!manifest) continue;
+
+        // User-installed plugins override bundled ones
+        if (isBundled && this.plugins.has(manifest.id)) continue;
 
         const enabled = this.pluginConfig.enabled[manifest.id] !== false;
 
@@ -123,7 +152,7 @@ export class PluginManager {
           api: null,
         });
 
-        console.log(`[PluginManager] Discovered plugin: ${manifest.displayName} (${manifest.id})`);
+        console.log(`[PluginManager] Discovered plugin: ${manifest.displayName} (${manifest.id})${isBundled ? ' [bundled]' : ''}`);
       } catch (err) {
         console.error(`[PluginManager] Failed to parse plugin at ${pluginDir}:`, err);
       }
@@ -297,7 +326,9 @@ export class PluginManager {
     if (contributes.settings) {
       for (const [key, setting] of Object.entries(contributes.settings)) {
         if (this.registry.getConfig(pluginId, key) === undefined) {
-          this.registry.setConfig(pluginId, key, setting.default);
+          // Check if we have a saved value first
+          const savedValue = this.pluginConfig.settings[pluginId]?.[key];
+          this.registry.setConfig(pluginId, key, savedValue !== undefined ? savedValue : (setting as any).default);
         }
       }
     }
@@ -519,8 +550,8 @@ export class PluginManager {
       // 清理临时文件
       fs.unlinkSync(tmpTgzPath);
 
-      // 4. 重新发现插件
-      await this.discoverPlugins();
+      // 4. 重新发现插件（只扫描用户目录，bundled 不变）
+      await this.discoverPluginsFromDir(this.pluginsDir, false);
 
       // 5. 安装后立即激活插件
       const instance = this.plugins.get(pluginName);
@@ -585,6 +616,29 @@ export class PluginManager {
   // ==================== IPC 处理 ====================
 
   private registerIPCHandlers(): void {
+    // 查询本地 Agent 状态（Renderer 启动后主动拉取，避免事件丢失）
+    ipcMain.handle('plugin:get-local-agent-status', () => {
+      // 1. 优先返回缓存的完整事件数据（含 modes）
+      if (this.lastLocalAgentData) {
+        return this.lastLocalAgentData;
+      }
+      // 2. 回退：检查 pending 队列（mainWindow 未就绪时暂存的）
+      const pending = this.pendingRendererMessages.find(m => m.channel === 'local-agent:started');
+      if (pending) return pending.data;
+      // 3. 最后回退：从 registry config 读取（插件已启动但事件尚未到达时）
+      const wsUrl = this.registry.getConfig('local-ops-aiagent', '_wsUrl');
+      if (wsUrl) {
+        let modes: any[] | undefined;
+        try {
+          const raw = this.registry.getConfig('local-ops-aiagent', '_modes');
+          if (typeof raw === 'string') modes = JSON.parse(raw);
+          else if (Array.isArray(raw)) modes = raw;
+        } catch {}
+        return { wsUrl, port: 0, modes };
+      }
+      return null;
+    });
+
     ipcMain.handle(PLUGIN_IPC_CHANNELS.LIST_PLUGINS, () => {
       return this.getPluginList();
     });
@@ -638,6 +692,40 @@ export class PluginManager {
     // 卸载插件（删除本地目录）
     ipcMain.handle(PLUGIN_IPC_CHANNELS.UNINSTALL_PLUGIN, async (_event, pluginId: string) => {
       return this.uninstallPlugin(pluginId);
+    });
+
+    // 获取插件设置定义 + 当前值
+    ipcMain.handle('plugin:get-settings', async (_event, pluginId: string) => {
+      const plugin = this.plugins.get(pluginId);
+      if (!plugin) return { success: false, error: 'Plugin not found' };
+
+      const settingsDefs = plugin.manifest.contributes?.settings || {};
+      const currentValues: Record<string, unknown> = {};
+
+      for (const key of Object.keys(settingsDefs)) {
+        currentValues[key] = this.registry.getConfig(pluginId, key);
+      }
+
+      return { success: true, settings: settingsDefs, values: currentValues };
+    });
+
+    // 设置单个插件配置项
+    ipcMain.handle('plugin:set-setting', async (_event, pluginId: string, key: string, value: unknown) => {
+      const plugin = this.plugins.get(pluginId);
+      if (!plugin) return { success: false, error: 'Plugin not found' };
+
+      const oldValue = this.registry.getConfig(pluginId, key);
+      this.registry.setConfig(pluginId, key, value);
+      this.registry.emitEvent(`config:${pluginId}:${key}`, value, oldValue);
+
+      // 持久化到配置文件
+      if (!this.pluginConfig.settings[pluginId]) {
+        this.pluginConfig.settings[pluginId] = {};
+      }
+      this.pluginConfig.settings[pluginId][key] = value;
+      await this.saveConfig();
+
+      return { success: true };
     });
   }
 
@@ -849,10 +937,26 @@ export class PluginManager {
 
   // ==================== 工具方法 ====================
 
+  /** 待发送的事件队列（mainWindow 未就绪时暂存） */
+  private pendingRendererMessages: Array<{ channel: string; data: unknown }> = [];
+  /** 缓存最近一次 local-agent:started 的完整数据（含 modes），供 getLocalAgentStatus 查询 */
+  private lastLocalAgentData: unknown = null;
+
   private sendToRenderer(channel: string, data: unknown): void {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(channel, data);
+    } else {
+      // mainWindow 未就绪时暂存，等 setMainWindow 后补发
+      this.pendingRendererMessages.push({ channel, data });
     }
+  }
+
+  private flushPendingMessages(): void {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    for (const { channel, data } of this.pendingRendererMessages) {
+      this.mainWindow.webContents.send(channel, data);
+    }
+    this.pendingRendererMessages = [];
   }
 
   private notifyStateChange(pluginId: string): void {

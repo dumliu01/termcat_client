@@ -1,16 +1,16 @@
 /**
- * Google AdMob 广告平台（script 模式）
+ * Google AdMob Ad Platform (script mode)
  *
- * AdMob 是纯移动端 SDK，无 S2S 广告内容 API。
- * 采用 Google Ad Manager 广告标签方案，通过 iframe sandbox 渲染。
+ * AdMob is a mobile-only SDK without S2S ad content API.
+ * Uses Google Ad Manager ad tag solution, rendered via iframe sandbox.
  *
- * 数据流：
- * 客户端 → POST /api/v1/ads/script/admob → termcat_server 返回 HTML 片段
- * （含 googletag.defineSlot + googletag.display + 暗色主题 CSS + 高度上报脚本）
+ * Data flow:
+ * Client → POST /api/v1/ads/script/admob → termcat_server returns HTML snippet
+ * (includes googletag.defineSlot + googletag.display + dark theme CSS + height reporting script)
  * → AdContent { renderMode: 'script', scriptHtml: '...' }
- * → AdMessageBubble 创建 iframe sandbox 渲染
+ * → AdMessageBubble creates iframe sandbox for rendering
  *
- * 文档: https://developers.google.com/ad-manager
+ * Docs: https://developers.google.com/ad-manager
  */
 
 import { IAdPlatform, AdPlatformConfig, AdRequestContext, AdContent, AdPlatformType } from '../types';
@@ -36,7 +36,7 @@ export class AdMobPlatform implements IAdPlatform {
     if (!this.initialized) return [];
 
     try {
-      // 通过 TermCat Server 获取 Ad Manager 广告标签 HTML 片段
+      // Get Ad Manager ad tag HTML snippet via TermCat Server
       const response = await apiService.fetchScriptAds('admob', {
         ad_unit_id: this.config.slotId,
         theme: 'dark',
@@ -69,7 +69,7 @@ export class AdMobPlatform implements IAdPlatform {
     try {
       await apiService.reportAdImpression(adId, this.platformId);
     } catch {
-      // fire-and-forget: Google 脚本自带展示追踪
+      // fire-and-forget: Google scripts have built-in impression tracking
     }
   }
 

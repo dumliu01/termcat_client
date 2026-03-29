@@ -1,18 +1,20 @@
 /**
- * AI 运维面板（插件版）
+ * AI Ops Panel (Plugin version)
  *
- * 基于 msg-viewer 通用控件 + toMsgBlocks 适配器。
- * 业务逻辑复用 useAIAgent hook，UI 使用 MsgViewer 展示。
+ * Based on msg-viewer common controls + toMsgBlocks adapter.
+ * Business logic reuses useAIAgent hook, UI uses MsgViewer for display.
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { VirtuosoHandle } from 'react-virtuoso';
-import type { User, AIOperationStep } from '@/utils/types';
+import type { User, AIOperationStep, AIModeInfo } from '@/utils/types';
 import type { AIOpsMessage } from '@/features/terminal/types';
 import type { ConversationMeta } from '@/core/chat/types';
 import type { MsgViewerActions, PasswordState, MsgBlock } from '@/shared-components/msg-viewer/types';
 import { MsgViewer } from '@/shared-components/msg-viewer';
 import { useAIAgent } from '@/features/terminal/hooks/useAIAgent';
+import { useAIService } from '@/features/shared/contexts/AIServiceContext';
+import { useExtraModes, useExtraModels } from '@/features/terminal/hooks/useBuiltinPlugins';
 import { chatHistoryClientService } from '@/core/chat/chatHistoryService';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 import { useI18n } from '@/base/i18n/I18nContext';
@@ -26,9 +28,12 @@ import { AIOpsInput } from './components/AIOpsInput';
 import { AgentSuggestion } from './components/AgentSuggestion';
 import { InteractionDialog } from './components/InteractionDialog';
 import { InsufficientGemsModal } from './components/InsufficientGemsModal';
+import { PurchaseDialog } from './components/PurchaseDialog';
+import { DeviceActivationDialog } from './components/DeviceActivationDialog';
 import { ConversationList } from './components/ConversationList';
 import { builtinPluginManager } from '../builtin-plugin-manager';
 import { AI_OPS_EVENTS } from '../events';
+import { licenseService } from '@/core/license/licenseService';
 
 export interface AIOpsPluginPanelProps {
   user: User | null;
@@ -61,8 +66,79 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
 }) => {
   const t = useT();
   const { language } = useI18n();
+  const { availableModeInfos: serverModes } = useAIService();
+  const pluginModes = useExtraModes();
+  const pluginModels = useExtraModels();
 
-  // ── 本地 UI 状态 ──
+  // Merge server + plugin modes and models, inject license locked status
+  const [licenseVersion, setLicenseVersion] = useState(0);
+  const mergedModes = useMemo<AIModeInfo[]>(() => {
+    void licenseVersion; // trigger re-compute on license change
+    const allModes = [...(serverModes || []), ...pluginModes];
+    return allModes.map(mode => {
+      const licenseFeature = mode.pluginData?.licenseFeature;
+      if (licenseFeature) {
+        return {
+          ...mode,
+          locked: !licenseService.isFeatureUnlocked(licenseFeature),
+          price: mode.pluginData?.licensePrice,
+        };
+      }
+      return mode;
+    });
+  }, [serverModes, pluginModes, licenseVersion]);
+
+  const mergedModels = useMemo(() => {
+    const all = [...(externalModels || []), ...pluginModels];
+    // Deduplicate by model id (server models take priority)
+    const seen = new Set<string>();
+    return all.filter(m => { if (seen.has(m.id)) return false; seen.add(m.id); return true; });
+  }, [externalModels, pluginModels]);
+
+  // ── License Dialog State ──
+  const [showPurchaseDialog, setShowPurchaseDialog] = useState(false);
+  const [showDeviceActivation, setShowDeviceActivation] = useState(false);
+  const [deviceActivationData, setDeviceActivationData] = useState<any>(null);
+
+  // Listen for license changes to refresh merged modes
+  useEffect(() => {
+    const unsubscribe = licenseService.onChange(() => {
+      setLicenseVersion(v => v + 1);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Listen for new device detection
+  useEffect(() => {
+    const unsubscribe = licenseService.on('new-device-detected', (cache) => {
+      setDeviceActivationData(cache);
+      setShowDeviceActivation(true);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Handler for purchase
+  const handlePurchaseClick = useCallback(() => {
+    setShowPurchaseDialog(false);
+    // Read product/price from the first locked mode's pluginData (declared by plugin)
+    const lockedMode = mergedModes.find(m => m.locked && m.pluginData?.licenseProduct);
+    builtinPluginManager.emit(AI_OPS_EVENTS.OPEN_PAYMENT, {
+      type: lockedMode?.pluginData?.licenseProduct || 'agent_pack',
+      amount: lockedMode?.pluginData?.licensePrice || 69,
+    });
+  }, [mergedModes]);
+
+  // Handler for device activation
+  const handleActivateDevice = useCallback(async () => {
+    try {
+      await licenseService.activateDevice();
+      setShowDeviceActivation(false);
+    } catch (e) {
+      console.error('Activation failed:', e);
+    }
+  }, []);
+
+  // ── Local UI State ──
   const [input, setInput] = useState('');
   const [isComposing, setIsComposing] = useState(false);
   const [showGuestWarning, setShowGuestWarning] = useState(false);
@@ -73,7 +149,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // ── 广告管理 ──
+  // ── Ad Management ──
   const adManager = useAdManager({
     user,
     messages: [],
@@ -81,7 +157,17 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     sessionId,
   });
 
-  // ── 核心 AI hook ──
+  // Track current mode to pass modeInfo to useAIAgent
+  // Initialize from localStorage to match useAIAgent's initial mode (avoids flash)
+  const [currentMode, setCurrentMode] = useState<string>(() => {
+    return localStorage.getItem('termcat_ai_mode') || 'ask';
+  });
+  const currentModeInfo = useMemo(() =>
+    mergedModes.find(m => m.id === currentMode),
+    [mergedModes, currentMode]
+  );
+
+  // ── Core AI Hook ──
   const ai = useAIAgent({
     token: user?.token,
     userId: user?.id,
@@ -89,13 +175,70 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     hostId,
     hostName,
     language,
-    initialModels: externalModels,
+    initialModels: mergedModels,
     onGemsUpdated,
     connectionType,
     terminalId,
+    modeInfo: currentModeInfo,
+    translateProviderError: useCallback((code: string, paramsJson?: string) => {
+      // Read error translations from plugin's pluginData (shipped by external plugin, not hardcoded here)
+      const translations = currentModeInfo?.pluginData?.errorTranslations as Record<string, Record<string, string>> | undefined;
+      const langMap = translations?.[language] ?? translations?.['zh'];
+      const template = langMap?.[code];
+      if (!template) return null;
+      if (!paramsJson) return template;
+      try {
+        const params = JSON.parse(paramsJson) as Record<string, string>;
+        return template.replace(/\{(\w+)\}/g, (_: string, key: string) => params[key] ?? key);
+      } catch { return template; }
+    }, [currentModeInfo, language]),
   });
 
-  // ── MsgViewer 适配 ──
+  // Sync mode from ai hook to local state (for modeInfo lookup)
+  useEffect(() => {
+    setCurrentMode(ai.mode);
+  }, [ai.mode]);
+
+  // Filter models by current mode's allowedModels
+  const filteredModels = useMemo(() => {
+    if (currentModeInfo?.allowedModels && currentModeInfo.allowedModels.length > 0) {
+      const allowed = new Set(currentModeInfo.allowedModels);
+      const filtered = mergedModels.filter(m => allowed.has(m.id));
+      if (filtered.length > 0) return filtered;
+    }
+    // Fallback: no allowedModels or no matches — show all models from same source
+    if (currentModeInfo?.source === 'plugin') {
+      return pluginModels.length > 0 ? pluginModels : mergedModels;
+    }
+    return (externalModels || []).length > 0 ? (externalModels || []) : mergedModels;
+  }, [currentModeInfo, mergedModels, pluginModels, externalModels]);
+
+  // Auto-switch model when mode changes and current model is not in filtered list
+  useEffect(() => {
+    if (filteredModels.length > 0 && !filteredModels.some(m => m.id === ai.selectedModel)) {
+      ai.setSelectedModel(filteredModels[0].id);
+    }
+  }, [ai.mode, filteredModels]);
+
+  // Auto-fallback: if current mode no longer exists in available modes, switch to default.
+  // Key: wait for BOTH server modes AND plugin modes to be ready before deciding.
+  // pluginModesReady = true once plugin modes have been registered at least once this session.
+  const [pluginModesReady, setPluginModesReady] = useState(false);
+  useEffect(() => {
+    if (pluginModes.length > 0) setPluginModesReady(true);
+  }, [pluginModes.length]);
+
+  useEffect(() => {
+    // Don't fallback until all mode sources are ready
+    if (mergedModes.length === 0) return;
+    if (mergedModes.some(m => m.id === ai.mode)) return;
+    // If mode looks like a plugin mode but plugins haven't loaded yet, wait
+    if (!pluginModesReady) return;
+    // Mode is truly gone — fallback
+    ai.setMode(mergedModes[0].id);
+  }, [mergedModes, ai.mode, pluginModesReady]);
+
+  // ── MsgViewer Adapter ──
 
   const blocks = useMemo<MsgBlock[]>(
     () => toMsgBlocks(ai.messages, adManager.adMessages, adManager.shouldShowAd, language),
@@ -108,7 +251,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     showInput: ai.showPasswordInput || false,
   }), [ai.passwordInput, ai.skipPasswordPrompt, ai.showPasswordInput]);
 
-  /** 映射 AI status → MsgViewer loadingStatus */
+  /** Map AI status → MsgViewer loadingStatus */
   const loadingStatus = useMemo<'thinking' | 'generating' | 'waiting_user'>(() => {
     if (ai.aiStatus === 'generating') return 'generating';
     if (ai.aiStatus === 'waiting_user') return 'waiting_user';
@@ -121,13 +264,13 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     onExecuteCommand: onExecute,
 
     onStepConfirm: (blockId, stepIndex, command, risk, needsConfirmation) => {
-      // 检查是否是 tool_use bash 命令（需要批准权限）
+      // Check if it's a tool_use bash command (needs permission approval)
       const permissionId = findPermissionId(ai.messages, blockId);
       if (permissionId) {
         ai.approveToolPermission(permissionId);
         return;
       }
-      // 常规 step confirm
+      // Regular step confirm
       const info = resolveTaskInfo(ai.messages, blockId);
       if (info) {
         const step: AIOperationStep & { needsConfirmation?: boolean } = {
@@ -142,14 +285,14 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     },
 
     onStepCancel: (blockId, stepIndex) => {
-      // 查找该步骤对应的消息，判断当前状态
+      // Find the message corresponding to this step, determine current status
       const targetMsg = ai.messages.find(
         msg => msg.id === blockId.replace(/_step$/, '') || msg.id === blockId.replace(/_tool$/, '')
       );
       const isExecuting = targetMsg?.taskState?.status === 'executing';
 
       if (isExecuting) {
-        // 命令正在执行中 → 发送 Ctrl+C 中断（和终端 Ctrl+C 效果一致）
+        // Command is executing → send Ctrl+C to interrupt (same effect as terminal Ctrl+C)
         const info = resolveTaskInfo(ai.messages, blockId);
         if (info) {
           ai.cancelExecute(info.taskId, info.stepIndex);
@@ -157,7 +300,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
         return;
       }
 
-      // 未执行（等待确认阶段）→ deny permission 或 cancel
+      // Not executed (waiting for confirmation) → deny permission or cancel
       const permissionId = findPermissionId(ai.messages, blockId);
       if (permissionId) {
         ai.denyToolPermission(permissionId, t.userDenied);
@@ -174,6 +317,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     onPasswordSkipChange: (skip) => ai.setSkipPasswordPrompt(skip),
 
     onToolApprove: (permissionId) => ai.approveToolPermission(permissionId),
+    onToolApproveAlways: (permissionId) => ai.approveToolPermission(permissionId, true),
     onToolDeny: (permissionId, reason) => ai.denyToolPermission(permissionId, reason),
 
     onChoiceSubmit: (blockId, choice, customInput) => {
@@ -194,7 +338,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     onFeedbackContinue: (message) => ai.continueFeedback(message),
 
     onAdAction: (blockId) => {
-      // 查找对应的 adMessage
+      // Find the corresponding adMessage
       const adMsg = adManager.adMessages.find(a => a.id === blockId);
       if (adMsg) {
         import('@/core/ad/adService').then(({ adService }) => {
@@ -227,13 +371,13 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     ai.setAutoScroll(atBottom);
   }, [ai]);
 
-  // Loading 结束时兜底滚动：最后一条消息高度变化（"复制回复"按钮、积分统计等出现），
-  // followOutput 不追踪已有 item 的高度变化，需要延迟再滚一次。
-  // Loading 开始时的滚动已由 MsgViewer 内部处理。
+  // Fallback scroll when loading ends: last message height may change ("Copy Reply" button, points count, etc. appear),
+  // followOutput doesn't track existing item height changes, need to scroll once more after delay.
+  // Scroll when loading starts is handled internally by MsgViewer.
   const prevIsLoadingRef = useRef(false);
   useEffect(() => {
     if (prevIsLoadingRef.current && !ai.isLoading && ai.autoScroll) {
-      // 兜底：markdown 渲染可能需要额外时间，150ms 后再滚一次
+      // Fallback: markdown rendering may need extra time, scroll once more after 150ms
       const timer = setTimeout(() => {
         virtuosoRef.current?.scrollTo({ top: Number.MAX_SAFE_INTEGER, behavior: 'smooth' });
       }, 150);
@@ -284,7 +428,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     ai.newConversation();
   }, [ai]);
 
-  // ── 事件处理 ──
+  // ── Event Handling ──
 
   const handleSend = useCallback(() => {
     if (!input.trim() || ai.isLoading) return;
@@ -310,13 +454,13 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     ai.stopTask();
   }, [ai]);
 
-  // ── 渲染 ──
+  // ── Render ──
 
   if (!isVisible) return null;
 
   return (
     <div className="flex flex-col h-full relative" style={{ backgroundColor: 'var(--bg-sidebar)' }}>
-      {/* 头部 */}
+      {/* Header */}
       <AIOpsHeader
         isConnected={ai.isConnected}
         connectionStatus={ai.connectionStatus}
@@ -328,9 +472,11 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
         guestCannotClose={adManager.guestCannotClose}
         onShowHistory={handleShowHistory}
         onNewConversation={handleNewConversation}
+        hasCodeSession={ai.hasCodeSession}
+        onDisconnectCodeSession={ai.disconnectCodeSession}
       />
 
-      {/* 消息列表 — 使用 MsgViewer */}
+      {/* Message List — Uses MsgViewer */}
       <MsgViewer
         blocks={blocks}
         actions={actions}
@@ -343,7 +489,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
         virtuosoRef={virtuosoRef}
       />
 
-      {/* Agent 模式建议 */}
+      {/* Agent Mode Suggestion */}
       {ai.showAgentSuggestion && ai.mode === 'ask' && !ai.isLoading && (
         <AgentSuggestion
           onSwitchToAgent={() => {
@@ -353,7 +499,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
         />
       )}
 
-      {/* 交互式确认对话框 */}
+      {/* Interactive Confirmation Dialog */}
       {ai.waitingForInteraction && ai.interactionPrompt && (
         <InteractionDialog
           prompt={ai.interactionPrompt}
@@ -362,20 +508,20 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
         />
       )}
 
-      {/* 游客提示 */}
+      {/* Guest Warning */}
       {showGuestWarning && (
         <div className="mx-3 mb-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-medium animate-in fade-in duration-200">
           {t.guestAiDisabled}
         </div>
       )}
 
-      {/* 输入区域 */}
+      {/* Input Area */}
       <AIOpsInput
         input={input}
         isLoading={ai.isLoading}
         mode={ai.mode}
         selectedModel={ai.selectedModel}
-        availableModels={ai.availableModels}
+        availableModels={filteredModels}
         attachedFiles={ai.attachedFiles}
         isComposing={isComposing}
         onInputChange={setInput}
@@ -385,25 +531,26 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
         onRemoveAttachment={ai.removeAttachment}
         onCompositionStart={() => setIsComposing(true)}
         onCompositionEnd={() => setIsComposing(false)}
-        onModeChange={ai.setMode}
+        onModeChange={(m: string) => ai.setMode(m as any)}
         onModelChange={ai.setSelectedModel}
         sshMode={ai.sshMode}
         onSshModeChange={ai.setSshMode}
-        availableModes={externalModes}
+        availableModeInfos={mergedModes}
         guestDisabled={adManager.guestCannotUseAI}
+        onPurchase={() => setShowPurchaseDialog(true)}
       />
 
-      {/* 积分不足弹窗 */}
+      {/* Insufficient Gems Modal */}
       {ai.showInsufficientGems && (
         <InsufficientGemsModal
           isOpen={ai.showInsufficientGems}
           onClose={() => ai.setShowInsufficientGems(false)}
           onRecharge={() => builtinPluginManager.emit(AI_OPS_EVENTS.OPEN_MEMBERSHIP, null)}
-          mode={ai.mode === 'code' ? 'agent' : ai.mode}
+          mode={ai.mode === 'code' || ai.mode === 'x-agent' ? 'agent' : ai.mode}
         />
       )}
 
-      {/* 会话记录列表 */}
+      {/* Conversation History List */}
       {showHistoryList && (
         <ConversationList
           conversations={conversations}
@@ -415,6 +562,26 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
           loading={historyLoading}
         />
       )}
+
+      {/* Purchase Dialog */}
+      <PurchaseDialog
+        open={showPurchaseDialog}
+        onClose={() => setShowPurchaseDialog(false)}
+        onPurchaseClick={handlePurchaseClick}
+        onActivateDevice={async () => {
+          await licenseService.activateDevice();
+          setShowPurchaseDialog(false);
+        }}
+      />
+
+      {/* Device Activation Dialog */}
+      <DeviceActivationDialog
+        open={showDeviceActivation}
+        onClose={() => setShowDeviceActivation(false)}
+        onActivate={handleActivateDevice}
+        machinesUsed={deviceActivationData?.machinesUsed || 0}
+        machinesMax={deviceActivationData?.machinesMax || 3}
+      />
     </div>
   );
 };

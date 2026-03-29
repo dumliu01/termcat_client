@@ -1,7 +1,7 @@
 /**
- * SSH Host 连接
+ * SSH host connection
  *
- * 组合 SSHTerminalBackend，管理 SSH 连接生命周期。
+ * Composes SSHTerminalBackend, manages SSH connection lifecycle.
  */
 
 import type { IHostConnection, HostConnectionType } from './IHostConnection';

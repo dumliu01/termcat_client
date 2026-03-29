@@ -1,8 +1,8 @@
 /**
- * 终端会话管理 Hook
+ * Terminal Session Manager Hook
  *
- * 管理 activeSessions / currentSessionId 状态，
- * 以及 Tab 拖拽排序、重命名等交互状态。
+ * Manages activeSessions / currentSessionId state,
+ * and tab drag-to-sort, rename and other interaction states.
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -13,11 +13,11 @@ export function useSessionManager(setActiveView: (v: ViewState) => void) {
   const [activeSessions, setActiveSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
-  // Tab 拖拽排序
+  // Tab drag-to-sort
   const dragTabRef = useRef<{ sessionId: string; startIndex: number } | null>(null);
   const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
 
-  // Tab 重命名
+  // Tab rename
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
@@ -69,14 +69,14 @@ export function useSessionManager(setActiveView: (v: ViewState) => void) {
   }, [setActiveView]);
 
   /**
-   * 复制会话：获取源 session 当前路径，创建同类型的新 session
-   * 上层无需关心 local / ssh 差异
+   * Duplicate session: get source session current path, create new session of same type
+   * Upper layer doesn't need to care about local / ssh difference
    */
   const duplicateSession = useCallback(async (sourceSession: Session) => {
     const session = activeSessions.find(s => s.id === sourceSession.id) || sourceSession;
     const isLocal = session.host.connectionType === 'local';
 
-    // 统一获取当前路径
+    // Unified way to get current path
     let cwd: string | undefined;
     if (session.connectionId && (window as any).electron?.getSessionCwd) {
       const dir = await (window as any).electron.getSessionCwd(
@@ -106,7 +106,7 @@ export function useSessionManager(setActiveView: (v: ViewState) => void) {
     });
   }, [setActiveView]);
 
-  // 当 currentSessionId 指向的 session 已被移除时，自动切换到下一个可用 session
+  // When currentSessionId points to a session that has been removed, automatically switch to next available session
   useEffect(() => {
     if (currentSessionId && !activeSessions.find(s => s.id === currentSessionId)) {
       if (activeSessions.length > 0) {
@@ -133,11 +133,11 @@ export function useSessionManager(setActiveView: (v: ViewState) => void) {
     duplicateSession,
     closeSession,
     resetSessions,
-    // 拖拽
+    // drag
     dragTabRef,
     dragOverTabId,
     setDragOverTabId,
-    // 重命名
+    // rename
     renamingTabId,
     setRenamingTabId,
     renameValue,

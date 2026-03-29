@@ -1,5 +1,5 @@
 /**
- * Host 连接工厂
+ * Host connection factory
  */
 
 import type { IHostConnection } from './IHostConnection';

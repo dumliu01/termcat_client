@@ -3,10 +3,10 @@ import { FileItem } from '@/utils/types';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
 /**
- * SSH 文件系统操作
+ * SSH file system operations
  *
- * 通过 sshExecute 执行 Shell 命令操作远程文件系统。
- * 能力层组件，由 SSHHostConnection 持有。
+ * Operates remote file system by executing shell commands via sshExecute.
+ * Capability layer component, held by SSHHostConnection.
  */
 export class SSHFsHandler implements IFsHandler {
   private connectionId: string;
@@ -16,9 +16,9 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 列出指定目录的文件
-   * @param path 目录路径
-   * @returns 文件列表
+   * List files in specified directory
+   * @param path Directory path
+   * @returns File list
    */
   async listFiles(path: string): Promise<FileItem[]> {
     try {
@@ -26,7 +26,7 @@ export class SSHFsHandler implements IFsHandler {
         throw new Error('Electron API not available');
       }
 
-      // 使用ls -alh命令获取文件列表，使用--time-style参数格式化时间
+      // Use ls -alh command to get file list, use --time-style parameter to format time
       const command = `ls -alh --time-style="+%Y/%m/%d %H:%M" "${path}" 2>/dev/null || ls -alh "${path}"`;
 
       logger.debug(LOG_MODULE.HTTP, 'file.list.fetching', 'Fetching file list', {
@@ -52,16 +52,16 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 解析ls命令的输出
-   * @param output ls命令输出
-   * @param currentPath 当前路径
-   * @returns 文件列表
+   * Parse ls command output
+   * @param output ls command output
+   * @param currentPath Current path
+   * @returns File list
    */
   private parseFileList(output: string, currentPath: string): FileItem[] {
     const files: FileItem[] = [];
     const lines = output.trim().split('\n');
 
-    // 跳过第一行（total xxx）
+    // Skip first line (total xxx)
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
@@ -84,9 +84,9 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 解析单行文件信息
-   * Linux --time-style格式: drwxr-xr-x 2 user group 4.0K 2026/01/16 11:23 filename
-   * macOS/BSD默认格式:      drwxr-xr-x 2 user group 4.0K Jan 16 00:39 filename
+   * Parse single line of file info
+   * Linux --time-style format: drwxr-xr-x 2 user group 4.0K 2026/01/16 11:23 filename
+   * macOS/BSD default format:      drwxr-xr-x 2 user group 4.0K Jan 16 00:39 filename
    */
   private parseFileLine(line: string): FileItem | null {
     const parts = line.split(/\s+/);
@@ -99,7 +99,7 @@ export class SSHFsHandler implements IFsHandler {
     const group = parts[3];
     const size = parts[4];
 
-    // 判断日期格式：--time-style 格式 parts[5] 含 "/" ，macOS 格式 parts[5] 是月份名
+    // Determine date format: --time-style format parts[5] contains "/", macOS format parts[5] is month name
     let mtime: string;
     let nameIndex: number;
     if (/^\d{4}\//.test(parts[5])) {
@@ -107,33 +107,33 @@ export class SSHFsHandler implements IFsHandler {
       mtime = `${parts[5]} ${parts[6]}`;
       nameIndex = 7;
     } else {
-      // macOS/BSD: "Jan 16 00:39" 或 "Jan 16 2025"
+      // macOS/BSD: "Jan 16 00:39" or "Jan 16 2025"
       mtime = `${parts[5]} ${parts[6]} ${parts[7]}`;
       nameIndex = 8;
     }
 
     const name = parts.slice(nameIndex).join(' ');
 
-    // 判断是否是目录
+    // Determine if directory
     const isDir = permission.startsWith('d');
 
-    // 判断是否是符号链接
+    // Determine if symlink
     const isSymlink = permission.startsWith('l');
 
-    // 处理符号链接的名称（移除 -> target部分）
+    // Handle symlink name (remove -> target part)
     let fileName = name;
     if (isSymlink && name.includes(' -> ')) {
       fileName = name.split(' -> ')[0];
     }
 
-    // 确定文件类型
-    let type = '文件';
+    // Determine file type
+    let type = 'File';
     if (isDir) {
-      type = '文件夹';
+      type = 'Directory';
     } else if (isSymlink) {
-      type = '链接';
+      type = 'Link';
     } else if (permission.includes('x')) {
-      type = '可执行文件';
+      type = 'Executable';
     }
 
     return {
@@ -148,10 +148,10 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 获取目录树结构
-   * @param path 根路径
-   * @param maxDepth 最大深度
-   * @returns 目录树
+   * Get directory tree structure
+   * @param path Root path
+   * @param maxDepth Maximum depth
+   * @returns Directory tree
    */
   async getDirectoryTree(path: string = '/', maxDepth: number = 3): Promise<DirectoryNode[]> {
     try {
@@ -175,13 +175,13 @@ export class SSHFsHandler implements IFsHandler {
         msg: error instanceof Error ? error.message : 'Unknown error',
         path,
       });
-      // 返回基本的根目录树
+      // Return basic root directory tree
       return [{ name: path, path, children: [] }];
     }
   }
 
   /**
-   * 构建目录树结构
+   * Build directory tree structure
    */
   private buildDirectoryTree(output: string, rootPath: string): DirectoryNode[] {
     const paths = output.trim().split('\n').filter(p => p);
@@ -222,10 +222,10 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 获取文件内容（用于预览）
-   * @param filePath 文件路径
-   * @param maxLines 最大行数
-   * @returns 文件内容
+   * Get file content (for preview)
+   * @param filePath File path
+   * @param maxLines Maximum lines
+   * @returns File content
    */
   async getFileContent(filePath: string, maxLines: number = 100): Promise<string> {
     try {
@@ -249,15 +249,15 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 读取远程文件内容用于编辑（限制文件大小）
-   * @param remotePath 远程文件完整路径
-   * @param maxSizeKB 最大文件大小(KB)，默认2048KB
-   * @returns 文件内容
+   * Read remote file content for editing (with file size limit)
+   * @param remotePath Remote file full path
+   * @param maxSizeKB Maximum file size (KB), default 2048KB
+   * @returns File content
    */
   async readFileForEdit(remotePath: string, maxSizeKB: number = 2048): Promise<string> {
     try {
       if (!window.electron) throw new Error('Electron API not available');
-      // 先检查文件大小
+      // First check file size
       const sizeResult = await window.electron.sshExecute(
         this.connectionId,
         `stat -c%s "${remotePath}" 2>/dev/null || stat -f%z "${remotePath}" 2>/dev/null`
@@ -266,7 +266,7 @@ export class SSHFsHandler implements IFsHandler {
       if (fileSize > maxSizeKB * 1024) {
         throw new Error(`File too large: ${(fileSize / 1024).toFixed(0)}KB (max ${maxSizeKB}KB)`);
       }
-      // 使用base64编码读取，避免特殊字符问题
+      // Use base64 encoding to read, avoid special character issues
       const result = await window.electron.sshExecute(
         this.connectionId,
         `cat "${remotePath}" | base64`
@@ -274,7 +274,7 @@ export class SSHFsHandler implements IFsHandler {
       if (result.exitCode !== 0) throw new Error(result.output || 'Failed to read file');
       const base64Str = (result.output || '').replace(/\s/g, '');
       if (!base64Str) return '';
-      // 解码base64
+      // Decode base64
       const binaryStr = atob(base64Str);
       const bytes = new Uint8Array(binaryStr.length);
       for (let i = 0; i < binaryStr.length; i++) {
@@ -290,14 +290,14 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 写入文件内容到远程（通过base64编码传输，安全处理特殊字符）
-   * @param remotePath 远程文件完整路径
-   * @param content 文件内容
+   * Write file content to remote (via base64 encoding, safely handles special characters)
+   * @param remotePath Remote file full path
+   * @param content File content
    */
   async writeFileContent(remotePath: string, content: string): Promise<void> {
     try {
       if (!window.electron) throw new Error('Electron API not available');
-      // UTF-8编码后base64
+      // UTF-8 encode then base64
       const encoder = new TextEncoder();
       const bytes = encoder.encode(content);
       let binary = '';
@@ -305,7 +305,7 @@ export class SSHFsHandler implements IFsHandler {
         binary += String.fromCharCode(bytes[i]);
       }
       const base64Str = btoa(binary);
-      // 分块写入避免命令行过长（每块64KB base64 ≈ 48KB原始数据）
+      // Write in chunks to avoid command line too long (each chunk 64KB base64 ≈ 48KB raw data)
       const chunkSize = 65536;
       if (base64Str.length <= chunkSize) {
         const result = await window.electron.sshExecute(
@@ -314,7 +314,7 @@ export class SSHFsHandler implements IFsHandler {
         );
         if (result.exitCode !== 0) throw new Error(result.output || 'Write failed');
       } else {
-        // 大文件分块写入
+        // Large file: write in chunks
         const tmpPath = `/tmp/termcat_edit_${Date.now()}.b64`;
         for (let i = 0; i < base64Str.length; i += chunkSize) {
           const chunk = base64Str.slice(i, i + chunkSize);
@@ -341,15 +341,15 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 以sudo权限写入文件内容到远程（通过base64编码传输 + sudo tee写入）
-   * @param remotePath 远程文件完整路径
-   * @param content 文件内容
-   * @param password sudo密码
+   * Write file content to remote with sudo (via base64 encoding + sudo tee)
+   * @param remotePath Remote file full path
+   * @param content File content
+   * @param password sudo password
    */
   async writeFileContentSudo(remotePath: string, content: string, password: string): Promise<void> {
     try {
       if (!window.electron) throw new Error('Electron API not available');
-      // UTF-8编码后base64
+      // UTF-8 encode then base64
       const encoder = new TextEncoder();
       const bytes = encoder.encode(content);
       let binary = '';
@@ -357,10 +357,10 @@ export class SSHFsHandler implements IFsHandler {
         binary += String.fromCharCode(bytes[i]);
       }
       const base64Str = btoa(binary);
-      // 分块写入避免命令行过长（每块64KB base64 ≈ 48KB原始数据）
+      // Write in chunks to avoid command line too long (each chunk 64KB base64 ≈ 48KB raw data)
       const chunkSize = 65536;
       if (base64Str.length <= chunkSize) {
-        // 小文件：直接用 sudo tee 写入
+        // Small file: write directly with sudo tee
         const result = await window.electron.sshExecute(
           this.connectionId,
           `echo '${password}' | sudo -S sh -c "echo '${base64Str}' | base64 -d > '${remotePath}'" 2>&1`
@@ -373,7 +373,7 @@ export class SSHFsHandler implements IFsHandler {
           throw new Error(output || 'Sudo write failed');
         }
       } else {
-        // 大文件：先分块写到临时文件，再用sudo移动
+        // Large file: write chunks to temp file first, then move with sudo
         const tmpPath = `/tmp/termcat_edit_${Date.now()}.b64`;
         for (let i = 0; i < base64Str.length; i += chunkSize) {
           const chunk = base64Str.slice(i, i + chunkSize);
@@ -384,13 +384,13 @@ export class SSHFsHandler implements IFsHandler {
           );
           if (result.exitCode !== 0) throw new Error(result.output || 'Write chunk failed');
         }
-        // 用sudo将base64解码后写入目标文件
+        // Use sudo to decode base64 and write to target file
         const decodeResult = await window.electron.sshExecute(
           this.connectionId,
           `echo '${password}' | sudo -S sh -c "base64 -d < '${tmpPath}' > '${remotePath}'" 2>&1 && rm -f "${tmpPath}"`
         );
         if (decodeResult.exitCode !== 0) {
-          // 清理临时文件
+          // Clean up temp file
           await window.electron.sshExecute(this.connectionId, `rm -f "${tmpPath}"`);
           const output = decodeResult.output || '';
           if (output.includes('incorrect password') || output.includes('Sorry, try again')) {
@@ -409,7 +409,7 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 重命名文件或目录
+   * Rename file or directory
    */
   async rename(dirPath: string, oldName: string, newName: string): Promise<void> {
     try {
@@ -426,7 +426,7 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 删除文件或目录 (SFTP方式)
+   * Delete file or directory (SFTP method)
    */
   async deleteFile(dirPath: string, name: string, isDir: boolean): Promise<void> {
     try {
@@ -443,7 +443,7 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 新建目录
+   * Create new directory
    */
   async mkdir(dirPath: string, name: string): Promise<void> {
     try {
@@ -459,7 +459,7 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 新建文件
+   * Create new file
    */
   async createFile(dirPath: string, name: string): Promise<void> {
     try {
@@ -475,7 +475,7 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 修改文件权限
+   * Change file permissions
    */
   async chmod(dirPath: string, name: string, octal: string): Promise<void> {
     try {
@@ -491,10 +491,10 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 打包多个文件为tar.gz
-   * @param dirPath 文件所在目录
-   * @param fileNames 要打包的文件名列表
-   * @returns 远程临时文件路径
+   * Pack multiple files into tar.gz
+   * @param dirPath Directory containing files
+   * @param fileNames List of file names to pack
+   * @returns Remote temporary file path
    */
   async packFiles(dirPath: string, fileNames: string[]): Promise<string> {
     try {
@@ -514,7 +514,7 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 删除远程临时文件
+   * Delete remote temporary file
    */
   async removeTempFile(remotePath: string): Promise<void> {
     try {
@@ -526,9 +526,9 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 获取文件统计信息
-   * @param filePath 文件路径
-   * @returns 文件统计信息
+   * Get file statistics
+   * @param filePath File path
+   * @returns File statistics
    */
   async getFileStats(filePath: string): Promise<FileStats> {
     try {
@@ -560,7 +560,7 @@ export class SSHFsHandler implements IFsHandler {
   }
 
   /**
-   * 获取初始路径（通过 SSH 获取终端当前目录）
+   * Get initial path (via SSH to get terminal current directory)
    */
   async downloadFile(remotePath: string, localPath: string): Promise<string> {
     return (window as any).electron.downloadFile(this.connectionId, remotePath, localPath);

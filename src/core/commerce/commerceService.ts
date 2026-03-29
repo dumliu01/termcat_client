@@ -1,11 +1,11 @@
 /**
- * 商业化配置服务
+ * Commerce Configuration Service
  *
- * 职责：
- * - 从服务器拉取商业化配置（订阅版本、价格、权益、积分包）
- * - 本地缓存配置（localStorage）
- * - 权益查询（feature 检查、主机上限、广告开关等）
- * - 版本兼容性处理（Feature 注册表）
+ * Responsibilities:
+ * - Fetch commerce config from server (subscription tiers, prices, benefits, gem packages)
+ * - Local cache config (localStorage)
+ * - Benefits query (feature checks, host limits, ad switches, etc.)
+ * - Version compatibility handling (Feature registry)
  */
 
 import { CommerceConfig, TierConfig, SyncSeqs } from './types';
@@ -15,9 +15,9 @@ import { logger, LOG_MODULE } from '@/base/logger/logger';
 
 const log = logger.withFields({ module: LOG_MODULE.APP });
 
-// ============ 版本兼容性：Feature 注册表 ============
+// ============ Version Compatibility: Feature Registry ============
 
-/** 当前客户端版本支持的所有 feature ID */
+/** All feature IDs supported by current client version */
 const SUPPORTED_FEATURES: Set<string> = new Set([
   'smart_completion',
   'cloud_sync',
@@ -31,7 +31,7 @@ const SUPPORTED_FEATURES: Set<string> = new Set([
   'dedicated_support',
 ]);
 
-// ============ 常量 ============
+// ============ Constants ============
 
 const STORAGE_KEY_CONFIG = 'termcat_commerce_config';
 const STORAGE_KEY_SEQS = 'termcat_seqs';
@@ -46,33 +46,30 @@ class CommerceService {
     this.loadFromCache();
   }
 
-  // ---- 配置加载 ----
+  // ---- Config Loading ----
 
-  /** 从 localStorage 加载缓存的配置 */
+  /** Load cached config from localStorage */
   private loadFromCache(): void {
     try {
       const cached = localStorage.getItem(STORAGE_KEY_CONFIG);
       if (cached) {
         this.config = JSON.parse(cached);
-        // DEBUG: 追踪 localStorage 缓存内容
-        console.log('[CommerceService] loaded from localStorage, tiers:', this.config?.tiers?.map(t => ({ id: t.id, features: t.features })));
+        log.debug('commerce.cache.loaded', 'Loaded from cache');
       } else {
-        console.log('[CommerceService] no localStorage cache');
+        log.debug('commerce.cache.empty', 'No cache found');
       }
     } catch {
-      // 解析失败，忽略
+      // Parse failed, ignore
     }
   }
 
-  /** 从服务器拉取最新配置 */
+  /** Fetch latest config from server */
   async fetchConfig(): Promise<CommerceConfig | null> {
     try {
       const data = await apiService.getCommerceConfig() as CommerceConfig;
       if (data && data.tiers) {
         this.config = data;
         localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(data));
-        // DEBUG: 追踪服务端返回内容
-        console.log('[CommerceService] fetched from server, tiers:', data.tiers.map(t => ({ id: t.id, features: t.features })));
         log.info('commerce.config.fetched', 'Commerce config fetched', { seq: data.seq });
         this.notifyChange();
         return data;
@@ -86,14 +83,14 @@ class CommerceService {
     return this.config;
   }
 
-  /** 获取当前配置（可能为缓存值） */
+  /** Get current config (may be cached value) */
   getConfig(): CommerceConfig | null {
     return this.config;
   }
 
-  // ---- Seq 同步 ----
+  // ---- Seq Sync ----
 
-  /** 获取本地缓存的 seqs */
+  /** Get locally cached seqs */
   getCachedSeqs(): SyncSeqs | null {
     try {
       const cached = localStorage.getItem(STORAGE_KEY_SEQS);
@@ -103,75 +100,74 @@ class CommerceService {
     }
   }
 
-  /** 保存 seqs 到本地 */
+  /** Save seqs to local */
   saveCachedSeqs(seqs: SyncSeqs): void {
     localStorage.setItem(STORAGE_KEY_SEQS, JSON.stringify(seqs));
   }
 
-  /** 登录后处理 seq 同步 */
+  /** Handle seq sync after login */
   async handleLoginSeqs(serverSeqs: SyncSeqs): Promise<void> {
     const localSeqs = this.getCachedSeqs();
 
-    // 商业化配置 seq 变化 → 拉取更新
+    // Commerce config seq changed → fetch update
     if (!localSeqs || serverSeqs.commerce !== localSeqs.commerce) {
       await this.fetchConfig();
     }
 
-    // 保存最新 seqs
+    // Save latest seqs
     this.saveCachedSeqs(serverSeqs);
   }
 
-  // ---- Tier 查询 ----
+  // ---- Tier Query ----
 
-  /** 获取指定 tier 的配置 */
+  /** Get config for specified tier */
   getTierConfig(tierId: string): TierConfig | undefined {
     return this.config?.tiers.find(t => t.id === tierId);
   }
 
-  /** 获取当前用户的 tier 配置 */
+  /** Get current user's tier config */
   getCurrentTierConfig(): TierConfig | undefined {
     const user = authService.getUser();
     return this.getTierConfig(user?.tier || 'Standard');
   }
 
-  // ---- 权益查询 ----
+  // ---- Benefits Query ----
 
-  /** 检查当前用户是否有某功能权限 */
+  /** Check if current user has feature permission */
   hasFeature(feature: string): boolean {
-    // 未知 feature 一律返回 false，不抛异常
+    // Unknown features return false by default, no exception thrown
     if (!SUPPORTED_FEATURES.has(feature)) return false;
 
     const tierConfig = this.getCurrentTierConfig();
     return tierConfig?.features.includes(feature) ?? false;
   }
 
-  /** 获取当前 tier 的主机上限 */
+  /** Get current tier's host limit — v2: no host limit for all users */
   getMaxHosts(): number {
-    const tierConfig = this.getCurrentTierConfig();
-    return tierConfig?.max_hosts ?? 100;
+    return 999;
   }
 
-  /** 检查是否免广告 */
+  /** Check if ad-free — v2: ad-free for all users */
   isAdFree(): boolean {
-    const tierConfig = this.getCurrentTierConfig();
-    return tierConfig?.ad_free ?? false;
+    return true;
   }
 
-  /** 获取每日 agent 请求限制，0 = 无限 */
+  /** Get daily agent request limit, 0 = unlimited — v2: unlimited for all */
   getAgentDailyLimit(): number {
-    const tierConfig = this.getCurrentTierConfig();
-    return tierConfig?.agent_daily_limit ?? 10;
+    return 0;
   }
 
-  /** 获取可用模型列表 */
+  /** Get available models list — v2: all models available for all users */
   getAvailableModels(): string[] {
     const tierConfig = this.getCurrentTierConfig();
-    return tierConfig?.available_models ?? ['open_source'];
+    const allModels = this.config?.tiers.flatMap(t => t.available_models) ?? [];
+    const unique = [...new Set([...allModels, ...(tierConfig?.available_models ?? ['open_source'])])];
+    return unique.length > 0 ? unique : ['open_source', 'advanced', 'premium'];
   }
 
-  // ---- 版本兼容性 ----
+  // ---- Version Compatibility ----
 
-  /** 解析 tier 的 features，分为已支持和未支持两组 */
+  /** Parse tier's features, divide into supported and unsupported groups */
   parseTierFeatures(tierConfig: TierConfig): {
     supported: string[];
     unsupported: string[];
@@ -189,14 +185,14 @@ class CommerceService {
     return { supported, unsupported };
   }
 
-  /** 获取当前用户在当前版本下不可用的权益列表 */
+  /** Get list of unavailable benefits for current user in current version */
   getUnsupportedFeatures(): string[] {
     const tierConfig = this.getCurrentTierConfig();
     if (!tierConfig) return [];
     return tierConfig.features.filter(f => !SUPPORTED_FEATURES.has(f));
   }
 
-  /** 获取 feature 的显示名称（从 feature_meta 中读取） */
+  /** Get feature display name (read from feature_meta) */
   getFeatureDisplayName(featureId: string, language: string = 'zh'): string {
     const meta = this.config?.feature_meta;
     if (meta && meta[featureId]) {
@@ -205,9 +201,9 @@ class CommerceService {
     return featureId;
   }
 
-  // ---- 变更通知 ----
+  // ---- Change Notification ----
 
-  /** 注册配置变更监听器 */
+  /** Register config change listener */
   onChange(listener: () => void): () => void {
     this.changeListeners.push(listener);
     return () => {
@@ -221,9 +217,9 @@ class CommerceService {
     });
   }
 
-  // ---- 清理 ----
+  // ---- Cleanup ----
 
-  /** 清理缓存（登出时调用） */
+  /** Clear cache (called on logout) */
   clear(): void {
     this.config = null;
     localStorage.removeItem(STORAGE_KEY_CONFIG);

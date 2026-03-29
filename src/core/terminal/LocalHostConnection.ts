@@ -1,7 +1,7 @@
 /**
- * 本地 Host 连接
+ * Local host connection
  *
- * 组合 LocalTerminalBackend。无需建立网络连接。
+ * Composes LocalTerminalBackend. No network connection required.
  */
 
 import type { IHostConnection, HostConnectionType } from './IHostConnection';
@@ -39,7 +39,7 @@ export class LocalHostConnection implements IHostConnection {
   get fsHandler(): IFsHandler { return this._fsHandler; }
   get cmdExecutor(): ICmdExecutor { return this._cmdExecutor; }
 
-  /** 终端连接后，将 pty ID 同步到 fsHandler 以支持获取终端 cwd */
+  /** After terminal connection, sync pty ID to fsHandler to support getting terminal cwd */
   updatePtyId(ptyId: string): void {
     this._id = ptyId;
     this._fsHandler.setConnectionId(ptyId);

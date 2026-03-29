@@ -1,5 +1,5 @@
 /**
- * 广告服务模块导出
+ * Ad Service Module Exports
  */
 export { adService } from './adService';
 export { SelfHostedPlatform } from './platforms/SelfHostedPlatform';

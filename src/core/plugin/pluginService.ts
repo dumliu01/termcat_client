@@ -1,8 +1,8 @@
 /**
- * 插件服务（Renderer 进程）
+ * Plugin Service (Renderer Process)
  *
- * 通过 IPC 与 Main 进程的 PluginManager 通信，
- * 提供插件列表、状态、UI 数据等信息给 React 组件。
+ * Communicates with PluginManager in Main process via IPC,
+ * provides plugin list, status, UI data to React components.
  */
 
 import type {
@@ -21,7 +21,7 @@ class PluginService {
   private listeners = new Map<string, Set<PluginEventCallback>>();
   private initialized = false;
 
-  /** 初始化 Renderer 端插件服务 */
+  /** Initialize Renderer-side plugin service */
   initialize(): void {
     if (this.initialized) return;
     this.initialized = true;
@@ -29,23 +29,23 @@ class PluginService {
     const electron = (window as any).electron;
     if (!electron?.plugin) return;
 
-    // 监听插件状态变化
+    // Listen for plugin state changes
     electron.plugin.onStateChanged((data: { pluginId: string; info: PluginInfo }) => {
       this.emit('stateChanged', data);
     });
 
-    // 监听插件通知
+    // Listen for plugin notifications
     electron.plugin.onNotification((notification: PluginNotification) => {
       this.emit('notification', notification);
     });
 
-    // 监听状态栏更新
+    // Listen for status bar updates
     electron.plugin.onStatusBarUpdated(() => {
       this.emit('statusBarUpdated', null);
     });
   }
 
-  // ==================== 插件管理 ====================
+  // ==================== Plugin Management ====================
 
   async getPlugins(): Promise<PluginInfo[]> {
     return this.invoke(PLUGIN_IPC_CHANNELS.LIST_PLUGINS);
@@ -63,7 +63,7 @@ class PluginService {
     return this.invoke(PLUGIN_IPC_CHANNELS.GET_PLUGIN_INFO, pluginId);
   }
 
-  // ==================== UI 数据 ====================
+  // ==================== UI Data ====================
 
   async getStatusBarItems(): Promise<StatusBarItem[]> {
     return this.invoke(PLUGIN_IPC_CHANNELS.GET_STATUS_BAR_ITEMS);
@@ -81,13 +81,28 @@ class PluginService {
     return this.invoke(PLUGIN_IPC_CHANNELS.GET_SLASH_COMMANDS);
   }
 
-  // ==================== 命令执行 ====================
+  // ==================== Plugin Settings ====================
+
+  async getPluginSettings(pluginId: string): Promise<{
+    success: boolean;
+    settings?: Record<string, any>;
+    values?: Record<string, unknown>;
+    error?: string;
+  }> {
+    return (window as any).electron.plugin.getSettings(pluginId);
+  }
+
+  async setPluginSetting(pluginId: string, key: string, value: unknown): Promise<{ success: boolean; error?: string }> {
+    return (window as any).electron.plugin.setSetting(pluginId, key, value);
+  }
+
+  // ==================== Command Execution ====================
 
   async executeCommand(commandId: string, ...args: unknown[]): Promise<unknown> {
     return this.invoke(PLUGIN_IPC_CHANNELS.EXECUTE_COMMAND, commandId, ...args);
   }
 
-  // ==================== 事件系统 ====================
+  // ==================== Event System ====================
 
   on(event: string, callback: PluginEventCallback): () => void {
     if (!this.listeners.has(event)) {
@@ -107,7 +122,7 @@ class PluginService {
     }
   }
 
-  // ==================== IPC 调用 ====================
+  // ==================== IPC Invocation ====================
 
   private async invoke(channel: string, ...args: unknown[]): Promise<any> {
     const electron = (window as any).electron;

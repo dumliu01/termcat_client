@@ -1,8 +1,8 @@
 /**
- * TermCat 插件 API 实现
+ * TermCat Plugin API Implementation
  *
- * 提供 termcat.* 命名空间，供插件调用。
- * 每个插件实例拥有独立的 API 代理，通过权限系统控制访问。
+ * Provides the termcat.* namespace for plugins to call.
+ * Each plugin instance has an independent API proxy, with access controlled by the permission system.
  */
 
 import type {
@@ -38,14 +38,14 @@ import type {
 } from './types';
 import type { PanelRegistration, SectionDescriptor, TemplateData } from './ui-contribution/types';
 
-// ==================== 全局注册表 ====================
+// ==================== Global Registry ====================
 
 /**
- * 插件注册表 - 收集所有插件注册的 Provider / Hook / UI 组件
- * PluginManager 和 Renderer 都会读取此注册表
+ * Plugin registry - collects all plugin-registered Providers / Hooks / UI components
+ * Both PluginManager and Renderer read from this registry
  */
 export class PluginRegistry {
-  // 命令
+  // Commands
   private commands = new Map<string, { pluginId: string; handler: (...args: unknown[]) => unknown }>();
 
   // Terminal
@@ -77,16 +77,16 @@ export class PluginRegistry {
   // Host
   private hostDecorators: Array<{ pluginId: string; decorator: HostDecorator }> = [];
 
-  // 事件监听器
+  // Event listeners
   private eventListeners = new Map<string, Array<{ pluginId: string; callback: (...args: unknown[]) => void }>>();
 
-  // 配置存储
+  // Config store
   private configStore = new Map<string, Map<string, unknown>>();
 
-  // 插件存储
+  // Plugin storage
   private storageStore = new Map<string, Map<string, unknown>>();
 
-  // UI 更新回调（Renderer 注册）
+  // UI update callbacks (registered by Renderer)
   private uiUpdateCallbacks: Array<() => void> = [];
 
   // ---- 命令 ----
@@ -370,7 +370,7 @@ export class PluginRegistry {
   // ---- 清理 ----
 
   removePluginRegistrations(pluginId: string): void {
-    // 移除该插件注册的所有内容
+    // Remove all content registered by this plugin
     this.commands.forEach((v, k) => { if (v.pluginId === pluginId) this.commands.delete(k); });
     this.terminalDecorators = this.terminalDecorators.filter(e => e.pluginId !== pluginId);
     this.completionProviders = this.completionProviders.filter(e => e.pluginId !== pluginId);
@@ -405,11 +405,11 @@ export class PluginRegistry {
   }
 }
 
-// ==================== 插件 API 代理工厂 ====================
+// ==================== Plugin API Proxy Factory ====================
 
 /**
- * 为每个插件创建独立的 API 代理
- * 通过权限检查控制访问
+ * Create an independent API proxy for each plugin
+ * Access control through permission checking
  */
 export function createPluginAPI(
   pluginId: string,
@@ -540,7 +540,7 @@ export function createPluginAPI(
   };
 
   const ai = {
-    async ask(prompt: string, mode?: 'normal' | 'agent' | 'code' | 'codex'): Promise<void> {
+    async ask(prompt: string, mode?: 'normal' | 'agent' | 'code' | 'x-agent'): Promise<void> {
       checkPermission('ai.message');
       return mainBridge.invoke('aiAsk', prompt, mode);
     },
@@ -626,10 +626,10 @@ export function createPluginAPI(
       return registry.registerSidebarView(pluginId, viewId, provider);
     },
 
-    // ---- UI 贡献点（模板驱动面板）----
+    // ---- UI contribution points (template-driven panels)----
 
     registerPanel(options: PanelRegistration): Disposable {
-      // 外部插件运行在 Main 进程，需要通过 IPC 桥接到 Renderer 的 panelDataStore
+      // External plugins run in Main process, need to bridge to Renderer's panelDataStore via IPC
       mainBridge.invoke('panelRegister', pluginId, options);
       return {
         dispose: () => {
@@ -717,7 +717,16 @@ export function createPluginAPI(
     },
   };
 
-  return { terminal, ssh, files, ai, monitor, ui, commands, config, storage, host };
+  const events = {
+    emit(eventName: string, data?: unknown): void {
+      registry.emitEvent(eventName, data);
+    },
+    on(eventName: string, callback: (...args: unknown[]) => void): Disposable {
+      return registry.addEventListener(pluginId, eventName, callback);
+    },
+  };
+
+  return { terminal, ssh, files, ai, monitor, ui, commands, config, storage, host, events };
 }
 
 export type PluginAPI = ReturnType<typeof createPluginAPI>;
@@ -725,8 +734,8 @@ export type PluginAPI = ReturnType<typeof createPluginAPI>;
 // ==================== Main Process Bridge ====================
 
 /**
- * 抽象 Main 进程桥接层
- * 在 Main 进程中使用直接调用，未来可替换为 IPC/JSON-RPC
+ * Abstract Main process bridge layer
+ * Uses direct calls in Main process, can be replaced with IPC/JSON-RPC in the future
  */
 export interface MainProcessBridge {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

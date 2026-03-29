@@ -35,11 +35,11 @@ export interface CreateOrderResponse {
 }
 
 /**
- * 支付服务
+ * Payment Service
  */
 class PaymentService {
   /**
-   * 获取可用的支付方式
+   * Get available payment methods
    */
   async getAvailablePaymentMethods(): Promise<PaymentMethod[]> {
     try {
@@ -56,16 +56,18 @@ class PaymentService {
   }
 
   /**
-   * 创建支付订单
+   * Create payment order
    */
   async createOrder(
     type: string,
     amount: number,
     paymentMethod: string,
-    tierId?: string
+    tierId?: string,
+    machineId?: string,
+    machineName?: string
   ): Promise<CreateOrderResponse> {
     try {
-      return await apiService.createPaymentOrder(type, amount, paymentMethod, tierId);
+      return await apiService.createPaymentOrder(type, amount, paymentMethod, tierId, machineId, machineName);
     } catch (error) {
       logger.error(LOG_MODULE.HTTP, 'payment.order.create_failed', 'Failed to create payment order', {
         module: LOG_MODULE.PAYMENT,
@@ -77,7 +79,7 @@ class PaymentService {
   }
 
   /**
-   * 获取订单详情
+   * Get order details
    */
   async getOrder(orderNo: string): Promise<PaymentOrder> {
     try {
@@ -93,7 +95,7 @@ class PaymentService {
   }
 
   /**
-   * 获取用户订单列表
+   * Get user order list
    */
   async getUserOrders(
     page: number = 1,
@@ -117,7 +119,7 @@ class PaymentService {
   }
 
   /**
-   * 取消订单
+   * Cancel order
    */
   async cancelOrder(orderNo: string): Promise<void> {
     try {
@@ -133,7 +135,23 @@ class PaymentService {
   }
 
   /**
-   * 打开支付窗口
+   * Mock pay (dev/test only) — directly marks order as paid via server
+   */
+  async mockPay(orderNo: string): Promise<void> {
+    try {
+      await apiService.mockPay(orderNo);
+    } catch (error) {
+      logger.error(LOG_MODULE.HTTP, 'payment.mock_pay.failed', 'Mock pay failed', {
+        module: LOG_MODULE.PAYMENT,
+        error: 1,
+        msg: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Open payment window
    */
   openPaymentWindow(paymentUrl: string): Window | null {
     const width = 800;
@@ -151,7 +169,7 @@ class PaymentService {
   }
 
   /**
-   * 轮询订单状态
+   * Poll order status
    */
   async pollOrderStatus(
     orderNo: string,

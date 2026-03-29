@@ -1,11 +1,11 @@
 /**
- * 直接 SSH 命令执行器
+ * Direct SSH Command Executor
  *
- * 直接使用 ssh2 库建立 SSH 连接执行命令，不依赖 Electron IPC。
- * 适用于 CLI、auto_tuning 等非 Electron 场景。
+ * Directly uses ssh2 library to establish SSH connection and execute commands, without depending on Electron IPC.
+ * Suitable for CLI, auto_tuning and other non-Electron scenarios.
  *
- * 注意：ssh2 使用延迟 require 加载，避免 Vite/esbuild 构建时
- * 尝试打包 .node 原生模块导致报错。
+ * Note: ssh2 uses lazy require loading to avoid Vite/esbuild build errors
+ * when trying to bundle .node native modules.
  */
 
 import { ICommandExecutor, ExecuteOptions } from '../ICommandExecutor';
@@ -19,7 +19,7 @@ export interface DirectSSHConfig {
   privateKey?: string;
 }
 
-/** 延迟加载 ssh2，避免 Vite 静态分析时打包原生 .node 模块 */
+/** Lazy load ssh2 to avoid Vite static analysis bundling native .node modules */
 function loadSSH2(): typeof import('ssh2') {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   return require('ssh2');
@@ -27,7 +27,7 @@ function loadSSH2(): typeof import('ssh2') {
 
 export class DirectSSHExecutor implements ICommandExecutor {
   private config: DirectSSHConfig;
-  private client: any = null; // ssh2.Client，延迟加载所以用 any
+  private client: any = null; // ssh2.Client, delayed load so use any
   private _isReady = false;
 
   constructor(config: DirectSSHConfig) {
@@ -74,11 +74,11 @@ export class DirectSSHExecutor implements ICommandExecutor {
 
     const timeoutMs = options?.timeoutMs ?? 600000;
 
-    // ssh2 exec 通道不是交互式 shell，不会自动加载 ~/.bashrc / ~/.bash_profile，
-    // 导致 conda、nvm 等工具找不到。
-    // 解决方案：显式 source 常见的初始化文件，再执行命令。
-    // 注意：conda init 通常写在 ~/.bashrc，而 -l login shell 在某些发行版下
-    // 不会 source ~/.bashrc（只读 ~/.bash_profile → ~/.profile），所以两者都 source。
+    // ssh2 exec channel is not an interactive shell, won't auto-load ~/.bashrc / ~/.bash_profile,
+    // causing conda, nvm and other tools to be not found.
+    // Solution: explicitly source common initialization files, then execute command.
+    // Note: conda init is usually in ~/.bashrc, but -l login shell on some distros
+    // doesn't source ~/.bashrc (only reads ~/.bash_profile → ~/.profile), so source both.
     const initEnv = [
       '[ -f /etc/profile ] && source /etc/profile',
       '[ -f ~/.bash_profile ] && source ~/.bash_profile',

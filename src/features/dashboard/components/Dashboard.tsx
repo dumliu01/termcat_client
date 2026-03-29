@@ -229,7 +229,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
 
         {/* Compact Host Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-24">
-          {/* Local Terminal Card — 固定首位，不可删除 */}
+          {/* Local Terminal Card — Fixed first position, cannot be deleted */}
           {onLocalConnect && (
             <div className="group relative border border-emerald-500/30 bg-[var(--bg-card)] rounded-[1.25rem] p-5 transition-all hover:border-emerald-500/60 hover:-translate-y-1 shadow-lg hover:shadow-2xl">
               <div className="flex items-start gap-4 mb-5">

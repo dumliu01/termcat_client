@@ -55,14 +55,14 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
     onConfirm: (value: string) => void;
   } | null>(null);
 
-  // 左侧面板宽度管理
+  // Left panel width management
   const [treeWidth, setTreeWidth] = useState(() => {
     const saved = localStorage.getItem('termcat_filebrowser_treewidth');
     return saved ? Math.max(100, Math.min(parseInt(saved, 10), 400)) : 200;
   });
   const [isResizing, setIsResizing] = useState(false);
 
-  // 处理宽度拖拽
+  // Handle width drag
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing || !containerRef.current) return;
@@ -89,14 +89,14 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
     };
   }, [isResizing]);
 
-  // 初始化文件浏览器服务 — 优先使用 fsHandler prop（来自 IHostConnection）
+  // Initialize file browser service — prioritize fsHandler prop (from IHostConnection)
   useEffect(() => {
     if (fsHandlerProp) {
       setFileBrowserRef(fsHandlerProp);
       setIsDirectoryTreeLoaded(false);
       isInitialPathSyncedRef.current = false;
     } else if (connectionId) {
-      // 向后兼容：无 fsHandler 时使用旧逻辑
+      // Backward compatibility: use old logic when no fsHandler
       const fileBrowser = new SSHFsHandler(connectionId);
       setFileBrowserRef(fileBrowser);
       setIsDirectoryTreeLoaded(false);
@@ -109,12 +109,12 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
     };
   }, [fsHandlerProp, connectionId]);
 
-  // 当文件tab变为可见时，首次同步终端目录，之后切换tab时刷新文件列表
+  // When file tab becomes visible, sync terminal directory for the first time, then refresh file list when switching tabs
   useEffect(() => {
     if (isVisible && fileBrowserRef) {
       if (!isInitialPathSyncedRef.current) {
         isInitialPathSyncedRef.current = true;
-        // 通过 fsHandler.getInitialPath() 获取初始路径（SSH: sshPwd, Local: homedir）
+        // Get initial path via fsHandler.getInitialPath() (SSH: sshPwd, Local: homedir)
         fileBrowserRef.getInitialPath()
           .then(initPath => {
             loadFiles(initPath);
@@ -129,14 +129,14 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
     }
   }, [isVisible, fileBrowserRef, connectionId]);
 
-  // 目录树加载（独立于文件列表加载，避免触发文件列表重载）
+  // Directory tree loading (independent from file list loading, avoid triggering file list reload)
   useEffect(() => {
     if (isVisible && fileBrowserRef && !isDirectoryTreeLoaded) {
       loadDirectoryTree();
     }
   }, [isVisible, fileBrowserRef, isDirectoryTreeLoaded]);
 
-  // 添加全局拖拽事件监听器
+  // Add global drag event listeners
   useEffect(() => {
     const handleGlobalDragOver = (e: DragEvent) => {
       e.preventDefault();
@@ -158,7 +158,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
   // ─── Data loading ───
 
   /**
-   * 懒加载：获取某个目录的直接子目录（depth=1），并插入到树中
+   * Lazy load: get direct subdirectories of a directory (depth=1), and insert into tree
    */
   const loadChildrenForNode = useCallback(async (parentPath: string): Promise<DirectoryNode[]> => {
     if (!fileBrowserRef) return [];
@@ -170,13 +170,13 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
   }, [fileBrowserRef]);
 
   /**
-   * 展开树中 targetPath 的所有祖先节点。
-   * 对于不在树中的路径段，逐级懒加载子目录。
+   * Expand all ancestor nodes of targetPath in the tree.
+   * For path segments not in the tree, lazy-load subdirectories level by level.
    */
   const expandTreeToPath = useCallback(async (targetPath: string) => {
     if (targetPath === '/' || !fileBrowserRef) return;
 
-    // 将路径拆解为逐级前缀：/a/b/c → ['/a', '/a/b', '/a/b/c']
+    // Decompose path into level-by-level prefixes: /a/b/c → ['/a', '/a/b', '/a/b/c']
     const parts = targetPath.split('/').filter(Boolean);
     const ancestorPaths = parts.map((_, i) => '/' + parts.slice(0, i + 1).join('/'));
 
@@ -191,23 +191,23 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
       return null;
     };
 
-    // 逐级检查并加载缺失的节点
+    // Check level by level and load missing nodes
     let currentTree: DirectoryNode[] = [];
     setDirectoryTree(prev => { currentTree = prev; return prev; });
 
     for (let i = 0; i < ancestorPaths.length; i++) {
       const ap = ancestorPaths[i];
       if (!findNode(currentTree, ap)) {
-        // 缺失节点 → 加载其父目录的子目录
+        // Missing node → load subdirectories of its parent
         const parentPath = i > 0 ? ancestorPaths[i - 1] : '/';
         const children = await loadChildrenForNode(parentPath);
         if (children.length === 0) break;
 
-        // 将加载的子目录插入到树中
+        // Insert loaded subdirectories into tree
         const insertChildren = (nodes: DirectoryNode[]): DirectoryNode[] =>
           nodes.map(n => {
             if (n.path === parentPath) {
-              // 合并：保留已有子节点，添加新发现的
+              // Merge: keep existing children, add newly discovered
               const existingNames = new Set((n.children || []).map(c => c.name));
               const merged = [...(n.children || [])];
               for (const child of children) {
@@ -238,7 +238,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
       }
     }
 
-    // 展开所有祖先
+    // Expand all ancestors
     setDirectoryTree(prev => {
       const expandAncestors = (nodes: DirectoryNode[]): DirectoryNode[] =>
         nodes.map(n => {
@@ -274,7 +274,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
     if (!fileBrowserRef) return;
     try {
       setIsLoadingTree(true);
-      // 只加载根目录的直接子目录（depth=1），后续按需懒加载
+      // Only load direct subdirectories of root directory (depth=1), lazy load subsequent on demand
       const tree = await fileBrowserRef.getDirectoryTree('/', 1);
       setDirectoryTree(tree);
       setIsDirectoryTreeLoaded(true);
@@ -295,7 +295,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
 
   const toggleTreeNode = useCallback(async (node: DirectoryNode) => {
     if (node.open) {
-      // 收起：直接 toggle
+      // Collapse: direct toggle
       const collapse = (nodes: DirectoryNode[]): DirectoryNode[] =>
         nodes.map(n => {
           if (n.path === node.path) return { ...n, open: false };
@@ -306,7 +306,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
       return;
     }
 
-    // 展开：如果子节点为空或未加载，先懒加载
+    // Expand: if children is empty or not loaded, lazy load first
     const needsLoad = !node.children || node.children.length === 0;
     let loadedChildren: DirectoryNode[] | null = null;
     if (needsLoad) {
@@ -329,7 +329,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
   }, [loadChildrenForNode]);
 
   // ─── File list handlers ───
-  // 使用 ref 保存 currentPath，避免 useCallback 依赖频繁变化的值
+  // Use ref to save currentPath, avoid useCallback dependencies changing frequently
   const currentPathRef = useRef(currentPath);
   currentPathRef.current = currentPath;
 
@@ -355,9 +355,9 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
     }
   }, [fileBrowserRef, loadFiles, t]);
 
-  /** 发出传输记录事件，供 TransferManager 展示 */
+  /** Emit transfer record event, for TransferManager to display */
   const emitTransfer = useCallback((transferId: string, type: 'upload' | 'download', localPath: string, remotePath: string) => {
-    // 本地复制（transferId 以 local-copy 开头）已同步完成，直接标记 completed
+    // Local copy (transferId starts with local-copy) is already completed synchronously, directly mark as completed
     const isLocal = transferId.startsWith('local-copy');
     const name = remotePath.split('/').pop() || 'transfer';
     builtinPluginManager.emit(FILE_BROWSER_EVENTS.TRANSFER_START, {
@@ -386,7 +386,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
   const handleSyncTerminalPath = useCallback(async () => {
     if (!fileBrowserRef) return;
     try {
-      // 通过 fsHandler.getTerminalCwd() 获取终端当前目录（兼容 SSH 和 Local）
+      // Get terminal's current directory via fsHandler.getTerminalCwd() (compatible with SSH and Local)
       const pwd = fileBrowserRef.getTerminalCwd
         ? await fileBrowserRef.getTerminalCwd()
         : await fileBrowserRef.getInitialPath();
@@ -800,7 +800,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
       }
       case 'rename': {
         if (!file || !fileBrowserRef) break;
-        // 树节点: targetPath 是节点自身路径，需要取父目录
+        // Tree node: targetPath is the node's own path, need to get parent directory
         const renameDir = source === 'tree'
           ? (targetPath.substring(0, targetPath.lastIndexOf('/')) || '/')
           : targetPath;
@@ -851,7 +851,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
         break;
       case 'pack': {
         if (!connectionId || !fileBrowserRef) break;
-        // 优先使用勾选的文件，否则使用右键点击的文件
+        // Prioritize checked files, otherwise use right-clicked file
         const fileNames = selectedFiles.size > 0
           ? Array.from(selectedFiles)
           : (file ? [file.name] : []);
@@ -935,7 +935,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
 
   return (
     <div ref={containerRef} className="flex h-full animate-in fade-in duration-200 overflow-hidden bg-[var(--bg-card)]">
-      {/* 左侧目录树 */}
+      {/* Left directory tree */}
       <div
         className="border-r flex flex-col overflow-hidden shrink-0"
         style={{
@@ -960,7 +960,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
         />
       </div>
 
-      {/* 宽度分割器 */}
+      {/* Width splitter */}
       <div
         className="w-1.5 h-full cursor-col-resize z-10 relative group flex items-center justify-center transition-all shrink-0 hover:bg-white/10"
         onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
@@ -968,7 +968,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
         <div className="w-0.5 h-6 rounded-full bg-white/20 group-hover:bg-white/30 group-hover:scale-y-110 transition-all" />
       </div>
 
-      {/* 右侧文件列表 */}
+      {/* Right file list */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         <FileListPanel
           files={files}

@@ -1,14 +1,14 @@
 /**
- * 优量汇广告平台 (GDT)
+ * Tencent GDT Ad Platform (Guangdiantong / 优量汇)
  *
- * 腾讯广告联盟，国内第二大广告平台。
- * 拥有微信、QQ 等社交流量资源。
+ * Tencent's ad network, China's second-largest ad platform.
+ * Has social traffic resources from WeChat, QQ, etc.
  *
- * 文档: https://e.qq.com/
+ * Docs: https://e.qq.com/
  * Marketing API: https://developers.e.qq.com/
  *
- * 本实现采用服务端到服务端 (S2S) 模式：
- * 客户端 → TermCat Server → 优量汇 API → 返回广告内容
+ * This implementation uses Server-to-Server (S2S) mode:
+ * Client → TermCat Server → GDT API → Return ad content
  */
 
 import { IAdPlatform, AdPlatformConfig, AdRequestContext, AdContent, AdPlatformType } from '../types';
@@ -19,7 +19,7 @@ const log = logger.withFields({ module: LOG_MODULE.UI });
 
 export class GDTPlatform implements IAdPlatform {
   readonly platformId: AdPlatformType = 'gdt';
-  readonly platformName = '优量汇';
+  readonly platformName = 'GDT';
 
   private config: AdPlatformConfig = {};
   private initialized = false;
@@ -34,7 +34,7 @@ export class GDTPlatform implements IAdPlatform {
     if (!this.initialized) return [];
 
     try {
-      // 通过 TermCat Server 代理请求优量汇广告
+      // Request GDT ads via TermCat Server proxy
       const response = await apiService.fetchPlatformAds('gdt', {
         slot_id: this.config.slotId,
         tier: context.tier,
@@ -78,7 +78,7 @@ export class GDTPlatform implements IAdPlatform {
     this.initialized = false;
   }
 
-  /** 将优量汇广告数据格式化为 AI 助手口吻的 Markdown */
+  /** Format GDT ad data as AI assistant-style Markdown */
   private formatAdMessage(item: any): string {
     const title = item.title || '';
     const desc = item.description || '';

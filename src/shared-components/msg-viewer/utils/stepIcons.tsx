@@ -1,11 +1,11 @@
 /**
- * 步骤状态图标
+ * Step status icons
  */
 
 import React from 'react';
 import { ShieldCheck, ShieldAlert, ChevronRight, RefreshCw } from 'lucide-react';
 
-/** 根据步骤状态返回对应图标 */
+/** Returns corresponding icon based on step status */
 export const getStepStatusIcon = (status?: string) => {
   switch (status) {
     case 'completed':

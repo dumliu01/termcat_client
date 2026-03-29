@@ -1,16 +1,16 @@
 /**
- * 客户端版本信息
+ * Client version information
  *
- * 版本号唯一来源：package.json 的 "version" 字段
- * 构建时由 vite.config.ts 通过 define 注入 __APP_VERSION__
+ * Single source of truth for version: "version" field in package.json
+ * Injected at build time by vite.config.ts via define as __APP_VERSION__
  */
 
 declare const __APP_VERSION__: string;
 
-/** 版本字符串，如 "0.1.1" */
+/** Version string, e.g. "0.1.1" */
 const appVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
 
-/** 解析版本号各段 */
+/** Parse version number segments */
 function parseVersion(v: string): { major: number; minor: number; build: number } {
   const parts = v.replace(/^v/, '').split('.').map(Number);
   return {
@@ -22,13 +22,13 @@ function parseVersion(v: string): { major: number; minor: number; build: number 
 
 export const VERSION = parseVersion(appVersion);
 
-/** 显示版本号，如 v0.1.1 */
+/** Display version string, e.g. v0.1.1 */
 export const VERSION_STRING = `v${appVersion}`;
 
-/** 版本比较数值，越大越新 */
+/** Version comparison number, higher means newer */
 export const VERSION_NUMBER = VERSION.major * 1000000 + VERSION.minor * 1000 + VERSION.build;
 
-/** 将版本字符串转为数值，用于比较 */
+/** Convert version string to number for comparison */
 export function versionToNumber(v: string): number {
   const parts = v.replace(/^v/, '').split('.').map(Number);
   return (parts[0] || 0) * 1000000 + (parts[1] || 0) * 1000 + (parts[2] || 0);

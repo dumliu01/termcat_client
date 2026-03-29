@@ -2,7 +2,7 @@
 import { ThemeType, TerminalThemeType } from './types';
 
 /**
- * 与 AITerm 同步的多主题配置
+ * Theme configuration synchronized with AITerm
  */
 export const THEME_CONFIG: Record<ThemeType, {
   name: { zh: string; en: string };
@@ -10,7 +10,7 @@ export const THEME_CONFIG: Record<ThemeType, {
   rgb: string;
   colors: Record<string, string>;
 }> = {
-  // 极暗模式 (Cyberpunk Black)
+  // Deep Dark (Cyberpunk Black)
   dark: {
     name: { zh: '极暗模式', en: 'Deep Dark' },
     primary: '#6366f1',
@@ -28,7 +28,7 @@ export const THEME_CONFIG: Record<ThemeType, {
       'glass-bg': 'rgba(15, 20, 35, 0.4)',
     },
   },
-  // 常规深色 (Midnight Blue)
+  // Regular Dark (Midnight Blue)
   regular: {
     name: { zh: '常规深色', en: 'Regular Dark' },
     primary: '#6366f1',
@@ -46,7 +46,7 @@ export const THEME_CONFIG: Record<ThemeType, {
       'glass-bg': 'rgba(34, 39, 51, 0.5)',
     },
   },
-  // 优雅灰 (Dim Slate)
+  // Dim Slate
   dim: {
     name: { zh: '优雅灰色', en: 'Dim Slate' },
     primary: '#6366f1',
@@ -64,7 +64,7 @@ export const THEME_CONFIG: Record<ThemeType, {
       'glass-bg': 'rgba(30, 41, 59, 0.6)',
     },
   },
-  // 工业灰 (Urban Grey)
+  // Urban Grey
   urban: {
     name: { zh: '工业灰色', en: 'Urban Grey' },
     primary: '#6366f1',
@@ -82,7 +82,7 @@ export const THEME_CONFIG: Record<ThemeType, {
       'glass-bg': 'rgba(203, 213, 225, 0.5)',
     },
   },
-  // 浅色模式 (Snow Light)
+  // Light Mode
   light: {
     name: { zh: '浅色模式', en: 'Light Mode' },
     primary: '#6366f1',
@@ -116,7 +116,7 @@ export const TERMINAL_THEMES: Record<TerminalThemeType, {
   matrix: { name: { zh: '黑客', en: 'Matrix' }, bg: '#000000', fg: '#00ff41', input: '#00ff41', accent: '#00ff41' },
 };
 
-// 支付模式配置
+// Payment mode configuration
 export type PaymentMode = 'real';
 //'simulated' | 'real';
 
@@ -124,7 +124,7 @@ export const PAYMENT_CONFIG: {
   mode: PaymentMode;
   description: { zh: string; en: string };
 } = {
-  // 修改此处切换支付模式: 'simulated' = 模拟支付, 'real' = 真实支付
+  // Modify here to switch payment mode: 'simulated' = simulated payment, 'real' = real payment
   mode: 'real',
   description: {
     zh: '模拟支付用于测试，真实支付需要后端 API 支持',

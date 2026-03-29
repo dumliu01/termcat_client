@@ -47,7 +47,7 @@ export const TransferPanel: React.FC<TransferPanelProps> = ({
     }
   };
 
-  // 计算实时上传/下载速度汇总
+  // Calculate real-time upload/download speed summary
   const metrics = transfers.reduce(
     (acc, item) => {
       if (item.status !== 'running') return acc;

@@ -1,12 +1,12 @@
 /**
- * 广告服务 - 多平台聚合器
+ * Ad Service - Multi-platform Aggregator
  *
- * 职责：
- * - 管理多个广告平台实例（自建 / 穿山甲 / 优量汇 / Carbon Ads）
- * - 拉取广告规则（从 TermCat Server）
- * - 按优先级从各平台获取广告内容
- * - 统一上报展示和点击
- * - 规则缓存和频率控制
+ * Responsibilities:
+ * - Manage multiple ad platform instances (self-hosted / CSJ / GDT / Carbon Ads)
+ * - Fetch ad rules from TermCat Server
+ * - Fetch ad content from each platform by priority
+ * - Unified reporting of impressions and clicks
+ * - Rule caching and frequency control
  */
 
 import {
@@ -24,7 +24,7 @@ import { TierType } from '@/utils/types';
 import { apiService } from '@/base/http/api';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
-// 平台实现（延迟导入避免循环依赖）
+// Platform implementations (lazy import to avoid circular dependencies)
 import { SelfHostedPlatform } from './platforms/SelfHostedPlatform';
 import { CSJPlatform } from './platforms/CSJPlatform';
 import { GDTPlatform } from './platforms/GDTPlatform';
@@ -35,21 +35,21 @@ import { AdsterraPlatform } from './platforms/AdsterraPlatform';
 const log = logger.withFields({ module: LOG_MODULE.UI });
 
 class AdService {
-  /** 已注册的平台实例 */
+  /** Registered platform instances */
   private platforms: Map<AdPlatformType, IAdPlatform> = new Map();
 
-  /** 缓存的广告规则 */
+  /** Cached ad rules */
   private rules: AdRule[] = [];
   private rulesEnabled = false;
   private cacheExpiry = 0;
-  private readonly CACHE_TTL = 10 * 60 * 1000; // 10 分钟
+  private readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-  /** 展示频率控制状态 */
+  /** Display frequency control state */
   private displayStates: Map<string, AdDisplayState> = new Map();
 
-  /** 初始化所有平台 */
+  /** Initialize all platforms */
   async initPlatforms(configs?: Record<AdPlatformType, AdPlatformConfig>): Promise<void> {
-    // 注册所有平台
+    // Register all platforms
     const platformInstances: IAdPlatform[] = [
       new SelfHostedPlatform(),
       new CSJPlatform(),
@@ -76,7 +76,7 @@ class AdService {
     log.info('ad.service.init', 'Ad service initialized', { platformCount: this.platforms.size });
   }
 
-  /** 拉取广告规则（带缓存） */
+  /** Fetch ad rules (with caching) */
   async fetchRules(): Promise<AdRulesResponse> {
     if (Date.now() < this.cacheExpiry && this.rules.length > 0) {
       return { enabled: this.rulesEnabled, rules: this.rules };
@@ -88,7 +88,7 @@ class AdService {
       this.rulesEnabled = response.enabled ?? true;
       this.cacheExpiry = Date.now() + this.CACHE_TTL;
 
-      // 用平台配置重新初始化
+      // Re-initialize with platform configs
       if (response.platformConfigs) {
         await this.initPlatforms(response.platformConfigs);
       }
@@ -101,27 +101,27 @@ class AdService {
     }
   }
 
-  /** 获取匹配的广告规则 */
+  /** Get matching ad rules */
   getMatchingRules(triggerType: AdTriggerType, tier: TierType | 'guest'): AdRule[] {
     const now = new Date();
 
     return this.rules
       .filter((rule) => {
-        // 触发类型匹配
+        // Trigger type match
         if (rule.trigger.type !== triggerType) return false;
 
-        // 定向匹配
+        // Targeting match
         if (tier === 'guest') {
           if (!rule.targeting.includeGuest) return false;
         } else {
           if (!rule.targeting.tiers.includes(tier)) return false;
         }
 
-        // 时间范围
+        // Time range
         if (rule.startTime && now < new Date(rule.startTime)) return false;
         if (rule.endTime && now > new Date(rule.endTime)) return false;
 
-        // 频率控制
+        // Frequency control
         if (!this.canShow(rule)) return false;
 
         return true;
@@ -129,7 +129,7 @@ class AdService {
       .sort((a, b) => a.priority - b.priority);
   }
 
-  /** 从指定平台获取广告内容 */
+  /** Fetch ad content from specified platform */
   async fetchAdContent(platformId: AdPlatformType, context: AdRequestContext): Promise<AdContent[]> {
     const platform = this.platforms.get(platformId);
     if (!platform) return [];
@@ -142,19 +142,19 @@ class AdService {
     }
   }
 
-  /** 上报广告展示 */
+  /** Report ad impression */
   async reportImpression(adId: string, platformId: AdPlatformType, ruleId: string): Promise<void> {
-    // 更新频率状态
+    // Update frequency state
     this.recordShow(ruleId);
 
-    // 上报到对应平台
+    // Report to the corresponding platform
     const platform = this.platforms.get(platformId);
     if (platform) {
       platform.reportImpression(adId).catch(() => {});
     }
   }
 
-  /** 上报广告点击 */
+  /** Report ad click */
   async reportClick(adId: string, platformId: AdPlatformType): Promise<void> {
     const platform = this.platforms.get(platformId);
     if (platform) {
@@ -162,7 +162,7 @@ class AdService {
     }
   }
 
-  /** 检查是否可以展示（频率控制） */
+  /** Check if ad can be shown (frequency control) */
   canShow(rule: AdRule): boolean {
     const state = this.displayStates.get(rule.id);
     if (!state) return true;
@@ -170,7 +170,7 @@ class AdService {
     const now = Date.now();
     const today = new Date().toISOString().slice(0, 10);
 
-    // 日期切换时重置每日计数
+    // Reset daily count on date change
     const dailyCount = state.lastDate === today ? state.dailyCount : 0;
 
     if (state.sessionCount >= rule.frequency.maxPerSession) return false;
@@ -180,13 +180,13 @@ class AdService {
     return true;
   }
 
-  /** 记录一次展示 */
+  /** Record one display */
   private recordShow(ruleId: string): void {
     const today = new Date().toISOString().slice(0, 10);
     const existing = this.displayStates.get(ruleId);
 
     if (existing) {
-      // 日期切换时重置
+      // Reset on date change
       if (existing.lastDate !== today) {
         existing.dailyCount = 0;
         existing.lastDate = today;
@@ -205,24 +205,24 @@ class AdService {
     }
   }
 
-  /** 重置会话级计数（新终端会话时调用） */
+  /** Reset session-level counts (called on new terminal session) */
   resetSessionCounts(): void {
     for (const state of this.displayStates.values()) {
       state.sessionCount = 0;
     }
   }
 
-  /** 广告全局开关 */
+  /** Global ad switch */
   get isEnabled(): boolean {
     return this.rulesEnabled;
   }
 
-  /** 获取已注册平台列表 */
+  /** Get registered platform list */
   get registeredPlatforms(): AdPlatformType[] {
     return Array.from(this.platforms.keys());
   }
 
-  /** 销毁所有平台 */
+  /** Destroy all platforms */
   destroy(): void {
     for (const platform of this.platforms.values()) {
       platform.destroy();

@@ -1,10 +1,10 @@
 /**
- * 内置插件：传输管理器（底部面板）
+ * Builtin plugin: Transfer Manager (Bottom panel)
  *
- * 自管理传输状态：
- * - 监听 Electron IPC 事件（onTransferStart/Progress/Complete/Error）
- * - 监听文件浏览器插件的 TRANSFER_START 事件（插件间通信）
- * - 对外发出 ITEM_ADDED 事件，供宿主自动切换 tab
+ * Self-managed transfer state:
+ * - Listen for Electron IPC events (onTransferStart/Progress/Complete/Error)
+ * - Listen for FILE_BROWSER_EVENTS.TRANSFER_START from file browser plugin (inter-plugin communication)
+ * - Emit ITEM_ADDED event for host to auto-switch tabs
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -19,7 +19,7 @@ import { getLocale } from './i18n';
 
 export { TRANSFER_EVENTS } from '../events';
 
-// ==================== 工具函数 ====================
+// ==================== Utility Functions ====================
 
 function formatSpeed(bytesPerSecond: number): string {
   if (!bytesPerSecond || bytesPerSecond === 0) return '0 B/s';
@@ -36,18 +36,18 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-// ==================== 包装器组件 ====================
+// ==================== Wrapper Component ====================
 
 /**
- * 自管理状态的 TransferPanel 包装器。
- * 内部持有 transfers 状态，监听 Electron IPC + 插件事件总线。
+ * Self-managing state TransferPanel wrapper.
+ * Internally holds transfers state, listens for Electron IPC + plugin event bus.
  */
 const TransferManagerWrapper: React.FC<BottomPanelProps> = ({ connectionId, theme, isVisible }) => {
   const [transfers, setTransfers] = useState<TransferItem[]>([]);
   const connectionIdRef = useRef(connectionId);
   connectionIdRef.current = connectionId;
 
-  // ---------- 添加传输项（去重） ----------
+  // ---------- Add transfer item (deduplication) ----------
   const addTransfer = useCallback((item: TransferItem) => {
     setTransfers(prev => {
       if (prev.some(t => t.id === item.id)) return prev;
@@ -56,7 +56,7 @@ const TransferManagerWrapper: React.FC<BottomPanelProps> = ({ connectionId, them
     builtinPluginManager.emit(TRANSFER_EVENTS.ITEM_ADDED, item);
   }, []);
 
-  // ---------- 监听文件浏览器插件的传输事件 ----------
+  // ---------- Listen for file browser plugin transfer events ----------
   useEffect(() => {
     const disposable = builtinPluginManager.on(FILE_BROWSER_EVENTS.TRANSFER_START, (payload) => {
       addTransfer(payload as TransferItem);
@@ -64,7 +64,7 @@ const TransferManagerWrapper: React.FC<BottomPanelProps> = ({ connectionId, them
     return () => disposable.dispose();
   }, [addTransfer]);
 
-  // ---------- 监听 Electron IPC 传输事件 ----------
+  // ---------- Listen for Electron IPC transfer events ----------
   useEffect(() => {
     if (!connectionId) return;
 
@@ -176,12 +176,12 @@ const TransferManagerWrapper: React.FC<BottomPanelProps> = ({ connectionId, them
   });
 };
 
-// ==================== 插件定义 ====================
+// ==================== Plugin Definition ====================
 
 export const transferManagerPlugin: BuiltinPlugin = {
   id: 'builtin-transfer-manager',
-  displayName: '传输管理',
-  description: '文件上传/下载传输进度管理',
+  displayName: 'Transfer Manager',
+  description: 'File upload/download transfer progress management',
   version: '1.0.0',
   getLocalizedName: (lang) => getLocale(lang).displayName,
   getLocalizedDescription: (lang) => getLocale(lang).description,

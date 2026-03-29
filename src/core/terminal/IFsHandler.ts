@@ -1,14 +1,12 @@
 /**
- * 文件系统操作抽象接口
+ * File system operation abstraction interface
  *
- * 能力层组件，SSH 和本地各自实现。
- * 由 IHostConnection 持有，上层（FileBrowserPanel 等）通过它操作文件。
+ * Capability layer component, SSH and local implementations.
+ * Held by IHostConnection, upper layers (FileBrowserPanel etc.) operate files through it.
  */
 
-import { FileItem } from '@/utils/types';
-
 /**
- * 目录树节点
+ * Directory tree node
  */
 export interface DirectoryNode {
   name: string;
@@ -18,60 +16,60 @@ export interface DirectoryNode {
 }
 
 export interface IFsHandler {
-  /** 列出目录下的文件和文件夹 */
+  /** List files in directory */
   listFiles(path: string): Promise<FileItem[]>;
 
-  /** 获取目录树 */
+  /** Get directory tree */
   getDirectoryTree(path: string, maxDepth?: number): Promise<DirectoryNode[]>;
 
-  /** 获取文件内容（预览，限制行数） */
+  /** Get file content (preview, limited lines) */
   getFileContent(filePath: string, maxLines?: number): Promise<string>;
 
-  /** 读取文件完整内容（编辑用） */
+  /** Read full file content (for editing) */
   readFileForEdit(filePath: string, maxSizeKB?: number): Promise<string>;
 
-  /** 写入文件内容 */
+  /** Write file content */
   writeFileContent(filePath: string, content: string): Promise<void>;
 
-  /** sudo 写入文件内容（SSH 专用，本地不支持） */
+  /** Write file content with sudo (SSH only, not supported locally) */
   writeFileContentSudo?(filePath: string, content: string, password: string): Promise<void>;
 
-  /** 重命名 */
+  /** Rename */
   rename(dirPath: string, oldName: string, newName: string): Promise<void>;
 
-  /** 删除 */
+  /** Delete */
   deleteFile(dirPath: string, name: string, isDir: boolean): Promise<void>;
 
-  /** 创建目录 */
+  /** Create directory */
   mkdir(dirPath: string, name: string): Promise<void>;
 
-  /** 创建空文件 */
+  /** Create empty file */
   createFile(dirPath: string, name: string): Promise<void>;
 
-  /** 修改权限 */
+  /** Change permissions */
   chmod(dirPath: string, name: string, octal: string): Promise<void>;
 
-  /** 打包文件 */
+  /** Pack files */
   packFiles(dirPath: string, fileNames: string[]): Promise<string>;
 
-  /** 删除临时文件 */
+  /** Remove temporary file */
   removeTempFile(tempPath: string): Promise<void>;
 
-  /** 下载文件（远程/浏览路径 → 本地保存路径） */
+  /** Download file (remote path -> local save path) */
   downloadFile(remotePath: string, localPath: string): Promise<string>;
 
-  /** 下载目录（远程/浏览路径 → 本地保存路径） */
+  /** Download directory (remote path -> local save path) */
   downloadDirectory(remotePath: string, localPath: string): Promise<string>;
 
-  /** 上传文件（本地路径 → 远程/浏览目标路径） */
+  /** Upload file (local path -> remote path) */
   uploadFile(localPath: string, remotePath: string): Promise<string>;
 
-  /** 上传目录（本地路径 → 远程/浏览目标路径） */
+  /** Upload directory (local path -> remote path) */
   uploadDirectory(localPath: string, remotePath: string): Promise<string>;
 
-  /** 获取初始路径 */
+  /** Get initial path */
   getInitialPath(): Promise<string>;
 
-  /** 获取终端当前工作目录（用于同步文件浏览器路径） */
+  /** Get terminal current working directory (for syncing file browser path) */
   getTerminalCwd?(): Promise<string | null>;
 }

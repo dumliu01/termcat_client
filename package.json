@@ -1,6 +1,6 @@
 {
   "name": "termcat",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "TermCat - Remote Terminal Management Tool",
   "main": "dist/main/main.js",
   "author": "TermCat Team <3959920542@qq.com>",
@@ -87,6 +87,13 @@
       "assets/**/*",
       "package.json",
       "node_modules/node-pty/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "bundled-plugins/",
+        "to": "bundled-plugins/",
+        "filter": ["**/*"]
+      }
     ],
     "npmRebuild": true,
     "buildDependenciesFromSource": true,

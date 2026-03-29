@@ -6,21 +6,21 @@ import { logger, LOG_MODULE } from '../../base/logger/logger';
 
 const log = logger.withFields({ module: LOG_MODULE.SSH });
 
-/** ssh2 连接选项中由 SSH config 解析出的子集 */
+/** SSH config options resolved from ~/.ssh/config for ssh2 connection options */
 export interface ResolvedSSHOptions {
   agentForward?: boolean;
   agent?: string | false;
   privateKey?: Buffer;
   keepaliveInterval?: number;
-  // 预留：当前 UI 始终提供这三项，未来可支持别名连接
+  // Reserved: UI always provides these three, alias connection can be supported in the future
   hostname?: string;
   port?: number;
   user?: string;
 }
 
 /**
- * 解析 ~/.ssh/config，按主机匹配返回 ssh2 可用的选项。
- * 带 mtime 缓存，文件未修改不重新解析。
+ * Parse ~/.ssh/config, return ssh2-compatible options based on host matching.
+ * With mtime cache, don't re-parse if file hasn't been modified.
  */
 export class SSHConfigParser {
   private configPath: string;
@@ -31,12 +31,12 @@ export class SSHConfigParser {
     this.configPath = configPath ?? path.join(os.homedir(), '.ssh', 'config');
   }
 
-  /** 重新加载（如果文件已变更） */
+  /** Reload (if file has changed) */
   private reload(): void {
     try {
       const stat = fs.statSync(this.configPath);
       if (this.parsed && stat.mtimeMs === this.lastMtime) {
-        return; // 未变更，跳过
+        return; // No change, skip
       }
       const content = fs.readFileSync(this.configPath, 'utf-8');
       this.parsed = SSHConfig.parse(content);
@@ -44,7 +44,7 @@ export class SSHConfigParser {
       log.debug('ssh.config.loaded', 'SSH config loaded', { path: this.configPath });
     } catch (err: any) {
       if (err.code === 'ENOENT') {
-        // 文件不存在，静默跳过
+        // File doesn't exist, skip silently
         this.parsed = null;
         return;
       }
@@ -57,8 +57,8 @@ export class SSHConfigParser {
   }
 
   /**
-   * 解析指定主机的 SSH 配置，返回 ssh2 可用的选项。
-   * 文件不存在或解析失败时返回空对象。
+   * Parse SSH config for specified host, return ssh2-compatible options.
+   * Returns empty object if file doesn't exist or parsing fails.
    */
   resolve(hostname: string): ResolvedSSHOptions {
     this.reload();
@@ -78,12 +78,12 @@ export class SSHConfigParser {
       }
     }
 
-    // IdentityFile → privateKey（读取文件内容）
+    // IdentityFile → privateKey (read file content)
     if (directives.IdentityFile) {
       const files = Array.isArray(directives.IdentityFile)
         ? directives.IdentityFile
         : [directives.IdentityFile];
-      // 取第一个存在的文件
+      // Take first existing file
       for (const raw of files) {
         const resolved = raw.replace(/^~/, os.homedir());
         try {
@@ -94,12 +94,12 @@ export class SSHConfigParser {
           });
           break;
         } catch {
-          // 文件不存在，尝试下一个
+          // File doesn't exist, try next one
         }
       }
     }
 
-    // ServerAliveInterval → keepaliveInterval（秒转毫秒）
+    // ServerAliveInterval → keepaliveInterval (seconds to milliseconds)
     if (directives.ServerAliveInterval) {
       const seconds = parseInt(String(directives.ServerAliveInterval), 10);
       if (!isNaN(seconds) && seconds > 0) {
@@ -107,7 +107,7 @@ export class SSHConfigParser {
       }
     }
 
-    // 预留字段
+    // Reserved fields
     if (directives.HostName) {
       result.hostname = String(directives.HostName);
     }
@@ -131,7 +131,7 @@ export class SSHConfigParser {
 }
 
 /**
- * 跨平台获取 SSH Agent socket 路径。
+ * Cross-platform get SSH Agent socket path.
  * Unix: $SSH_AUTH_SOCK
  * Windows: 'pageant'
  */
@@ -142,5 +142,5 @@ export function getSSHAgentSocket(): string | undefined {
   return process.env.SSH_AUTH_SOCK || undefined;
 }
 
-/** 全局单例 */
+/** Global singleton */
 export const sshConfigParser = new SSHConfigParser();

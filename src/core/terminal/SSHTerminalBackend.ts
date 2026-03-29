@@ -1,8 +1,8 @@
 /**
- * SSH 终端后端
+ * SSH terminal backend
  *
- * 封装现有 SSH IPC 调用，实现 ITerminalBackend 接口。
- * 不改动 ssh-service.ts，仅做调用层封装。
+ * Wraps existing SSH IPC calls, implements ITerminalBackend interface.
+ * Does not modify ssh-service.ts, only provides a calling-layer wrapper.
  */
 
 import { ITerminalBackend } from './ITerminalBackend';
@@ -42,7 +42,7 @@ export class SSHTerminalBackend implements ITerminalBackend {
       connection_id: this.connectionId,
     });
 
-    // 注册数据监听（必须在 createShell 之前，确保不丢失 MOTD）
+    // Register data listener (must be before createShell to avoid missing MOTD)
     const unsubData = window.electron.onShellData((connId, data) => {
       if (connId === this.connectionId) {
         for (const cb of this._dataCallbacks) {
@@ -62,11 +62,11 @@ export class SSHTerminalBackend implements ITerminalBackend {
     });
     this._cleanupFns.push(unsubClose);
 
-    // 创建 Shell
+    // Create shell
     await window.electron.sshCreateShell(this.connectionId, this._encoding);
     this._isConnected = true;
 
-    // 通知后端当前终端大小
+    // Notify backend of current terminal size
     await window.electron.sshShellResize(this.connectionId, options.cols, options.rows);
 
     log.info('ssh-backend.connected', 'SSHTerminalBackend connected', {
@@ -75,7 +75,7 @@ export class SSHTerminalBackend implements ITerminalBackend {
   }
 
   async disconnect(): Promise<void> {
-    // SSH 断连由上层 sshService 管理，这里不主动调 sshDisconnect
+    // SSH disconnection is managed by upper-layer sshService, do not proactively call sshDisconnect here
     this._isConnected = false;
     log.info('ssh-backend.disconnected', 'SSHTerminalBackend disconnected', {
       connection_id: this.connectionId,

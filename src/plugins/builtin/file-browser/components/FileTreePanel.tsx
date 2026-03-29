@@ -21,10 +21,10 @@ interface TreeNodeProps {
 const TreeNode: React.FC<TreeNodeProps> = React.memo(({
   node, level, selectedTreePath, onNodeClick, onToggle, onDrop, dragOver, onDragOver, onDragLeave, onContextMenu
 }) => {
-  // 目录树中所有节点都是目录，始终显示展开箭头（子节点可能尚未加载）
+  // All nodes in directory tree are directories, always show expand arrow (children may not be loaded yet)
   const hasLoadedChildren = node.children && node.children.length > 0;
   const isSelected = selectedTreePath === node.path;
-  // 当前节点是选中路径的祖先（路径高亮面包屑效果）
+  // Current node is ancestor of selected path (path highlight breadcrumb effect)
   const isAncestor = !isSelected && selectedTreePath.startsWith(node.path + '/');
 
   return (
@@ -120,7 +120,7 @@ export const FileTreePanel: React.FC<FileTreePanelProps> = React.memo(({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto relative">
-        {/* 拖拽覆盖层 */}
+        {/* Drag overlay */}
         {dragOver === 'tree' && (
           <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-lg flex items-center justify-center z-10">
             <div className="text-center">
@@ -138,7 +138,7 @@ export const FileTreePanel: React.FC<FileTreePanelProps> = React.memo(({
           </div>
         ) : (
           <div className="py-2">
-            {/* 根目录节点 — 始终是路径上的祖先，统一金色高亮 */}
+            {/* Root directory node — always ancestor on path, unified golden highlight */}
             <div
               className={`relative flex items-center gap-1 px-2 py-1 cursor-pointer transition-colors hover:bg-white/[0.04] ${dragOver === 'tree' ? 'bg-indigo-500/10' : ''}`}
               onClick={() => onNodeClick('/')}
@@ -150,7 +150,7 @@ export const FileTreePanel: React.FC<FileTreePanelProps> = React.memo(({
               <Folder className="w-3.5 h-3.5 shrink-0 text-amber-400" />
               <span className="text-xs truncate flex-1 font-semibold text-amber-300/90">/</span>
             </div>
-            {/* 子目录 */}
+            {/* Subdirectories */}
             {directoryTree.map((node) => (
               <TreeNode
                 key={node.path}

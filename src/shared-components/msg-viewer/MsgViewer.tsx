@@ -1,13 +1,13 @@
 /**
- * MsgViewer — 通用富消息展示控件
+ * MsgViewer — Universal rich message display component
  *
- * 基于 react-virtuoso 虚拟化列表，支持：
- * - 多种 block 类型（文本、命令、计划、工具、广告等）
- * - 流式输出（streaming）
- * - 自动滚动（loading 指示器作为数据项，followOutput 自动追踪）
- * - 可定制的空状态
+ * Based on react-virtuoso virtualized list, supports:
+ * - Multiple block types (text, command, plan, tool, ad, etc.)
+ * - Streaming output
+ * - Auto-scroll (loading indicator as data item, followOutput auto-tracks)
+ * - Customizable empty state
  *
- * 不含任何业务逻辑，所有交互通过 actions 回调。
+ * Contains no business logic, all interactions through actions callbacks.
  */
 
 import React, { useMemo, useCallback, useEffect, useRef } from 'react';
@@ -16,7 +16,7 @@ import { Sparkles, Copy } from 'lucide-react';
 import type { MsgViewerProps, MsgBlock, LoadingBlock } from './types';
 import { BlockRenderer } from './blocks/BlockRenderer';
 
-/** loading 占位 block 的固定 ID */
+/** Fixed ID for loading placeholder block */
 const LOADING_BLOCK_ID = '__msg_viewer_loading__';
 
 export const MsgViewer: React.FC<MsgViewerProps> = ({
@@ -34,8 +34,8 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
   emptyTitle,
   emptySubtitle,
 }) => {
-  // 将 loading 指示器作为数据项追加到末尾，而非 Footer。
-  // 这样 Virtuoso 的 followOutput 能自动追踪新增项并滚动。
+  // Append loading indicator as a data item at the end, not as a Footer.
+  // This allows Virtuoso's followOutput to auto-track new items and scroll.
   const displayBlocks = useMemo<MsgBlock[]>(() => {
     if (!isLoading) return blocks;
     const loadingBlock: LoadingBlock = {
@@ -48,12 +48,12 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
     return [...blocks, loadingBlock];
   }, [blocks, isLoading, loadingStatus, loadingMessage]);
 
-  // 渲染单个消息项
+  // Render single message item
   const renderItem = useCallback((index: number) => {
     const block = displayBlocks[index];
     if (!block) return null;
 
-    // loading block 不需要"复制回复"按钮
+    // Loading block doesn't need "copy reply" button
     if (block.type === 'loading') {
       return (
         <div className="py-3">
@@ -62,7 +62,7 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
       );
     }
 
-    // 判断是否需要显示"复制回复"按钮
+    // Determine if "copy reply" button needs to be shown
     const isAssistantType = block.type === 'assistant_text' || block.type === 'command_suggestion' ||
       block.type === 'operation_plan' || block.type === 'step_detail' || block.type === 'tool_use';
     const nextBlock = displayBlocks[index + 1];
@@ -102,8 +102,8 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
     );
   }, [displayBlocks, language, actions, passwordState]);
 
-  // 流式输出时，最后一个 block 内容增长（高度变化）但 block 数量不变，
-  // followOutput 不会触发。用 RAF 批量滚到底部，每帧最多一次。
+  // During streaming output, the last block content grows (height changes) but block count stays the same,
+  // followOutput won't trigger. Use RAF to batch scroll to bottom, max once per frame.
   const scrollRAFRef = useRef(0);
   useEffect(() => {
     if (!autoScroll || displayBlocks.length === 0) return;
@@ -113,14 +113,14 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
     });
   }, [displayBlocks, autoScroll]);
 
-  // followOutput 改为函数：当 autoScroll 为 true 时强制跟随，
-  // 避免 Virtuoso 内部 atBottom 检测因快速高度变化而暂时丢失。
+  // Change followOutput to a function: force follow when autoScroll is true,
+  // to avoid Virtuoso's internal atBottom detection temporarily losing track due to rapid height changes.
   const handleFollowOutput = useCallback(
     (): 'smooth' | false => autoScroll ? 'smooth' : false,
     [autoScroll],
   );
 
-  // 空状态（放在所有 hooks 之后，避免条件 return 导致 hooks 顺序不一致）
+  // Empty state (placed after all hooks to avoid conditional return causing hooks order inconsistency)
   if (blocks.length === 0 && !isLoading) {
     return (
       <div className="flex-1 overflow-y-auto no-scrollbar p-4 select-text">

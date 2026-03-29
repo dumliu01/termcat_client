@@ -18,7 +18,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
   const [isLoading, setIsLoading] = useState(false);
   const t = useTranslation();
 
-  // 监听 termcat:// 协议回调
+  // Listen for termcat:// protocol callback
   useEffect(() => {
     const cleanup = window.electron?.onAuthCallback?.((data: { token: string; user: string }) => {
       try {
@@ -38,7 +38,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
           user_id: user.id,
         });
 
-        // 所有数据同步由 App.tsx handleLogin 统一处理
+        // All data sync handled by App.tsx handleLogin
         onLogin(user);
       } catch (err) {
         logger.error(LOG_MODULE.AUTH, 'auth.protocol.parse_failed', 'Failed to parse auth callback', {
@@ -81,7 +81,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-[#020617]">
-      {/* 返回按钮 */}
+      {/* Back Button */}
       <button
         onClick={() => onLogin(null)}
         className="absolute top-12 left-10 z-20 flex items-center gap-2 px-4 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all text-sm font-bold"
@@ -90,13 +90,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
         {t.common.back}
       </button>
 
-      {/* 动态背景光效 */}
+      {/* Dynamic Background Effects */}
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/10 blur-[150px] rounded-full animate-pulse" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] opacity-20 blur-[150px] rounded-full bg-violet-600 animate-pulse delay-700" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.03)_0%,transparent_70%)]" />
 
       <div className="w-full max-w-md p-8 z-10 animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-700">
-        {/* 标志与标题 */}
+        {/* Logo and Title */}
         <div className="flex flex-col items-center mb-10">
           <div className="w-16 h-16 rounded-[1.25rem] flex items-center justify-center mb-6 group cursor-pointer active:scale-90 transition-all overflow-hidden">
             <img src={termcatIcon} alt="TermCat" className="w-18 h-18 group-hover:scale-110 transition-transform" />
@@ -105,7 +105,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
           <p className="text-center text-sm font-medium text-slate-400 opacity-80 px-4">{t.login.accessRemote}</p>
         </div>
 
-        {/* 登录卡片 */}
+        {/* Login Card */}
         <div className="backdrop-blur-2xl bg-slate-900/40 border border-white/5 p-8 rounded-[2.5rem] shadow-[0_25px_100px_rgba(0,0,0,0.5)]">
           {!isWaitingForBrowser ? (
             <div className="space-y-4">
@@ -167,7 +167,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
           )}
         </div>
 
-        {/* 底部安全徽章 */}
+        {/* Bottom Security Badge */}
         <div className="mt-12 flex items-center justify-center">
           <div className="flex items-center gap-2.5 px-4 py-2 bg-white/5 rounded-full border border-white/5">
             <Shield className="w-3.5 h-3.5 text-slate-500" />

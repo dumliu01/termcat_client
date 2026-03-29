@@ -37,14 +37,14 @@ export class FileTransferService {
   private activeTransfers: Map<string, TransferTask> = new Map();
 
   /**
-   * 生成唯一的传输ID
+   * Generate unique transfer ID
    */
   private generateTransferId(): string {
     return `transfer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
   /**
-   * 计算传输速度（字节/秒）
+   * Calculate transfer speed (bytes/second)
    */
   private calculateSpeed(transferred: number, startTime: number): number {
     const elapsedSeconds = (Date.now() - startTime) / 1000;
@@ -52,7 +52,7 @@ export class FileTransferService {
   }
 
   /**
-   * 格式化文件大小
+   * Format file size
    */
   private formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -62,17 +62,17 @@ export class FileTransferService {
   }
 
   /**
-   * 递归创建远程目录
+   * Recursively create remote directory
    */
   private async mkdirRecursive(sftp: SFTPWrapper, remotePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       sftp.mkdir(remotePath, (err) => {
       if (err) {
-          // 如果目录已存在，忽略错误
-          if ((err as any).code === 4) { // SSH_FX_FAILURE - 通常表示目录已存在
+          // If directory already exists, ignore error
+          if ((err as any).code === 4) { // SSH_FX_FAILURE - usually means directory already exists
             resolve();
           } else {
-            // 尝试创建父目录
+            // Try creating parent directory
             const parentDir = path.dirname(remotePath);
             if (parentDir !== '/' && parentDir !== '.') {
               this.mkdirRecursive(sftp, parentDir)
@@ -99,18 +99,18 @@ export class FileTransferService {
 
   private async ensureRemoteDirectoryExists(sftp: SFTPWrapper, remoteDir: string): Promise<void> {
     try {
-      // 检查目录是否存在
+      // Check if directory exists
       await new Promise<void>((resolve, reject) => {
         sftp.stat(remoteDir, (err, stats) => {
           if (err) {
-            if ((err as any).code === 2) { // SSH_FX_NO_SUCH_FILE - 目录不存在
-              // 创建目录
+            if ((err as any).code === 2) { // SSH_FX_NO_SUCH_FILE - directory doesn't exist
+              // Create directory
               this.mkdirRecursive(sftp, remoteDir).then(resolve).catch(reject);
             } else {
               reject(err);
             }
           } else {
-            // 目录存在，检查是否真的是目录
+            // Directory exists, check if it's actually a directory
             if (stats.isDirectory()) {
               resolve();
             } else {
@@ -131,7 +131,7 @@ export class FileTransferService {
   }
 
   /**
-   * 递归创建本地目录
+   * Recursively create local directory
    */
   private mkdirLocalRecursive(localPath: string): void {
     if (!fs.existsSync(localPath)) {
@@ -144,7 +144,7 @@ export class FileTransferService {
   }
 
   /**
-   * 上传单个文件
+   * Upload single file
    */
   async uploadFile(
     connectionId: string,
@@ -163,18 +163,18 @@ export class FileTransferService {
         remote_path: remotePath,
       });
 
-      // 获取SFTP客户端
+      // Get SFTP client
       const sftp = await sshService.getSFTPClient(connectionId);
 
-      // 确保远程目录存在
+      // Ensure remote directory exists
       const remoteDir = path.dirname(remotePath);
       await this.ensureRemoteDirectoryExists(sftp, remoteDir);
 
-      // 获取文件大小
+      // Get file size
       const fileStats = fs.statSync(localPath);
       const fileSize = fileStats.size;
 
-      // 发送 transfer-start 事件，让 UI 立即显示传输任务
+      // Send transfer-start event to immediately display transfer task in UI
       try {
         webContents.send('transfer-start', {
           transferId,
@@ -189,7 +189,7 @@ export class FileTransferService {
         // ignore
       }
 
-      // 创建传输任务
+      // Create transfer task
       this.activeTransfers.set(transferId, {
         id: transferId,
         type: 'upload',
@@ -200,23 +200,23 @@ export class FileTransferService {
         total: fileSize
       });
 
-      // 创建读写流
+      // Create read/write streams
       const readStream = fs.createReadStream(localPath);
       const writeStream = sftp.createWriteStream(remotePath);
 
       let transferred = 0;
       let lastProgressTime = Date.now();
 
-      // 监听数据传输
+      // Monitor data transfer
       readStream.on('data', (chunk: any) => {
         const delta = (chunk && chunk.length) ? chunk.length : 0;
         transferred += delta;
 
-        // 如果存在父传输（目录），累加父传输已传输字节
+        // If parent transfer exists (directory), accumulate parent's transferred bytes
         if (parentTransferId && this.activeTransfers.has(parentTransferId)) {
           const parentTask = this.activeTransfers.get(parentTransferId)!;
           parentTask.transferred = (parentTask.transferred || 0) + delta;
-          // 发送父传输进度
+          // Send parent transfer progress
           const parentProgress = parentTask.total > 0 ? Math.round((parentTask.transferred / parentTask.total) * 100) : 0;
           const parentSpeed = this.calculateSpeed(parentTask.transferred, parentTask.startTime);
           webContents.send('transfer-progress', {
@@ -229,7 +229,7 @@ export class FileTransferService {
           } as TransferProgress);
         }
 
-        // 每100ms发送一次子任务进度更新（避免过于频繁）
+        // Send child task progress update every 100ms (avoid too frequent)
         const now = Date.now();
         if (now - lastProgressTime > 100) {
           const progress = Math.round((transferred / fileSize) * 100);
@@ -256,7 +256,7 @@ export class FileTransferService {
               transfer_id: transferId,
             });
 
-            // 发送最终进度（100%）
+            // Send final progress (100%)
             webContents.send('transfer-progress', {
               transferId,
               progress: 100,
@@ -266,7 +266,7 @@ export class FileTransferService {
               total: fileSize
             } as TransferProgress);
 
-            // 发送完成通知
+            // Send completion notification
             webContents.send('transfer-complete', {
               transferId,
               success: true,
@@ -277,7 +277,7 @@ export class FileTransferService {
               startTime
             } as any);
 
-            // 如果有父传输，确保父传输已累加完成并发送更新
+            // If parent transfer exists, ensure parent transfer has accumulated and send update
             if (parentTransferId && this.activeTransfers.has(parentTransferId)) {
               const parentTask = this.activeTransfers.get(parentTransferId)!;
               parentTask.transferred = (parentTask.transferred || 0) + fileSize;
@@ -325,7 +325,7 @@ export class FileTransferService {
         msg: error.message,
       });
 
-      // 提供更友好的错误信息
+      // Provide more user-friendly error messages
       let errorMessage = error.message;
       if (error.message.includes('Permission denied') || error.message.includes('EACCES')) {
         errorMessage = 'Permission denied - check if you have write access to the target directory';
@@ -346,7 +346,7 @@ export class FileTransferService {
   }
 
   /**
-   * 下载单个文件
+   * Download single file
    */
   async downloadFile(
     connectionId: string,
@@ -364,10 +364,10 @@ export class FileTransferService {
         local_path: localPath,
       });
 
-      // 获取SFTP客户端
+      // Get SFTP client
       const sftp = await sshService.getSFTPClient(connectionId);
 
-      // 获取远程文件大小
+      // Get remote file size
       const stats = await new Promise<any>((resolve, reject) => {
         sftp.stat(remotePath, (err, stats) => {
           if (err) reject(err);
@@ -377,7 +377,7 @@ export class FileTransferService {
 
       const fileSize = stats.size;
 
-      // 发送 transfer-start 事件，让 UI 立即显示传输任务
+      // Send transfer-start event to immediately display transfer task in UI
       try {
         webContents.send('transfer-start', {
           transferId,
@@ -392,7 +392,7 @@ export class FileTransferService {
         // ignore
       }
 
-      // 创建传输任务
+      // Create transfer task
       this.activeTransfers.set(transferId, {
         id: transferId,
         type: 'download',
@@ -403,22 +403,22 @@ export class FileTransferService {
         total: fileSize
       });
 
-      // 确保本地目录存在
+      // Ensure local directory exists
       const localDir = path.dirname(localPath);
       this.mkdirLocalRecursive(localDir);
 
-      // 创建读写流
+      // Create read/write streams
       const readStream = sftp.createReadStream(remotePath);
       const writeStream = fs.createWriteStream(localPath);
 
       let transferred = 0;
       let lastProgressTime = Date.now();
 
-      // 监听数据传输
+      // Monitor data transfer
       readStream.on('data', (chunk: Buffer) => {
         transferred += chunk.length;
 
-        // 每100ms发送一次进度更新
+        // Send progress update every 100ms
         const now = Date.now();
         if (now - lastProgressTime > 100) {
           const progress = Math.round((transferred / fileSize) * 100);
@@ -445,7 +445,7 @@ export class FileTransferService {
               transfer_id: transferId,
             });
 
-            // 发送最终进度（100%）
+            // Send final progress (100%)
             webContents.send('transfer-progress', {
               transferId,
               progress: 100,
@@ -455,7 +455,7 @@ export class FileTransferService {
               total: fileSize
             } as TransferProgress);
 
-            // 发送完成通知
+            // Send completion notification
             webContents.send('transfer-complete', {
               transferId,
               success: true,
@@ -509,7 +509,7 @@ export class FileTransferService {
   }
 
   /**
-   * 递归上传目录
+   * Recursively upload directory
    */
   async uploadDirectory(
     connectionId: string,
@@ -530,10 +530,10 @@ export class FileTransferService {
 
       const sftp = await sshService.getSFTPClient(connectionId);
 
-      // 计算目录总大小
+      // Calculate total directory size
       const totalSize = this.calculateDirectorySize(localPath);
 
-      // 如果没有现有传输记录，创建传输任务
+      // If no existing transfer record, create transfer task
       if (!this.activeTransfers.has(transferId)) {
         this.activeTransfers.set(transferId, {
           id: transferId,
@@ -546,10 +546,10 @@ export class FileTransferService {
         });
       }
 
-      // 创建远程目录
+      // Create remote directory
       await this.mkdirRecursive(sftp, remotePath);
 
-      // 递归遍历本地目录并上传
+      // Recursively traverse local directory and upload
       await this.uploadDirectoryRecursive(connectionId, localPath, remotePath, webContents, transferId, startTime, totalSize);
 
       logger.info(LOG_MODULE.FILE, 'file.transfer.upload_dir.completed', 'Directory upload completed', {
@@ -557,7 +557,7 @@ export class FileTransferService {
         transfer_id: transferId,
       });
 
-      // 发送完成通知（包含最终速度/大小以便前端显示）
+      // Send completion notification (include final speed/size for frontend display)
       webContents.send('transfer-complete', {
         transferId,
         success: true,
@@ -576,7 +576,7 @@ export class FileTransferService {
         msg: error.message,
       });
 
-      // 发送错误通知
+      // Send error notification
       webContents.send('transfer-error', {
         transferId,
         error: error.message
@@ -590,7 +590,7 @@ export class FileTransferService {
 
       this.activeTransfers.delete(transferId);
 
-      // 提供更友好的错误信息
+      // Provide more user-friendly error messages
       let errorMessage = error.message;
       if (error.message.includes('Permission denied') || error.message.includes('EACCES')) {
         errorMessage = 'Permission denied - check if you have write access to the target directory';
@@ -603,12 +603,12 @@ export class FileTransferService {
   }
 
   /**
-   * 启动目录上传并立即返回 transferId（后台执行）
+   * Start directory upload and return transferId immediately (background execution)
    */
   startUploadDirectory(connectionId: string, localPath: string, remotePath: string, webContents: any): string {
     const transferId = this.generateTransferId();
 
-    // 放入 activeTransfers，total 会稍后在 uploadDirectory 中更新
+    // Add to activeTransfers, total will be updated later in uploadDirectory
     this.activeTransfers.set(transferId, {
       id: transferId,
       type: 'upload',
@@ -619,7 +619,7 @@ export class FileTransferService {
       total: 0
     });
 
-    // 发送 transfer-start 事件，让 UI 立即显示传输任务（目录上传）
+    // Send transfer-start event to immediately display transfer task in UI (directory upload)
     try {
       webContents.send('transfer-start', {
         transferId,
@@ -634,10 +634,10 @@ export class FileTransferService {
       // ignore
     }
 
-    // 后台执行目录上传（不阻塞调用者）
+    // Execute directory upload in background (don't block caller)
     this.uploadDirectory(connectionId, localPath, remotePath, webContents, transferId)
       .then(() => {
-        // 已由 uploadDirectory 发送完成事件
+        // Completion event already sent by uploadDirectory
       })
       .catch((err) => {
         logger.error(LOG_MODULE.FILE, 'file.transfer.upload_dir.background_failed', 'Background directory upload failed', {
@@ -683,19 +683,19 @@ export class FileTransferService {
       const remoteFilePath = `${remotePath}/${entry.name}`;
 
       if (entry.isDirectory()) {
-        // 创建远程子目录
+        // Create remote subdirectory
         await this.mkdirRecursive(sftp, remoteFilePath);
-        // 递归上传子目录
+        // Recursively upload subdirectory
         await this.uploadDirectoryRecursive(connectionId, localFilePath, remoteFilePath, webContents, transferId, startTime, totalSize);
       } else {
-        // 上传文件
+        // Upload file
         await this.uploadFile(connectionId, localFilePath, remoteFilePath, webContents, transferId);
       }
     }
   }
 
   /**
-   * 递归下载目录
+   * Recursively download directory
    */
   async downloadDirectory(
     connectionId: string,
@@ -714,10 +714,10 @@ export class FileTransferService {
 
       const sftp = await sshService.getSFTPClient(connectionId);
 
-      // 创建本地目录
+      // Create local directory
       this.mkdirLocalRecursive(localPath);
 
-      // 递归遍历远程目录
+      // Recursively traverse remote directory
       const entries = await new Promise<any[]>((resolve, reject) => {
         sftp.readdir(remotePath, (err, list) => {
           if (err) reject(err);
@@ -730,10 +730,10 @@ export class FileTransferService {
         const localFilePath = path.join(localPath, entry.filename);
 
         if (entry.attrs.isDirectory()) {
-          // 递归下载子目录
+          // Recursively download subdirectory
           await this.downloadDirectory(connectionId, remoteFilePath, localFilePath, webContents);
         } else {
-          // 下载文件
+          // Download file
           await this.downloadFile(connectionId, remoteFilePath, localFilePath, webContents);
         }
       }

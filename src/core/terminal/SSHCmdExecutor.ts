@@ -1,7 +1,7 @@
 /**
- * SSH 命令执行器
+ * SSH command executor
  *
- * 通过 sshExecute IPC 在远程服务器执行命令。
+ * Executes commands on remote server via sshExecute IPC.
  */
 
 import type { ICmdExecutor, CmdResult } from './ICmdExecutor';

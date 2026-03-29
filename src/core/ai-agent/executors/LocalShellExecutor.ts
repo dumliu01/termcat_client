@@ -1,12 +1,12 @@
 /**
- * 本地 Shell 命令执行器
+ * Local Shell Command Executor
  *
- * 继承 BaseShellExecutor，通过 Local PTY IPC 执行命令。
- * 复用基类所有通用逻辑（标记注入、输出解析、超时管理等）。
+ * Extends BaseShellExecutor, executes commands via Local PTY IPC.
+ * Reuses all common logic from base class (marker injection, output parsing, timeout management).
  *
- * 支持两种模式：
- * - associated: 关联模式，复用用户终端的 PTY（命令在用户可见的终端执行）
- * - independent: 独立模式，创建新 PTY（AI 专用，不干扰用户交互）
+ * Supports two modes:
+ * - associated: Associated mode, reuse user's terminal PTY (commands execute in user's visible terminal)
+ * - independent: Independent mode, create new PTY (AI-specific, doesn't interfere with user interaction)
  */
 
 import { BaseShellExecutor } from './BaseShellExecutor';
@@ -16,11 +16,11 @@ import { logger, LOG_MODULE } from '@/base/logger/logger';
 const log = logger.withFields({ module: LOG_MODULE.AI });
 
 export interface LocalShellExecutorConfig {
-  /** 用于日志标识 */
+  /** For log identification */
   sessionId?: string;
-  /** 关联模式下，用户终端的 ptyId */
+  /** PTY ID of user's terminal in associated mode */
   existingPtyId?: string;
-  /** 执行模式：associated 复用用户终端，independent 创建独立 PTY */
+  /** Execution mode: associated reuses user's terminal, independent creates separate PTY */
   sshMode?: SshMode;
 }
 
@@ -36,7 +36,7 @@ export class LocalShellExecutor extends BaseShellExecutor {
     this.mode = config?.sshMode || 'independent';
     this.existingPtyId = config?.existingPtyId;
 
-    // Windows 本地终端默认是 PowerShell，设置 shell 类型以生成兼容的命令标记
+    // Windows local terminal defaults to PowerShell, set shell type to generate compatible command markers
     if (typeof navigator !== 'undefined' && /Win/i.test(navigator.platform)) {
       this.shellType = 'powershell';
     }
@@ -48,14 +48,14 @@ export class LocalShellExecutor extends BaseShellExecutor {
     }
 
     if (this.mode === 'associated' && this.existingPtyId) {
-      // 关联模式：复用用户终端的 PTY
+      // Associated mode: reuse user's terminal PTY
       this.ptyId = this.existingPtyId;
       log.info('local-executor.setup', 'Using existing PTY (associated mode)', {
         session_id: this.sessionId,
         pty_id: this.ptyId,
       });
     } else {
-      // 独立模式：创建新 PTY
+      // Independent mode: create new PTY
       log.info('local-executor.setup', 'Creating local PTY for AI executor', {
         session_id: this.sessionId,
       });
@@ -94,7 +94,7 @@ export class LocalShellExecutor extends BaseShellExecutor {
   }
 
   /**
-   * 获取 PTY ID（用于调试/日志）
+   * Get PTY ID (for debugging/logging)
    */
   getPtyId(): string {
     return this.ptyId;
@@ -104,10 +104,10 @@ export class LocalShellExecutor extends BaseShellExecutor {
     const ptyId = this.ptyId;
     const isIndependent = this.mode === 'independent';
 
-    // 先调父类 cleanup（清理 timer、unsubscribe 等）
+    // Call parent cleanup first (cleanup timers, unsubscribe, etc.)
     await super.cleanup();
 
-    // 仅独立模式下销毁 PTY（关联模式的 PTY 归用户终端管理）
+    // Only destroy PTY in independent mode (associated mode's PTY is managed by user's terminal)
     if (isIndependent && ptyId && window.electron?.localTerminal) {
       log.info('local-executor.cleanup', 'Destroying AI executor PTY', {
         session_id: this.sessionId,
@@ -116,7 +116,7 @@ export class LocalShellExecutor extends BaseShellExecutor {
       try {
         await window.electron.localTerminal.destroy(ptyId);
       } catch (e) {
-        // PTY 可能已退出，忽略
+        // PTY may have already exited, ignore
       }
     }
 

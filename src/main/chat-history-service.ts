@@ -1,11 +1,11 @@
 /**
- * 会话记录持久化服务（Main 进程）
+ * Chat History Persistence Service (Main Process)
  *
- * 使用 JSONL（JSON Lines）格式存储：
- * - 第1行：header（会话元信息）
- * - 后续行：msg（消息），支持追加写入
+ * Stores in JSONL (JSON Lines) format:
+ * - Line 1: header (session metadata)
+ * - Subsequent lines: msg (messages), supports append write
  *
- * 存储路径：~/.termcat/chat_records/<userId>/conv_<userId>_<convId>_<timestamp>.dat
+ * Storage path: ~/.termcat/chat_records/<userId>/conv_<userId>_<convId>_<timestamp>.dat
  */
 
 import { app, ipcMain } from 'electron';
@@ -28,12 +28,12 @@ class ChatHistoryService {
     return path.join(this.getUserDir(userId), fileName);
   }
 
-  /** 防止路径穿越 */
+  /** Prevent path traversal attacks */
   private sanitize(input: string | number): string {
     return String(input).replace(/[\/\\\.]/g, '_');
   }
 
-  /** 创建会话（写入 header 行） */
+  /** Create conversation (write header line) */
   async createConversation(header: any): Promise<string> {
     const dir = this.getUserDir(header.userId);
     await fs.mkdir(dir, { recursive: true });
@@ -49,14 +49,14 @@ class ChatHistoryService {
     return path.basename(filePath);
   }
 
-  /** 追加单条消息 */
+  /** Append single message */
   async appendMessage(userId: string, convId: string, createdAt: number, message: any): Promise<void> {
     const filePath = this.getFilePath(userId, convId, createdAt);
     const line = JSON.stringify({ type: 'msg', ...message }) + '\n';
     await fs.appendFile(filePath, line, 'utf-8');
   }
 
-  /** 批量追加消息 */
+  /** Batch append messages */
   async appendMessages(userId: string, convId: string, createdAt: number, messages: any[]): Promise<void> {
     if (!messages || messages.length === 0) return;
     const filePath = this.getFilePath(userId, convId, createdAt);
@@ -64,7 +64,7 @@ class ChatHistoryService {
     await fs.appendFile(filePath, lines, 'utf-8');
   }
 
-  /** 更新 header 行（重写第一行，保留消息行不变） */
+  /** Update header line (rewrite first line, keep message lines unchanged) */
   async updateHeader(userId: string, convId: string, createdAt: number, updates: any): Promise<void> {
     const filePath = this.getFilePath(userId, convId, createdAt);
     try {
@@ -74,14 +74,14 @@ class ChatHistoryService {
 
       const oldHeader = JSON.parse(raw.substring(0, firstNewline));
       const newHeader = { ...oldHeader, ...updates };
-      const rest = raw.substring(firstNewline); // 包含 \n + 后续所有行
+      const rest = raw.substring(firstNewline); // includes \n + all subsequent lines
       await fs.writeFile(filePath, JSON.stringify(newHeader) + rest, 'utf-8');
     } catch {
-      // 文件不存在或损坏，忽略
+      // File does not exist or is corrupted, ignore
     }
   }
 
-  /** 读取会话列表（只读每个文件第一行 header） */
+  /** Read conversation list (read only the first line header of each file) */
   async listConversations(userId: string): Promise<any[]> {
     const dir = this.getUserDir(userId);
     try {
@@ -110,7 +110,7 @@ class ChatHistoryService {
             fileSize: stat.size,
           });
         } catch {
-          // 跳过损坏文件
+          // Skip corrupted files
         }
       }
 
@@ -120,9 +120,9 @@ class ChatHistoryService {
     }
   }
 
-  /** 读取完整会话（逐行解析） */
+  /** Read full conversation (parse line by line) */
   async loadConversation(userId: string, fileName: string): Promise<any | null> {
-    // 安全检查：防止路径穿越
+    // Security check: prevent path traversal
     if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) {
       return null;
     }
@@ -143,7 +143,7 @@ class ChatHistoryService {
             messages.push(msg);
           }
         } catch {
-          // 跳过损坏行
+          // Skip corrupted lines
         }
       }
 
@@ -159,7 +159,7 @@ class ChatHistoryService {
     }
   }
 
-  /** 删除会话文件 */
+  /** Delete conversation file */
   async deleteConversation(userId: string, fileName: string): Promise<boolean> {
     if (fileName.includes('/') || fileName.includes('\\') || fileName.includes('..')) {
       return false;
@@ -177,7 +177,7 @@ class ChatHistoryService {
     }
   }
 
-  /** 辅助：只读文件第一行并解析为 JSON */
+  /** Helper: read only the first line of file and parse as JSON */
   private async readFirstLine(filePath: string): Promise<any> {
     try {
       const raw = await fs.readFile(filePath, 'utf-8');
@@ -189,7 +189,7 @@ class ChatHistoryService {
     }
   }
 
-  /** 注册 IPC handlers */
+  /** Register IPC handlers */
   registerHandlers(): void {
     ipcMain.handle('chat-history:create', (_e, header) =>
       this.createConversation(header));

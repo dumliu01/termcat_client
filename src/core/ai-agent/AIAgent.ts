@@ -1,13 +1,13 @@
 /**
- * AI Agent 核心类
+ * AI Agent Core Class
  *
- * 事件驱动的状态机，处理 AI WebSocket 协议。
- * 无 UI 依赖，通过 EventEmitter 将所有状态变更和交互请求通知外部。
+ * Event-driven state machine that handles AI WebSocket protocol.
+ * No UI dependencies - all state changes and interaction requests are notified to external components via EventEmitter.
  *
- * 逻辑提取自：
- * - useAIMessageHandler.ts → 消息处理状态机
- * - useCommandExecution.ts → 命令执行流程
- * - useAIOpsState.ts → 状态管理
+ * Logic extracted from:
+ * - useAIMessageHandler.ts → Message handling state machine
+ * - useCommandExecution.ts → Command execution flow
+ * - useAIOpsState.ts → State management
  */
 
 import { EventEmitter } from './EventEmitter';
@@ -30,18 +30,19 @@ import { AIAgentConnection } from './AIAgentConnection';
 import { ICommandExecutor, ExecuteOptions } from './ICommandExecutor';
 import { isSudoCommand, buildCommandWithPassword, rewriteHeredoc } from './utils/shellCommandBuilder';
 
-/** 运维关键字列表，用于 normal 模式下检测是否应建议切换 agent 模式 */
+/**
+ * Multi-step ops keywords — only suggest Agent mode when the task
+ * clearly requires multiple steps, not for single-command queries.
+ */
 const OPS_KEYWORDS = [
-  'sudo', 'systemctl', 'service', 'docker', 'nginx', 'apache',
-  'mysql', 'postgresql', 'redis', 'mongodb', 'kubernetes', 'k8s',
-  'deploy', 'restart', 'stop', 'start', 'status', 'logs', 'tail',
-  'grep', 'awk', 'sed', 'ps', 'top', 'netstat', 'ss', 'iptables',
-  'firewall', 'ufw', 'selinux', 'chmod', 'chown', 'mount', 'umount',
-  'disk', 'memory', 'cpu', 'load', 'performance', 'monitor',
-  '执行步骤', '运维操作', '运维任务', 'bash', 'shell',
+  'deploy', 'kubernetes', 'k8s', 'cluster',
+  'migrate', 'migration', 'backup', 'restore',
+  'troubleshoot', 'diagnose', 'performance tuning',
+  '部署', '迁移', '排查', '故障排查', '性能优化', '集群',
+  '执行步骤', '运维操作', '运维任务', '多步骤',
 ];
 
-/** 生成唯一消息 ID */
+/** Generate unique message ID */
 let messageIdCounter = 0;
 function generateId(): string {
   return `agent_${Date.now()}_${++messageIdCounter}`;
@@ -56,14 +57,16 @@ export class AIAgent extends EventEmitter {
   private frontendTaskId: string | null = null;
   private unsubscribeMessage: (() => void) | null = null;
 
-  // 累积的回答内容（用于流式消息合并）
+  // Accumulated response content (for streaming message merging)
   private accumulatedContent = '';
+  // Whether a COMMAND message was received (single command = no need to suggest Agent)
+  private receivedCommandSuggestion = false;
 
-  // 自动模式标志
+  // Auto mode flags
   private autoExecuteEnabled = false;
   private autoChoiceEnabled = false;
 
-  // 密码缓存（用于自动执行模式）
+  // Password cache (for auto-execute mode)
   private cachedPassword: string | null = null;
 
   constructor(connection: AIAgentConnection, config: AIAgentConfig) {
@@ -71,22 +74,23 @@ export class AIAgent extends EventEmitter {
     this.connection = connection;
     this.config = { ...config };
 
-    // 任务级连接：所有消息都是自己的，直接用 onMessage
+    // Task-level connection: all messages are for this agent, use onMessage directly
     this.unsubscribeMessage = this.connection.onMessage((msg) => this.handleMessage(msg));
   }
 
-  // ==================== 核心 API ====================
+  // ==================== Core API ====================
 
-  /** 设置命令执行器 */
+  /** Set command executor */
   setExecutor(executor: ICommandExecutor): void {
     this.executor = executor;
   }
 
-  /** 发送提问 */
+  /** Send question */
   ask(prompt: string, files?: AttachedFile[]): void {
-    // 生成前端任务 ID
+    // Generate frontend task ID
     this.frontendTaskId = generateId();
     this.accumulatedContent = '';
+    this.receivedCommandSuggestion = false;
     this._taskId = null;
 
     this.setStatus('thinking');
@@ -105,19 +109,19 @@ export class AIAgent extends EventEmitter {
     });
   }
 
-  /** 停止当前任务（任务级连接下，外部会直接关闭连接） */
+  /** Stop current task (for task-level connection, external will close connection directly) */
   stop(): void {
     this.setStatus('idle');
     this._taskId = null;
     this.frontendTaskId = null;
   }
 
-  /** 更新配置 */
+  /** Update configuration */
   configure(config: Partial<AIAgentConfig>): void {
     Object.assign(this.config, config);
   }
 
-  /** 销毁，清理所有资源 */
+  /** Destroy and cleanup all resources */
   destroy(): void {
     if (this.unsubscribeMessage) {
       this.unsubscribeMessage();
@@ -126,11 +130,11 @@ export class AIAgent extends EventEmitter {
     this.removeAllListeners();
   }
 
-  // ==================== 人机交互 API ====================
+  // ==================== Human-Computer Interaction API ====================
 
-  /** 确认执行命令（用户点击"执行"后调用） */
+  /** Confirm command execution (called after user clicks "Execute") */
   async confirmExecute(stepIndex: number, command: string, password?: string, taskId?: string): Promise<void> {
-    // 如果外部传入了 taskId（例如 sshMode 切换后 agent 重建，_taskId 丢失），优先恢复
+    // If external passed taskId (e.g., after sshMode switch agent rebuilt, _taskId lost), restore it
     if (taskId && !this._taskId) {
       this._taskId = taskId;
     }
@@ -142,18 +146,18 @@ export class AIAgent extends EventEmitter {
       let result: CommandResult;
 
       if (this.executor) {
-        // heredoc 转换（必须在密码包装前执行，否则引号嵌套崩坏）
+        // heredoc transformation (must run before password wrapping, otherwise quote nesting breaks)
         let finalCommand = rewriteHeredoc(command) ?? command;
 
-        // 处理密码
+        // Handle password
         if (password && isSudoCommand(finalCommand)) {
           finalCommand = buildCommandWithPassword(finalCommand, password);
         }
 
         result = await this.executor.execute(finalCommand);
       } else {
-        // 没有 executor，通知外部处理
-        // 外部应该监听 execute:request 事件并调用 submitExecuteResult
+        // No executor, notify external
+        // External should listen to execute:request event and call submitExecuteResult
         return;
       }
 
@@ -168,7 +172,7 @@ export class AIAgent extends EventEmitter {
     }
   }
 
-  /** 提交执行结果（当外部自行执行命令后调用） */
+  /** Submit execution result (called when external executes command) */
   submitExecuteResult(stepIndex: number, command: string, result: CommandResult, error?: string): void {
     if (!this._taskId) return;
 
@@ -187,61 +191,61 @@ export class AIAgent extends EventEmitter {
     );
   }
 
-  /** 取消执行命令 — 向终端发送 Ctrl+C 中断正在执行的命令，任务继续 */
+  /** Cancel command execution — sends Ctrl+C to terminal to interrupt running command, task continues */
   cancelExecute(stepIndex: number): void {
     if (!this._taskId) return;
 
-    // 只向 shell 发送 Ctrl+C（\x03）中断当前命令
-    // executor 的 handleShellData 检测到 ^C + [?2004h → resolve 为失败
-    // 失败结果通过 EXECUTE_RESULT 发回服务端 → AI 看到命令被中断，决定下一步
-    // 不发 cancel_execute 到服务端，避免整个任务被取消
+    // Only send Ctrl+C (\x03) to shell to interrupt current command
+    // Executor handleShellData detects ^C + [?2004h → resolve as failure
+    // Failure result sent back to server via EXECUTE_RESULT → AI decides next step
+    // Don't send cancel_execute to server to avoid cancelling entire task
     if (this.executor) {
       this.executor.writeToShell('\x03').catch(() => {});
     }
   }
 
-  /** 发送用户选择 */
+  /** Send user choice */
   sendUserChoice(stepIndex: number, choice: string, customInput?: string): void {
     if (!this._taskId) return;
     this.connection.sendUserChoice(this._taskId, stepIndex, choice, { customInput });
     this.setStatus('thinking');
   }
 
-  /** 取消用户选择 */
+  /** Cancel user choice */
   cancelUserChoice(stepIndex: number): void {
     if (!this._taskId) return;
     this.connection.sendUserChoice(this._taskId, stepIndex, '', { cancelled: true });
     this.setStatus('idle');
   }
 
-  // ==================== 自动模式 API（headless 使用） ====================
+  // ==================== Auto Mode API (headless usage) ====================
 
-  /** 启用自动确认执行 */
+  /** Enable auto-confirm execution */
   enableAutoExecute(): void {
     this.autoExecuteEnabled = true;
   }
 
-  /** 禁用自动确认执行 */
+  /** Disable auto-confirm execution */
   disableAutoExecute(): void {
     this.autoExecuteEnabled = false;
   }
 
-  /** 启用自动选择（收到 user_choice_request 自动选 recommended） */
+  /** Enable auto-choice (auto-select recommended when receiving user_choice_request) */
   enableAutoChoice(): void {
     this.autoChoiceEnabled = true;
   }
 
-  /** 禁用自动选择 */
+  /** Disable auto-choice */
   disableAutoChoice(): void {
     this.autoChoiceEnabled = false;
   }
 
-  /** 设置密码缓存（用于自动执行 sudo 命令） */
+  /** Set password cache (for auto-executing sudo commands) */
   setPassword(password: string): void {
     this.cachedPassword = password;
   }
 
-  // ==================== 状态查询 ====================
+  // ==================== Status Query ====================
 
   getStatus(): AIAgentStatus {
     return this._status;
@@ -255,13 +259,13 @@ export class AIAgent extends EventEmitter {
     return { ...this.config };
   }
 
-  // ==================== 内部：消息处理状态机 ====================
+  // ==================== Internal: Message Handling State Machine ====================
 
   private handleMessage(message: AIMessage): void {
-    // 任务级连接：所有消息都是自己的，只需基本过滤
+    // Task-level connection: all messages are for this agent, just basic filtering
     if (!this.frontendTaskId) return;
 
-    // 首次收到 server 返回的 task_id → 记录
+    // First time receiving server task_id → record
     if (message.task_id && !this._taskId) {
       this._taskId = message.task_id;
       this.emit('task:start', message.task_id);
@@ -316,7 +320,7 @@ export class AIAgent extends EventEmitter {
     }
   }
 
-  /** 处理 ANSWER 消息（流式文本回复） */
+  /** Handle ANSWER message (streaming text response) */
   private handleAnswerMessage(message: AIMessage): void {
     this.setStatus('generating');
     this.accumulatedContent += message.content || '';
@@ -330,14 +334,15 @@ export class AIAgent extends EventEmitter {
         this.setStatus('idle');
         this._taskId = null;
 
-        // 检测运维关键字
+        // Detect ops keywords
         this.detectOpsKeywords(this.accumulatedContent);
       }
     }
   }
 
-  /** 处理 COMMAND 消息（命令建议） */
+  /** Handle COMMAND message (command suggestion) */
   private handleCommandMessage(message: AIMessage): void {
+    this.receivedCommandSuggestion = true;
     this.emit('command:suggestion', {
       command: message.command || '',
       explanation: message.explanation || '',
@@ -346,7 +351,7 @@ export class AIAgent extends EventEmitter {
     this.setStatus('idle');
   }
 
-  /** 处理 OPERATION_PLAN 消息 */
+  /** Handle OPERATION_PLAN message */
   private handleOperationPlanMessage(message: AIMessage): void {
     this.setStatus('generating');
 
@@ -357,14 +362,14 @@ export class AIAgent extends EventEmitter {
     this.emit('plan', message.plan || [], message.description || '', message.task_id || '');
   }
 
-  /** 处理 OPERATION_STEP 消息（更新步骤状态） */
+  /** Handle OPERATION_STEP message (update step status) */
   private handleOperationStepMessage(message: AIMessage): void {
     if (message.step_index !== undefined) {
       this.emit('step:update', message.step_index, message.status as any);
     }
   }
 
-  /** 处理 STEP_DETAIL 消息 */
+  /** Handle STEP_DETAIL message */
   private handleStepDetailMessage(message: AIMessage): void {
     const detail: StepDetailEvent = {
       taskId: message.task_id || '',
@@ -379,8 +384,8 @@ export class AIAgent extends EventEmitter {
       autoExecute: message.auto_execute,
     };
 
-    // 当步骤等待用户确认时，切换到 waiting_user 状态
-    // （持久连接模式下，不再依赖 COMPLETE("等待命令执行...") 来切换状态）
+    // When step is waiting for user confirmation, switch to waiting_user status
+    // (In persistent connection mode, no longer relies on COMPLETE("Waiting for command execution...") to switch status)
     if (detail.status === 'waiting_confirm' && detail.command) {
       this.setStatus('waiting_user');
     }
@@ -388,16 +393,16 @@ export class AIAgent extends EventEmitter {
     this.emit('step:detail', detail.stepIndex, detail);
   }
 
-  /** 处理 EXECUTE_REQUEST 消息（请求执行命令） */
+  /** Handle EXECUTE_REQUEST message (request command execution) */
   private handleExecuteRequestMessage(message: AIMessage): void {
-    // Code / Codex 模式：remote_terminal_proxy 发来的执行请求（有 execution_id）
+    // Code/X-Agent mode: execution request from remote_terminal_proxy (has execution_id)
     if (message.execution_id) {
       console.log('[AIAgent] handleCodeModeExecuteRequest:', message.execution_id, message.tool_input?.command?.substring(0, 50));
       this.handleCodeModeExecuteRequest(message);
       return;
     }
 
-    // Agent 模式：常规执行请求
+    // Agent mode: regular execution request
     const stepIndex = message.step_index ?? 0;
     const command = message.command || '';
     const risk = message.risk || 'medium';
@@ -408,19 +413,19 @@ export class AIAgent extends EventEmitter {
       this._taskId = message.task_id;
     }
 
-    // 自动执行模式
+    // Auto execute mode
     if (this.autoExecuteEnabled && this.executor) {
       this.setStatus('thinking');
       this.confirmExecute(stepIndex, command, this.cachedPassword || undefined).catch(() => {});
       return;
     }
 
-    // 非自动模式：通知外部
+    // Non-auto mode: notify external
     this.setStatus('waiting_user');
     this.emit('execute:request', stepIndex, command, risk, description, taskId);
   }
 
-  /** 处理 Code 模式远程执行请求（来自 remote_terminal_proxy） */
+  /** Handle Code mode remote execution request (from remote_terminal_proxy) */
   private async handleCodeModeExecuteRequest(message: AIMessage): Promise<void> {
     const executionId = message.execution_id!;
     const toolInput = message.tool_input || {};
@@ -436,9 +441,9 @@ export class AIAgent extends EventEmitter {
       return;
     }
 
-    // 设置活动心跳：executor 收到 SSH 数据时通知后端重置超时
+    // Set activity heartbeat: executor notifies backend to reset timeout when receiving SSH data
     let lastHeartbeat = 0;
-    const HEARTBEAT_INTERVAL = 10_000; // 每 10 秒最多发一次心跳
+    const HEARTBEAT_INTERVAL = 10_000; // Send heartbeat at most once every 10 seconds
     const onActivity = () => {
       const now = Date.now();
       if (now - lastHeartbeat >= HEARTBEAT_INTERVAL) {
@@ -449,10 +454,10 @@ export class AIAgent extends EventEmitter {
     this.executor.on('data:activity', onActivity);
 
     try {
-      // heredoc 转换
+      // heredoc transformation
       let finalCommand = rewriteHeredoc(command) ?? command;
 
-      // 密码处理
+      // Password handling
       if (this.cachedPassword && isSudoCommand(finalCommand)) {
         finalCommand = buildCommandWithPassword(finalCommand, this.cachedPassword);
       }
@@ -478,11 +483,11 @@ export class AIAgent extends EventEmitter {
     }
   }
 
-  /** 处理 EXECUTE_CANCEL 消息（后端命令超时，需要中断 SSH 会话恢复 shell） */
+  /** Handle EXECUTE_CANCEL message (backend command timeout, need to interrupt SSH session to restore shell) */
   private handleExecuteCancelMessage(message: AIMessage): void {
     console.log('[AIAgent] handleExecuteCancelMessage: execution timed out, sending Ctrl+C', message.execution_id);
     if (this.executor) {
-      // 发送两次 Ctrl+C 确保中断（处理嵌套命令场景如 sudo 等待密码）
+      // Send Ctrl+C twice to ensure interruption (handle nested command scenarios like sudo waiting for password)
       this.executor.writeToShell('\x03').catch(() => {});
       setTimeout(() => {
         this.executor?.writeToShell('\x03').catch(() => {});
@@ -490,7 +495,7 @@ export class AIAgent extends EventEmitter {
     }
   }
 
-  /** 处理 USER_CHOICE_REQUEST 消息 */
+  /** Handle USER_CHOICE_REQUEST message */
   private handleUserChoiceRequestMessage(message: AIMessage): void {
     const stepIndex = message.step_index ?? 0;
     const taskId = message.task_id || '';
@@ -508,7 +513,7 @@ export class AIAgent extends EventEmitter {
       context: message.context,
     };
 
-    // 自动选择模式
+    // Auto-choice mode
     if (this.autoChoiceEnabled) {
       const recommended = choiceData.options.find(o => o.recommended);
       const choice = recommended?.value || choiceData.options[0]?.value || '';
@@ -516,12 +521,12 @@ export class AIAgent extends EventEmitter {
       return;
     }
 
-    // 非自动模式：通知外部
+    // Non-auto mode: notify external
     this.setStatus('waiting_user');
     this.emit('choice:request', stepIndex, choiceData, taskId);
   }
 
-  /** 处理 TOKEN_USAGE 消息 */
+  /** Handle TOKEN_USAGE message */
   private handleTokenUsageMessage(message: AIMessage): void {
     const usage: TokenUsage = {
       inputTokens: message.input_tokens || 0,
@@ -534,12 +539,12 @@ export class AIAgent extends EventEmitter {
     this.emit('token:usage', usage);
   }
 
-  /** 处理 COMPLETE 消息 */
+  /** Handle COMPLETE message */
   private handleCompleteMessage(message: AIMessage): void {
     this.setStatus('idle');
     this._taskId = null;
 
-    // 在 COMPLETE 时也检测运维关键字
+    // Also detect ops keywords on COMPLETE
     if (this.config.mode === 'normal' && this.accumulatedContent) {
       this.detectOpsKeywords(this.accumulatedContent);
     }
@@ -548,15 +553,15 @@ export class AIAgent extends EventEmitter {
     this.accumulatedContent = '';
   }
 
-  /** 处理 ERROR 消息 */
+  /** Handle ERROR message */
   private handleErrorMessage(message: AIMessage): void {
     this.setStatus('idle');
     this._taskId = null;
-    this.emit('task:error', message.error || 'Unknown error', message.code);
+    this.emit('task:error', message.error || (message as any).message || 'Unknown error', message.code, (message as any).error_params);
     this.accumulatedContent = '';
   }
 
-  /** 处理 TOOL_PERMISSION_REQUEST 消息（Code 模式工具权限请求） */
+  /** Handle TOOL_PERMISSION_REQUEST message (Code mode tool permission request) */
   private handleToolPermissionRequestMessage(message: AIMessage): void {
     const permissionId = message.permission_id || '';
     const toolName = message.tool_name || '';
@@ -565,12 +570,14 @@ export class AIAgent extends EventEmitter {
     const toolUseId = message.tool_use_id || '';
     const risk = (message as any).risk as string | undefined;
     const description = (message as any).description as string | undefined;
+    const title = (message as any).title as string | undefined;
+    const allowPermanent = !!(message as any).allow_permanent;
 
     this.setStatus('waiting_user');
-    this.emit('tool:permission_request', permissionId, toolName, toolInput, taskId, toolUseId, risk, description);
+    this.emit('tool:permission_request', permissionId, toolName, toolInput, taskId, toolUseId, risk, description, title, allowPermanent);
   }
 
-  /** 处理 USER_FEEDBACK_REQUEST 消息（Code 模式任务完成后反馈请求） */
+  /** Handle USER_FEEDBACK_REQUEST message (Code mode feedback request after task completion) */
   private handleUserFeedbackRequestMessage(message: AIMessage): void {
     const taskId = message.task_id || '';
 
@@ -578,49 +585,49 @@ export class AIAgent extends EventEmitter {
     this.emit('feedback:request', taskId);
   }
 
-  // ==================== 工具权限和反馈 API ====================
+  // ==================== Tool Permission and Feedback API ====================
 
-  /** 批准工具执行 */
-  approveToolPermission(permissionId: string): void {
-    this.connection.sendToolPermissionResponse(permissionId, true);
+  /** Approve tool execution */
+  approveToolPermission(permissionId: string, permanent?: boolean): void {
+    this.connection.sendToolPermissionResponse(permissionId, true, undefined, permanent);
     this.setStatus('thinking');
   }
 
-  /** 拒绝工具执行 */
+  /** Deny tool execution */
   denyToolPermission(permissionId: string, reason?: string): void {
     this.connection.sendToolPermissionResponse(permissionId, false, reason);
     this.setStatus('thinking');
   }
 
-  /** 发送用户反馈（完成） */
+  /** Send user feedback (accept) */
   acceptFeedback(): void {
     if (!this._taskId) return;
     try {
       this.connection.sendUserFeedbackResponse(this._taskId, 'accept');
       this.setStatus('thinking');
     } catch {
-      // WebSocket 已断开（服务端可能已关闭连接），本地完成任务
+      // WebSocket disconnected (server may have closed connection), complete task locally
       this.setStatus('idle');
       this._taskId = null;
       this.emit('task:complete', '', undefined);
     }
   }
 
-  /** 发送用户反馈（继续 + 新指令） */
+  /** Send user feedback (continue + new instruction) */
   continueFeedback(message: string): void {
     if (!this._taskId) return;
     try {
       this.connection.sendUserFeedbackResponse(this._taskId, 'continue', message);
       this.setStatus('thinking');
     } catch {
-      // WebSocket 已断开，本地完成任务
+      // WebSocket disconnected, complete task locally
       this.setStatus('idle');
       this._taskId = null;
       this.emit('task:complete', '', undefined);
     }
   }
 
-  /** 处理 TOOL_USE 消息（Code 模式工具调用） */
+  /** Handle TOOL_USE message (Code mode tool invocation) */
   private handleToolUseMessage(message: AIMessage): void {
     const toolName = message.tool_name || '';
     const toolInput = message.tool_input || {};
@@ -631,7 +638,7 @@ export class AIAgent extends EventEmitter {
     this.emit('tool:use', toolName, toolInput, toolUseId, taskId);
   }
 
-  /** 处理 TOOL_RESULT 消息（Code 模式工具结果） */
+  /** Handle TOOL_RESULT message (Code mode tool result) */
   private handleToolResultMessage(message: AIMessage): void {
     const toolUseId = message.tool_use_id || '';
     const output = message.output || message.content || '';
@@ -640,7 +647,7 @@ export class AIAgent extends EventEmitter {
     this.emit('tool:result', toolUseId, output, isError);
   }
 
-  // ==================== 内部工具 ====================
+  // ==================== Internal Utilities ====================
 
   private setStatus(status: AIAgentStatus): void {
     if (this._status !== status) {
@@ -651,6 +658,9 @@ export class AIAgent extends EventEmitter {
 
 
   private detectOpsKeywords(content: string): void {
+    // If AI already gave a command suggestion, the task is simple — don't suggest Agent
+    if (this.receivedCommandSuggestion) return;
+
     const contentLower = content.toLowerCase();
     const matched = OPS_KEYWORDS.filter(kw => contentLower.includes(kw));
     if (matched.length > 0) {

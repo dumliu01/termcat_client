@@ -1,30 +1,31 @@
 /**
- * Electron Shell 命令执行器
+ * Electron Shell Command Executor
  *
- * 继承 BaseShellExecutor，封装 window.electron SSH API。
- * 支持关联 SSH（复用终端 shell）和独立 SSH（独立 shell）两种模式。
+ * Extends BaseShellExecutor, wraps window.electron SSH API.
+ * Supports associated SSH (reuses terminal shell) and independent SSH (separate shell) modes.
  */
 
 import { BaseShellExecutor } from './BaseShellExecutor';
 import { SshMode } from '../types';
 
 export interface ElectronShellExecutorConfig {
-  /** 会话 ID */
+  /** Session ID */
   sessionId: string;
-  /** SSH 模式：associated 复用终端 shell，independent 创建独立 shell */
+  /** SSH mode: associated reuses terminal shell, independent creates separate shell */
   sshMode: SshMode;
 }
 
-/** Electron shell API 接口（用于依赖注入/测试） */
+/** Electron shell API interface (for dependency injection/testing) */
 export interface ElectronShellAPI {
   sshCreateShell(shellId: string): Promise<void>;
+  sshCloseShell?(shellId: string): Promise<{ success: boolean }>;
   sshShellWrite(shellId: string, data: string): Promise<{ success: boolean }>;
   onShellData(callback: (connId: string, data: string) => void): () => void;
 }
 
 /**
- * 默认的 Electron API 适配器
- * 在 Electron 环境中使用 window.electron
+ * Default Electron API adapter
+ * Uses window.electron in Electron environment
  */
 function getDefaultElectronAPI(): ElectronShellAPI {
   if (typeof window !== 'undefined' && (window as any).electron) {
@@ -43,14 +44,14 @@ export class ElectronShellExecutor extends BaseShellExecutor {
     this.config = config;
     this.electronAPI = electronAPI || getDefaultElectronAPI();
 
-    // 关联模式复用终端的 sessionId，独立模式使用派生 ID
+    // Associated mode reuses terminal's sessionId, independent mode uses derived ID
     this.shellId = config.sshMode === 'associated'
       ? config.sessionId
       : `${config.sessionId}__ai_shell`;
   }
 
   protected async setupShell(): Promise<void> {
-    // 独立模式需要创建新 shell
+    // Independent mode needs to create new shell
     if (this.config.sshMode !== 'associated') {
       await this.electronAPI.sshCreateShell(this.shellId);
     }
@@ -70,7 +71,19 @@ export class ElectronShellExecutor extends BaseShellExecutor {
     });
   }
 
-  /** 获取 shell ID（供外部使用） */
+  /** Override cleanup to close independent shell channel */
+  async cleanup(): Promise<void> {
+    // Close independent shell channel BEFORE super.cleanup() resets _isReady
+    // Associated mode reuses terminal shell — don't close it
+    if (this.config.sshMode !== 'associated' && this._isReady) {
+      try {
+        await this.electronAPI.sshCloseShell?.(this.shellId);
+      } catch { /* ignore — connection may already be closed */ }
+    }
+    await super.cleanup();
+  }
+
+  /** Get shell ID (for external use) */
   getShellId(): string {
     return this.shellId;
   }

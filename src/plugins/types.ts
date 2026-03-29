@@ -111,6 +111,8 @@ export interface PluginSettingContribution {
   default: unknown;
   description: string;
   options?: { label: string; value: unknown }[];
+  /** Group label for visual grouping in settings UI (settings with same group are grouped together) */
+  group?: string;
 }
 
 // ==================== 插件状态 ====================

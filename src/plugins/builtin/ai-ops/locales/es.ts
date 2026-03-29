@@ -13,6 +13,7 @@ export const es: typeof zh = {
   connectionConnecting: 'Conectando',
   connectionConnected: 'Conectado',
   connectionDisconnected: 'Desconectado',
+  disconnectSession: 'Desconectar',
 
   // Acciones del encabezado
   newConversation: 'Nuevo Chat',

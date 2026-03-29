@@ -1,14 +1,14 @@
 /**
- * msg-viewer 类型定义
+ * msg-viewer type definitions
  *
- * 通用富消息展示控件的数据类型。
- * 与业务逻辑（AI ops / 广告系统）完全解耦，
- * 仅描述"要显示什么"和"用户能做什么操作"。
+ * Data types for universal rich message display component.
+ * Completely decoupled from business logic (AI ops / ad system),
+ * only describes "what to display" and "what operations user can do".
  */
 
 import type { VirtuosoHandle } from 'react-virtuoso';
 
-// ─── 基础枚举 ───
+// ─── Basic enums ───
 
 export type RiskLevel = 'low' | 'medium' | 'high';
 
@@ -20,7 +20,7 @@ export type BlockStatus =
   | 'waiting_permission' | 'waiting_feedback'
   | 'completed' | 'error';
 
-// ─── 子结构 ───
+// ─── Sub structures ───
 
 export interface TokenUsageInfo {
   inputTokens: number;
@@ -50,10 +50,10 @@ export interface ChoiceOptionInfo {
   recommended?: boolean;
 }
 
-// ─── Block 联合类型 ───
+// ─── Block union type ───
 
 interface BlockBase {
-  /** 稳定唯一 ID（Virtuoso key） */
+  /** Stable unique ID (Virtuoso key) */
   id: string;
   timestamp: number;
 }
@@ -67,11 +67,11 @@ export interface UserTextBlock extends BlockBase {
 export interface AssistantTextBlock extends BlockBase {
   type: 'assistant_text';
   content: string;
-  /** 'running' = 流式输出中 */
+  /** 'running' = streaming in progress */
   status: BlockStatus;
   error?: string;
   tokenUsage?: TokenUsageInfo;
-  /** 代码块中哪些语言显示"执行"按钮，如 ['bash','sh'] */
+  /** Which languages show "execute" button in code blocks, e.g. ['bash','sh'] */
   executableCodeLangs?: string[];
 }
 
@@ -102,6 +102,10 @@ export interface StepDetailBlock extends BlockBase {
   success?: boolean;
   passwordPrompt?: string;
   tokenUsage?: TokenUsageInfo;
+  /** When set, this step is a Code-mode tool permission (show Allow once / Always allow / Deny) */
+  permissionId?: string;
+  /** Whether "Always allow" button should show (Code mode only) */
+  allowPermanent?: boolean;
 }
 
 export interface ToolUseBlock extends BlockBase {
@@ -114,6 +118,10 @@ export interface ToolUseBlock extends BlockBase {
   isError?: boolean;
   error?: string;
   permissionId?: string;
+  /** SDK title (e.g. "Claude wants to run: lsof -iTCP") */
+  permissionTitle?: string;
+  /** Whether "Always allow" button should show (Code mode only) */
+  allowPermanent?: boolean;
 }
 
 export interface UserChoiceBlock extends BlockBase {
@@ -148,7 +156,7 @@ export interface LoadingBlock extends BlockBase {
   message?: string;
 }
 
-/** 所有 block 类型 */
+/** All block types */
 export type MsgBlock =
   | UserTextBlock
   | AssistantTextBlock
@@ -161,53 +169,55 @@ export type MsgBlock =
   | FeedbackBlock
   | LoadingBlock;
 
-// ─── 操作回调 ───
+// ─── Action callbacks ───
 
 export interface MsgViewerActions {
-  /** 执行命令（终端 / bash） */
+  /** Execute command (terminal / bash) */
   onExecuteCommand?: (command: string) => void;
 
-  /** 步骤确认执行 */
+  /** Step confirmed to execute */
   onStepConfirm?: (blockId: string, stepIndex: number, command: string, risk?: RiskLevel, needsConfirmation?: boolean) => void;
-  /** 步骤跳过/取消 */
+  /** Step skipped/cancelled */
   onStepCancel?: (blockId: string, stepIndex: number) => void;
 
-  /** 密码提交 */
+  /** Password submitted */
   onPasswordSubmit?: () => void;
-  /** 密码输入变化 */
+  /** Password input changed */
   onPasswordChange?: (value: string) => void;
-  /** 密码跳过变化 */
+  /** Password skip changed */
   onPasswordSkipChange?: (skip: boolean) => void;
 
-  /** 工具权限批准 */
+  /** Tool permission approved (allow once) */
   onToolApprove?: (permissionId: string) => void;
-  /** 工具权限拒绝 */
+  /** Tool permission approved permanently (always allow for session) */
+  onToolApproveAlways?: (permissionId: string) => void;
+  /** Tool permission denied */
   onToolDeny?: (permissionId: string, reason?: string) => void;
 
-  /** 用户选择提交 */
+  /** User choice submitted */
   onChoiceSubmit?: (blockId: string, choice: string, customInput?: string) => void;
-  /** 用户选择取消 */
+  /** User choice cancelled */
   onChoiceCancel?: (blockId: string) => void;
 
-  /** 任务反馈：接受 */
+  /** Task feedback: accept */
   onFeedbackAccept?: () => void;
-  /** 任务反馈：继续对话 */
+  /** Task feedback: continue conversation */
   onFeedbackContinue?: (message: string) => void;
 
-  /** 广告动作点击 */
+  /** Ad action clicked */
   onAdAction?: (blockId: string) => void;
 
-  /** 复制一段回复 */
+  /** Copy a reply segment */
   onCopyReply?: (startIndex: number, endIndex: number) => void;
 }
 
-// ─── 密码状态（会话级，跨 block 共享） ───
+// ─── Password state (session-level, shared across blocks) ───
 
 export interface PasswordState {
   value: string;
   skipPrompt: boolean;
   showInput: boolean;
-  /** 当前正在执行的 step block ID */
+  /** Currently executing step block ID */
   executingStepId?: string;
 }
 
@@ -218,22 +228,22 @@ export interface MsgViewerProps {
   actions: MsgViewerActions;
   language: 'zh' | 'en';
 
-  /** 是否正在加载（显示 footer loading） */
+  /** Is loading (show footer loading) */
   isLoading?: boolean;
   loadingStatus?: 'thinking' | 'generating' | 'waiting_user';
   loadingMessage?: string;
 
-  /** 密码状态（会话级共享） */
+  /** Password state (session-level shared) */
   passwordState?: PasswordState;
 
-  /** 自动滚动 */
+  /** Auto scroll */
   autoScroll?: boolean;
   onAutoScrollChange?: (atBottom: boolean) => void;
 
   /** Virtuoso handle */
   virtuosoRef?: React.RefObject<VirtuosoHandle>;
 
-  /** 空状态自定义 */
+  /** Empty state customization */
   emptyIcon?: React.ReactNode;
   emptyTitle?: string;
   emptySubtitle?: string;

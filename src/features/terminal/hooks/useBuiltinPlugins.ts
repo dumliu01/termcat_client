@@ -1,14 +1,15 @@
 /**
- * useBuiltinPlugins - 内置插件系统 React Hook
+ * useBuiltinPlugins - Builtin Plugin System React Hook
  *
- * 提供内置插件注册的侧栏面板和工具栏按钮的响应式访问。
+ * Provides reactive access to builtin plugin registered sidebar panels and toolbar buttons.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { builtinPluginManager } from '@/plugins/builtin';
 import type { SidebarPanelRegistration, ToolbarToggleRegistration, BottomPanelRegistration } from '@/plugins/builtin';
+import type { AIModeInfo, AIModelInfo } from '@/utils/types';
 
-/** 获取指定位置的侧栏面板 */
+/** Get sidebar panels at a specific position */
 export function useBuiltinSidebarPanels(position: 'left' | 'right') {
   const [panels, setPanels] = useState<SidebarPanelRegistration[]>([]);
 
@@ -25,7 +26,7 @@ export function useBuiltinSidebarPanels(position: 'left' | 'right') {
   return panels;
 }
 
-/** 获取底部面板列表 */
+/** Get bottom panel list */
 export function useBuiltinBottomPanels() {
   const [panels, setPanels] = useState<BottomPanelRegistration[]>([]);
 
@@ -42,7 +43,7 @@ export function useBuiltinBottomPanels() {
   return panels;
 }
 
-/** 获取工具栏切换按钮 */
+/** Get toolbar toggle buttons */
 export function useBuiltinToolbarToggles() {
   const [toggles, setToggles] = useState<ToolbarToggleRegistration[]>([]);
 
@@ -59,7 +60,35 @@ export function useBuiltinToolbarToggles() {
   return toggles;
 }
 
-/** 管理面板可见性状态 */
+/** Get plugin-injected extra agent modes */
+export function useExtraModes(): AIModeInfo[] {
+  const [modes, setModes] = useState<AIModeInfo[]>([]);
+  const refresh = useCallback(() => {
+    setModes(builtinPluginManager.getExtraModes());
+  }, []);
+  useEffect(() => {
+    refresh();
+    const disposable = builtinPluginManager.onUpdate(refresh);
+    return () => disposable.dispose();
+  }, [refresh]);
+  return modes;
+}
+
+/** Get plugin-injected extra AI models */
+export function useExtraModels(): AIModelInfo[] {
+  const [models, setModels] = useState<AIModelInfo[]>([]);
+  const refresh = useCallback(() => {
+    setModels(builtinPluginManager.getExtraModels());
+  }, []);
+  useEffect(() => {
+    refresh();
+    const disposable = builtinPluginManager.onUpdate(refresh);
+    return () => disposable.dispose();
+  }, [refresh]);
+  return models;
+}
+
+/** Manage panel visibility state */
 export function usePanelVisibility(panelId: string, storageKeyPrefix?: string, defaultVisible = true) {
   const storageKey = storageKeyPrefix ? `${storageKeyPrefix}_visible` : `termcat_panel_${panelId}_visible`;
 
@@ -79,7 +108,7 @@ export function usePanelVisibility(panelId: string, storageKeyPrefix?: string, d
   return { isVisible, setIsVisible, toggle };
 }
 
-/** 管理面板宽度状态 */
+/** Manage panel width state */
 export function usePanelWidth(panelId: string, storageKeyPrefix?: string, defaultWidth = 280) {
   const storageKey = storageKeyPrefix ? `${storageKeyPrefix}_width` : `termcat_panel_${panelId}_width`;
 

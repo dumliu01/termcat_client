@@ -32,7 +32,7 @@ export interface ProxyConfig {
 
 export interface OSInfo {
   osType: string;    // "linux/ubuntu", "linux/centos", "macos", "windows"
-  osVersion: string; // "22.04", "14.2" 等
+  osVersion: string; // "22.04", "14.2" etc
   kernel: string;    // "Linux 5.15.0-91-generic"
   shell: string;     // "bash", "zsh", "sh"
 }
@@ -42,28 +42,28 @@ export interface SSHConnection {
   client: Client;
   connected: boolean;
   shell?: ClientChannel;
-  /** 额外的命名 shell 通道（如 AI 运维独立 shell） */
+  /** Extra named shell channels (e.g., AI ops independent shell) */
   extraShells: Map<string, ClientChannel>;
   eventEmitter: EventEmitter;
-  currentDirectory: string; // 跟踪当前工作目录
-  encoding: string; // 终端字符编码
-  osInfo?: OSInfo; // 远程服务器操作系统信息
-  osInfoPromise?: Promise<void>; // OS 检测进行中的 promise
-  jumpClient?: Client; // 跳板机 SSH 客户端（如有）
-  banner?: string; // SSH Banner（sshd_config Banner 指令，认证前发送）
-  shellPassthroughCmd?: string; // shell passthrough: 在 shell 中自动执行的命令（如 ssh target_host）
+  currentDirectory: string; // Track current working directory
+  encoding: string; // Terminal character encoding
+  osInfo?: OSInfo; // Remote server OS information
+  osInfoPromise?: Promise<void>; // OS detection in-progress promise
+  jumpClient?: Client; // Jump host SSH client (if any)
+  banner?: string; // SSH Banner (sshd_config Banner directive, sent before auth)
+  shellPassthroughCmd?: string; // Shell passthrough: commands automatically executed in shell (e.g., ssh target_host)
 }
 
 export class SSHService {
   private connections: Map<string, SSHConnection> = new Map();
   private configs: Map<string, SSHConfig> = new Map();
-  private webContents: any;  // 保留用于向后兼容
-  // 信号量，用于限制并发操作数量，防止 SSH 通道耗尽
+  private webContents: any;  // Reserved for backward compatibility
+  // Semaphore for limiting concurrent operations, preventing SSH channel exhaustion
   private activeOperations: Map<string, number> = new Map();
   private readonly MAX_CONCURRENT_OPERATIONS = 5;
   private operationQueue: Map<string, (() => void)[]> = new Map();
 
-  // 测试代理服务器是否可达
+  // Test if proxy server is reachable
   private testProxyReachability(host: string, port: number): Promise<boolean> {
     logger.info(LOG_MODULE.SSH, 'ssh.proxy.testing', 'Testing proxy reachability', {
       module: LOG_MODULE.SSH,
@@ -73,7 +73,7 @@ export class SSHService {
 
     return new Promise((resolve) => {
       const socket = new net.Socket();
-      const timeout = 5000; // 5秒超时
+      const timeout = 5000; // 5 second timeout
 
       const timer = setTimeout(() => {
         socket.destroy();
@@ -110,12 +110,12 @@ export class SSHService {
     });
   }
 
-  // 设置webContents用于发送事件到渲染进程（保留用于向后兼容）
+  // Set webContents for sending events to renderer (reserved for backward compatibility)
   setWebContents(webContents: any) {
     this.webContents = webContents;
   }
 
-  // 信号量：检查是否可以执行操作
+  // Semaphore: check if operation can be executed
   private async acquireOperationSlot(connectionId: string): Promise<void> {
     const current = this.activeOperations.get(connectionId) || 0;
 
@@ -124,7 +124,7 @@ export class SSHService {
       return;
     }
 
-    // 如果已达到上限，等待
+    // If reached limit, wait
     return new Promise((resolve) => {
       const queue = this.operationQueue.get(connectionId) || [];
       queue.push(resolve);
@@ -132,13 +132,13 @@ export class SSHService {
     });
   }
 
-  // 信号量：释放操作槽
+  // Semaphore: release operation slot
   private releaseOperationSlot(connectionId: string): void {
     const current = this.activeOperations.get(connectionId) || 1;
     const newValue = Math.max(0, current - 1);
     this.activeOperations.set(connectionId, newValue);
 
-    // 检查是否有等待的操作
+    // Check if there are waiting operations
     const queue = this.operationQueue.get(connectionId);
     if (queue && queue.length > 0) {
       const next = queue.shift();
@@ -149,9 +149,9 @@ export class SSHService {
     }
   }
 
-  // 连接到SSH服务器
+  // Connect to SSH server
   async connect(config: SSHConfig): Promise<string> {
-    // 如果配置了代理，先测试代理连通性
+    // If proxy configured, test proxy connectivity first
     if (config.proxy) {
       logger.info(LOG_MODULE.SSH, 'ssh.proxy.detected', 'Proxy configuration detected, testing reachability', {
         module: LOG_MODULE.SSH,
@@ -168,7 +168,7 @@ export class SSHService {
           proxy_host: config.proxy.host,
           proxy_port: config.proxy.port,
         });
-        // 抛出特定错误，让前端处理
+        // Throw specific error for frontend handling
         throw new Error(`PROXY_UNREACHABLE:${config.proxy.host}:${config.proxy.port}`);
       }
 
@@ -183,11 +183,11 @@ export class SSHService {
       });
     }
 
-    // 解析 ~/.ssh/config 中匹配的配置
+    // Parse matching config from ~/.ssh/config
     const resolvedTarget = sshConfigParser.resolve(config.host);
     const resolvedJump = config.jumpHost ? sshConfigParser.resolve(config.jumpHost.host) : undefined;
 
-    // 跳板机模式
+    // Jump host mode
     if (config.jumpHost) {
       return this.connectViaJumpHost(config, resolvedTarget, resolvedJump!);
     }
@@ -195,7 +195,7 @@ export class SSHService {
     return this.connectDirect(config, resolvedTarget);
   }
 
-  // 通过跳板机连接
+  // Connect via jump host
   private async connectViaJumpHost(config: SSHConfig, resolvedTarget: ResolvedSSHOptions, resolvedJump: ResolvedSSHOptions): Promise<string> {
     const jumpConfig = config.jumpHost!;
     const connectionId = `ssh-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -212,7 +212,7 @@ export class SSHService {
     return new Promise((resolve, reject) => {
       const jumpClient = new Client();
 
-      // 捕获跳板机 SSH Banner（shell passthrough 模式下使用）
+      // Capture jump host SSH Banner (used in shell passthrough mode)
       let jumpBanner: string | undefined;
       jumpClient.on('banner', (message: string) => {
         jumpBanner = message;
@@ -231,13 +231,14 @@ export class SSHService {
           target_port: config.port,
         });
 
-        // 构建目标主机连接配置（复用于 forwardOut 和 exec proxy 两条路径）
+        // Build target host connection config (shared for forwardOut and exec proxy paths)
         const buildTargetConnectConfig = (stream: ClientChannel): any => {
           const cfg: any = {
             sock: stream,
             username: config.username,
             readyTimeout: 10000,
             keepaliveInterval: resolvedTarget.keepaliveInterval ?? 10000,
+            keepaliveCountMax: 3,
             tryKeyboard: true,
           };
           if (resolvedTarget.agentForward) {
@@ -255,8 +256,8 @@ export class SSHService {
           return cfg;
         };
 
-        // 通过 stream 连接目标主机 SSH
-        // onFail: 若提供，则握手失败时调用 onFail 而非 reject（用于 fallback）
+        // Connect to target host SSH via stream
+        // onFail: if provided, call onFail on handshake failure instead of reject (for fallback)
         const connectTargetViaStream = (
           stream: ClientChannel,
           opts?: { getStderr?: () => string; onFail?: (err: Error) => void },
@@ -265,7 +266,7 @@ export class SSHService {
           const getStderr = opts?.getStderr;
           const onFail = opts?.onFail;
 
-          // 捕获目标主机 SSH Banner
+          // Capture target host SSH Banner
           let targetBanner: string | undefined;
           targetClient.on('banner', (message: string) => {
             targetBanner = message;
@@ -322,7 +323,7 @@ export class SSHService {
             });
 
             if (onFail) {
-              // 有 fallback，不 reject，让调用方尝试其他方式
+              // Has fallback, don't reject, let caller try other methods
               targetClient.removeAllListeners();
               onFail(err);
             } else {
@@ -348,8 +349,8 @@ export class SSHService {
         };
 
         // === Fallback 3: Shell passthrough ===
-        // 堡垒机可能禁用 forwardOut 和 exec 通道的 TCP 隧道
-        // 最终方案：用跳板机 shell 直接 ssh 到目标，和用户在 Mac 终端手动操作一样
+        // Bastion host may disable TCP tunneling for forwardOut and exec channels
+        // Final solution: directly ssh to target via jump host shell, same as user manually doing in Mac terminal
         const tryShellPassthrough = (prevErrors: string) => {
           logger.warn(LOG_MODULE.SSH, 'ssh.jump.shell_passthrough',
             'All tunnel methods failed, using shell passthrough mode', {
@@ -358,8 +359,8 @@ export class SSHService {
               target_host: config.host,
             });
 
-          // 用 jumpClient 作为连接的 client（不创建 targetClient）
-          // shell 创建后自动执行 ssh target_host
+          // Use jumpClient as the client (don't create targetClient)
+          // After shell creation, automatically execute ssh target_host
           this.connections.set(connectionId, {
             id: connectionId,
             client: jumpClient,
@@ -407,7 +408,7 @@ export class SSHService {
               return;
             }
 
-            // 监听 stderr 以捕获代理命令的错误信息
+            // Listen on stderr to capture proxy command error messages
             let stderrOutput = '';
             execStream.stderr.on('data', (data: Buffer) => {
               stderrOutput += data.toString();
@@ -432,7 +433,7 @@ export class SSHService {
               connection_id: connectionId,
             });
 
-            // exec proxy 的 SSH 握手如果也失败，fallback 到 shell passthrough
+            // If SSH handshake also fails for exec proxy, fallback to shell passthrough
             connectTargetViaStream(execStream, {
               getStderr: () => stderrOutput,
               onFail: (targetErr) => {
@@ -492,10 +493,10 @@ export class SSHService {
           module: LOG_MODULE.SSH,
           connection_id: connectionId,
         });
-        // 跳板机断开时，目标连接也断开
+        // When jump host disconnects, target connection also disconnects
         const connection = this.connections.get(connectionId);
         if (connection && connection.connected) {
-          // passthrough 模式下 connection.client === jumpClient，无需再 end
+          // In passthrough mode, connection.client === jumpClient, no need to end again
           if (connection.client !== jumpClient) {
             connection.client.end();
           }
@@ -504,23 +505,24 @@ export class SSHService {
         }
       });
 
-      // 跳板机连接配置
+      // Jump host connection config
       const jumpConnectConfig: any = {
         host: jumpConfig.host,
         port: jumpConfig.port,
         username: jumpConfig.username,
         readyTimeout: 10000,
         keepaliveInterval: resolvedJump.keepaliveInterval ?? 10000,
+        keepaliveCountMax: 3,
         tryKeyboard: true,
       };
 
-      // SSH config 中的 agent forwarding（跳板机场景下通常需要）
+      // Agent forwarding in SSH config (usually needed for jump host scenario)
       if (resolvedJump.agentForward) {
         jumpConnectConfig.agentForward = true;
         jumpConnectConfig.agent = resolvedJump.agent;
       }
 
-      // 认证：UI 配置优先 > SSH config IdentityFile
+      // Auth: UI config priority > SSH config IdentityFile
       if (jumpConfig.password) {
         jumpConnectConfig.password = jumpConfig.password;
       }
@@ -534,14 +536,14 @@ export class SSHService {
     });
   }
 
-  // 直连模式（原有逻辑）
+  // Direct connection mode (original logic)
   private connectDirect(config: SSHConfig, resolved: ResolvedSSHOptions): Promise<string> {
     return new Promise((resolve, reject) => {
       const connectionId = `ssh-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const client = new Client();
       const eventEmitter = new EventEmitter();
 
-      // 记录连接开始
+      // Record connection start
       logger.info(LOG_MODULE.SSH, 'ssh.connection.starting', 'SSH connection starting', {
         module: LOG_MODULE.SSH,
         host: config.host,
@@ -550,7 +552,7 @@ export class SSHService {
         username: config.username,
       });
 
-      // 捕获 SSH Banner（sshd_config Banner 指令，认证前发送）
+      // Capture SSH Banner (sshd_config Banner directive, sent before auth)
       let sshBanner: string | undefined;
       client.on('banner', (message: string) => {
         sshBanner = message;
@@ -574,15 +576,15 @@ export class SSHService {
           connected: true,
           extraShells: new Map(),
           eventEmitter,
-          currentDirectory: '', // 初始为空，稍后获取 home 目录
-          encoding: 'UTF-8', // 默认编码
+          currentDirectory: '', // Start empty, get home directory later
+          encoding: 'UTF-8', // Default encoding
           banner: sshBanner,
         });
 
         this.configs.set(connectionId, config);
 
-        // 异步检测远程 OS 信息（非阻塞，失败静默）
-        // 存储 promise，使 getOSInfo 可以等待检测完成
+        // Asynchronously detect remote OS info (non-blocking, silent on failure)
+        // Store promise so getOSInfo can wait for detection to complete
         const conn = this.connections.get(connectionId);
         if (conn) {
           conn.osInfoPromise = this.detectOSInfo(connectionId).catch((err) => {
@@ -622,24 +624,25 @@ export class SSHService {
         }
       });
 
-      // 连接配置
+      // Connection config
       const connectConfig: any = {
         host: config.host,
         port: config.port,
         username: config.username,
         readyTimeout: 10000,
         keepaliveInterval: resolved.keepaliveInterval ?? 10000,
-        // 启用多种认证方式
+        keepaliveCountMax: 3,
+        // Enable multiple auth methods
         tryKeyboard: true,
       };
 
-      // SSH config 中的 agent forwarding
+      // Agent forwarding in SSH config
       if (resolved.agentForward) {
         connectConfig.agentForward = true;
         connectConfig.agent = resolved.agent;
       }
 
-      // 认证方式 - UI 配置优先 > SSH config IdentityFile
+      // Auth methods - UI config priority > SSH config IdentityFile
       if (config.password) {
         connectConfig.password = config.password;
       }
@@ -649,7 +652,7 @@ export class SSHService {
         connectConfig.privateKey = resolved.privateKey;
       }
 
-      // 代理配置支持（此时 config.proxy 已经被测试过是否可用）
+      // Proxy config support (at this point config.proxy has been tested for availability)
       if (config.proxy) {
         const proxyConfig = config.proxy;
 
@@ -661,7 +664,7 @@ export class SSHService {
             proxy_port: proxyConfig.port,
           });
 
-          // ssh2 支持 SOCKS5 和 HTTP 代理
+          // ssh2 supports SOCKS5 and HTTP proxy
           // SOCKS5: type 5, HTTP: type 0
           const proxyType = proxyConfig.type === 'SOCKS5' ? 5 : 0;
 
@@ -671,7 +674,7 @@ export class SSHService {
             type: proxyType,
           };
 
-          // 如果有代理认证信息
+          // If proxy auth info exists
           if (proxyConfig.username) {
             (connectConfig.proxy as any).username = proxyConfig.username;
           }
@@ -690,7 +693,7 @@ export class SSHService {
     });
   }
 
-  // 检测远程服务器操作系统信息
+  // Detect remote server OS information
   private async detectOSInfo(connectionId: string): Promise<void> {
     const connection = this.connections.get(connectionId);
     if (!connection || !connection.connected) {
@@ -719,7 +722,7 @@ export class SSHService {
           output += data.toString('utf8');
         });
         stream.stderr.on('data', () => {
-          // 忽略 stderr
+          // Ignore stderr
         });
         stream.on('close', () => {
           clearTimeout(timeout);
@@ -733,7 +736,7 @@ export class SSHService {
             let osVersion = '';
             let shell = 'bash';
 
-            // 解析 shell
+            // Parse shell
             const shellLine = lines.find(l => l.startsWith('===SHELL==='));
             if (shellLine) {
               const shellPath = shellLine.replace('===SHELL===', '').trim();
@@ -742,14 +745,14 @@ export class SSHService {
 
             if (unameSys === 'Darwin') {
               osType = 'macos';
-              // 从 sw_vers 解析版本
+              // Parse version from sw_vers
               const versionLine = lines.find(l => /ProductVersion/i.test(l));
               if (versionLine) {
                 const match = versionLine.match(/:\s*(.+)/);
                 osVersion = match ? match[1].trim() : '';
               }
             } else if (unameSys === 'Linux') {
-              // 从 /etc/os-release 解析 ID 和 VERSION_ID
+              // Parse ID and VERSION_ID from /etc/os-release
               const idLine = lines.find(l => /^ID=/i.test(l));
               const versionLine = lines.find(l => /^VERSION_ID=/i.test(l));
 
@@ -790,12 +793,12 @@ export class SSHService {
     });
   }
 
-  // 获取远程服务器操作系统信息（等待检测完成）
+  // Get remote server OS information (wait for detection to complete)
   async getOSInfo(connectionId: string): Promise<OSInfo | undefined> {
     const connection = this.connections.get(connectionId);
     if (!connection) return undefined;
 
-    // 如果检测还在进行中，等待完成
+    // If detection is still in progress, wait for completion
     if (connection.osInfoPromise) {
       await connection.osInfoPromise;
     }
@@ -803,17 +806,17 @@ export class SSHService {
     return connection.osInfo;
   }
 
-  // 执行单个命令
+  // Execute single command
   async executeCommand(connectionId: string, command: string, options?: { useLoginShell?: boolean }): Promise<{ output: string; exitCode: number }> {
     const connection = this.connections.get(connectionId);
     if (!connection || !connection.connected) {
       throw new Error('SSH connection not found or not connected');
     }
 
-    // 使用信号量限制并发
+    // Use semaphore to limit concurrency
     await this.acquireOperationSlot(connectionId);
 
-    // 屏蔽系统监控命令的日志
+    // Filter out system monitoring command logs
     const isMonitoringCommand = command.includes('===CPU_MEM_START===') ||
                                  command.includes('top -bn1') ||
                                  command.includes('===UPTIME_START===') ||
@@ -833,18 +836,18 @@ export class SSHService {
         });
       }
 
-      // 获取当前工作目录
+      // Get current working directory
       const cwd = connection.currentDirectory || '';
 
-      // 构建完整命令
+      // Build full command
       let fullCommand = command;
 
-      // 如果有当前目录，先 cd 到该目录
+      // If current directory exists, cd to it first
       if (cwd) {
         fullCommand = `cd "${cwd}" && ${fullCommand}`;
       }
 
-      // 决定是否使用交互式登录 shell
+      // Decide whether to use interactive login shell
       const useLoginShell = options?.useLoginShell ?? false;
 
       let finalCommand: string;
@@ -897,7 +900,7 @@ export class SSHService {
             });
           }
 
-          // 过滤掉交互式 shell 的提示信息和欢迎消息
+          // Filter out interactive shell prompt and welcome messages
           let cleanedOutput = stdout;
 
           if (useLoginShell) {
@@ -934,27 +937,48 @@ export class SSHService {
     });
   }
 
-  // 创建交互式shell会话
-  // shellId 可选：如果传入与 connectionId 不同的 shellId（如 'ssh-xxx__ai_shell'），
-  // 则创建一个额外的独立 shell 通道，不影响终端主 shell
+  /**
+   * Close an extra shell channel (e.g., AI ops independent shell).
+   * Only closes extra shells (shellId contains '__ai_shell'), not the terminal main shell.
+   */
+  closeShell(shellId: string): boolean {
+    const baseConnectionId = shellId.replace('__ai_shell', '');
+    const connection = this.connections.get(baseConnectionId);
+    if (!connection) return false;
+
+    const stream = connection.extraShells.get(shellId);
+    if (!stream) return false;
+
+    stream.end();
+    connection.extraShells.delete(shellId);
+    logger.info(LOG_MODULE.SSH, 'ssh.shell.extra_closed', 'Extra shell closed by request', {
+      connection_id: baseConnectionId,
+      shell_id: shellId,
+    });
+    return true;
+  }
+
+  // Create interactive shell session
+  // shellId is optional: if passed a different shellId than connectionId (e.g., 'ssh-xxx__ai_shell'),
+  // creates an additional independent shell channel, without affecting terminal main shell
   async createShell(connectionId: string, webContents: any, encoding?: string): Promise<string> {
-    // 支持派生 shellId（如 'ssh-xxx__ai_shell'），从中提取 baseConnectionId
+    // Support derived shellId (e.g., 'ssh-xxx__ai_shell'), extract baseConnectionId from it
     const isExtraShell = connectionId.includes('__ai_shell');
     const baseConnectionId = isExtraShell ? connectionId.replace('__ai_shell', '') : connectionId;
-    const shellId = connectionId; // 用于标识此 shell 的 ID
+    const shellId = connectionId; // ID used to identify this shell
 
     const connection = this.connections.get(baseConnectionId);
     if (!connection || !connection.connected) {
       throw new Error('SSH connection not found or not connected');
     }
 
-    // 更新编码设置
+    // Update encoding settings
     if (encoding) {
       connection.encoding = encoding;
     }
 
     if (isExtraShell) {
-      // 额外 shell（AI 运维独立 shell）
+      // Extra shell (AI ops independent shell)
       if (connection.extraShells.has(shellId)) {
         logger.info(LOG_MODULE.SSH, 'ssh.shell.extra_exists', 'Extra shell already exists', {
           module: LOG_MODULE.SSH,
@@ -964,7 +988,7 @@ export class SSHService {
         return shellId;
       }
     } else {
-      // 默认终端 shell - 如果已经有 shell，返回现有的
+      // Default terminal shell - if shell already exists, return existing one
       if (connection.shell) {
         logger.info(LOG_MODULE.SSH, 'ssh.shell.exists', 'Shell already exists', {
           module: LOG_MODULE.SSH,
@@ -973,9 +997,9 @@ export class SSHService {
         return connectionId;
       }
 
-      // 1. 发送 SSH Banner（sshd_config Banner 指令，认证阶段收到）
+      // 1. Send SSH Banner (sshd_config Banner directive, received during auth phase)
       if (connection.banner && webContents && !webContents.isDestroyed()) {
-        // Banner 需要 \n → \r\n 转换供终端正确显示
+        // Banner needs \n → \r\n conversion for terminal to display correctly
         const bannerForTerminal = connection.banner.replace(/\r?\n/g, '\r\n');
         webContents.send('ssh-shell-data', connectionId, bannerForTerminal);
         logger.debug(LOG_MODULE.SSH, 'ssh.banner.sent', 'SSH banner sent to terminal', {
@@ -984,17 +1008,17 @@ export class SSHService {
         });
       }
 
-      // 2. 获取 MOTD（/run/motd.dynamic、/etc/motd 等文件内容）
-      // shell passthrough 模式下跳过（堡垒机可能不支持 exec，MOTD 会在 shell 输出中自然显示）
+      // 2. Get MOTD (content from /run/motd.dynamic, /etc/motd etc.)
+      // Skip in shell passthrough mode (bastion may not support exec, MOTD naturally displays in shell output)
       if (!connection.shellPassthroughCmd) {
         let motdContent = '';
         try {
           motdContent = await this.fetchMotd(baseConnectionId);
         } catch (e) {
-          // MOTD 获取失败不影响 shell 创建
+          // MOTD fetch failure doesn't affect shell creation
         }
 
-        // 如果获取到了 MOTD，发送到前端
+        // If MOTD was fetched, send to frontend
         if (motdContent && webContents && !webContents.isDestroyed()) {
           webContents.send('ssh-shell-data', connectionId, motdContent);
         }
@@ -1009,14 +1033,14 @@ export class SSHService {
         is_extra: isExtraShell,
       });
 
-      // 构建 locale 环境变量，确保远程 shell 使用 UTF-8 编码
-      // Mac 终端 SSH 会自动发送 LANG，ssh2 默认不发送
+      // Build locale environment variables to ensure remote shell uses UTF-8 encoding
+      // Mac terminal SSH auto-sends LANG, ssh2 doesn't send by default
       const env: Record<string, string> = {};
       const lang = process.env.LANG || process.env.LC_ALL;
       if (lang) {
         env.LANG = lang;
       } else {
-        // 本地也没设置时，使用合理默认值
+        // Use reasonable default if not set locally either
         env.LANG = 'en_US.UTF-8';
       }
 
@@ -1050,23 +1074,23 @@ export class SSHService {
           connection.shell = stream;
         }
 
-        // [DEBUG] 数据包计数器
+        // [DEBUG] Data packet counter
         let dataPacketCount = 0;
 
-        // 使用 StringDecoder 处理 UTF-8 流式解码，
-        // 防止多字节字符（如 box-drawing ─│┌ 等）被 TCP 分包截断导致乱码。
-        // StringDecoder 会缓冲不完整的多字节序列，在下次 write() 时拼接完整再输出。
+        // Use StringDecoder for UTF-8 streaming decode,
+        // prevents multi-byte characters (like box-drawing chars ─│┌ etc.) from being split by TCP packets and causing garbled text.
+        // StringDecoder buffers incomplete multi-byte sequences and concatenates them on next write() before output.
         /*
-        ssh-service.ts:1059 中 data.toString('utf8') 处理 SSH 流式数据时，多字节 UTF-8 字符（如 box-drawing ─│┌ = 3 bytes 每个）可能被 TCP 分包截断。Buffer.toString('utf8')
-  对不完整的多字节序列会替换为 \uFFFD（replacement character），显示为 ???。
-  修复
-  - 引入 Node.js StringDecoder，它会缓冲不完整的多字节序列，等下一个数据包到来时拼接完整再输出
-  - 为 stdout 和 stderr 各创建独立的 StringDecoder 实例
-  - XTermTerminal.tsx 的过滤逻辑已还原到原始状态*/
+        In ssh-service.ts:1059, data.toString('utf8') processing of SSH streaming data: multi-byte UTF-8 characters (like box-drawing ─│┌ = 3 bytes each) may be split by TCP packets. Buffer.toString('utf8')
+        replaces incomplete multi-byte sequences with \uFFFD (replacement character), displaying as ???.
+        Fix
+        - Introduce Node.js StringDecoder, which buffers incomplete multi-byte sequences, concatenating on next data packet arrival
+        - Create independent StringDecoder instances for stdout and stderr
+        - XTermTerminal.tsx's filter logic has been restored to original state*/
         const utf8Decoder = new StringDecoder('utf8');
         const stderrUtf8Decoder = new StringDecoder('utf8');
 
-        // 异步获取 home 目录，用于 OSC 标题中 ~ 路径的展开
+        // Async get home directory for ~ path expansion in OSC title
         let shellHomeDir = '';
         if (!isExtraShell) {
           this.getHomeDirectory(baseConnectionId).then(home => {
@@ -1078,17 +1102,17 @@ export class SSHService {
           }).catch(() => {});
         }
 
-        // 监听 shell 输出 - 使用 shellId 作为标识符发送到前端
+        // Listen for shell output - use shellId as identifier to send to frontend
         stream.on('data', (data: Buffer) => {
           const output = connection.encoding && connection.encoding !== 'UTF-8'
             ? iconv.decode(data, connection.encoding)
             : utf8Decoder.write(data);
           dataPacketCount++;
 
-          // 解析 OSC 终端标题序列，自动跟踪当前工作目录
-          // 兼容 oh-my-zsh / bash / fish 等所有发送标题的 shell，不依赖提示符格式
+          // Parse OSC terminal title sequences, automatically track current working directory
+          // Compatible with oh-my-zsh / bash / fish and other shells that send titles, doesn't depend on prompt format
           if (!isExtraShell) {
-            // OSC 7: file://hostname/path — 最可靠（绝对路径）
+            // OSC 7: file://hostname/path — Most reliable (absolute path)
             const osc7Match = output.match(/\x1b\]7;file:\/\/[^\/]*(\/[^\x07\x1b]*?)(?:\x07|\x1b\\)/);
             if (osc7Match) {
               try {
@@ -1097,7 +1121,7 @@ export class SSHService {
                 connection.currentDirectory = osc7Match[1];
               }
             } else {
-              // OSC 2: user@host: path — oh-my-zsh 默认窗口标题（格式 "%n@%m: %~"，冒号后有空格）
+              // OSC 2: user@host: path — oh-my-zsh default window title (format "%n@%m: %~", colon followed by space)
               const osc2Match = output.match(/\x1b\]2;[^@\x07\x1b]+@[^:\x07\x1b]+:\s*(~[^\x07\x1b]*|\/[^\x07\x1b]*)(?:\x07|\x1b\\)/);
               if (osc2Match) {
                 let oscPath = osc2Match[1].trim();
@@ -1116,8 +1140,8 @@ export class SSHService {
           }
 
           if (webContents && !webContents.isDestroyed()) {
-            if (!isExtraShell) {
-              // 终端主 shell：发送调试信息
+          if (!isExtraShell) {
+            // Main terminal shell: send debug info
               webContents.send('ssh-shell-debug', baseConnectionId, {
                 packet_number: dataPacketCount,
                 data_length: output.length,
@@ -1125,7 +1149,7 @@ export class SSHService {
                 has_motd_keywords: /welcome|last login|ubuntu|system/i.test(output),
               });
             }
-            // 使用 shellId 发送数据，前端根据此 ID 过滤
+            // Use shellId to send data, frontend filters by this ID
             webContents.send('ssh-shell-data', shellId, output);
           }
         });
@@ -1163,8 +1187,8 @@ export class SSHService {
           }
         });
 
-        // Shell passthrough: 在跳板机 shell 中自动执行 ssh 到目标主机
-        // 等待跳板机 shell 就绪后发送命令（短暂延迟让 prompt 出现）
+        // Shell passthrough: automatically execute ssh to target host in jump host shell
+        // Wait for jump host shell to be ready before sending command (brief delay for prompt to appear)
         if (!isExtraShell && connection.shellPassthroughCmd) {
           const cmd = connection.shellPassthroughCmd;
           logger.info(LOG_MODULE.SSH, 'ssh.shell.passthrough', 'Sending passthrough command to jump host shell', {
@@ -1181,7 +1205,7 @@ export class SSHService {
     });
   }
 
-  // 获取 MOTD（Message of the Day）信息
+  // Get MOTD (Message of the Day) information
   private async fetchMotd(connectionId: string): Promise<string> {
     const connection = this.connections.get(connectionId);
     if (!connection || !connection.connected) {
@@ -1189,12 +1213,12 @@ export class SSHService {
     }
 
     return new Promise((resolve) => {
-      // 获取 MOTD 信息：动态 MOTD + 静态 MOTD
-      // 注意：不获取 Last Login 信息，因为 shell 会话会自动发送
+      // Get MOTD info: dynamic MOTD + static MOTD
+      // Note: Don't get Last Login info, as shell session automatically sends it
       //
-      // 策略：优先读取 PAM 生成的 MOTD 缓存文件（/run/motd.dynamic），
-      // 这是 sshd 登录时 pam_motd 展示给用户的内容，最为准确。
-      // 如果缓存不存在，才 fallback 到手动运行 run-parts。
+      // Strategy: Prefer to read MOTD cache file generated by PAM (/run/motd.dynamic),
+      // This is what sshd shows users via pam_motd on login, most accurate.
+      // If cache doesn't exist, fallback to manually running run-parts.
       const cmd =
         'if [ -f /run/motd.dynamic ] && [ -s /run/motd.dynamic ]; then ' +
           'cat /run/motd.dynamic 2>/dev/null; ' +
@@ -1222,14 +1246,14 @@ export class SSHService {
           output += data.toString('utf8');
         });
         stream.stderr.on('data', () => {
-          // 忽略 stderr
+          // Ignore stderr
         });
         stream.on('close', () => {
           clearTimeout(timeout);
           if (output.trim()) {
-            // 转换 \n 为 \r\n（终端需要 CR+LF）
+            // Convert \n to \r\n (terminal needs CR+LF)
             let result = output.replace(/\r?\n/g, '\r\n');
-            // 确保以换行结尾
+            // Ensure ends with newline
             if (!result.endsWith('\r\n')) {
               result += '\r\n';
             }
@@ -1242,7 +1266,7 @@ export class SSHService {
     });
   }
 
-  // 断开连接
+  // Disconnect
   async disconnect(connectionId: string): Promise<void> {
     const connection = this.connections.get(connectionId);
     if (connection) {
@@ -1252,13 +1276,13 @@ export class SSHService {
         host: this.configs.get(connectionId)?.host,
       });
 
-      // 关闭 shell
+      // Close shell
       if (connection.shell) {
         connection.shell.end();
         connection.shell = undefined;
       }
 
-      // 关闭所有额外 shell（AI 运维独立 shell 等）
+      // Close all extra shells (AI ops independent shell etc.)
       for (const [shellId, extraShell] of connection.extraShells) {
         extraShell.end();
         logger.debug(LOG_MODULE.SSH, 'ssh.shell.extra_closed', 'Extra shell closed on disconnect', {
@@ -1267,11 +1291,11 @@ export class SSHService {
       }
       connection.extraShells.clear();
 
-      // 关闭 SSH 连接
+      // Close SSH connection
       connection.client.end();
       connection.connected = false;
 
-      // 关闭跳板机连接（如有）
+      // Close jump host connection (if any)
       if (connection.jumpClient) {
         connection.jumpClient.end();
         logger.debug(LOG_MODULE.SSH, 'ssh.jump.client_closed', 'Jump host client closed on disconnect', {
@@ -1279,7 +1303,7 @@ export class SSHService {
         });
       }
 
-      // 从连接池中移除
+      // Remove from connection pool
       this.connections.delete(connectionId);
       this.configs.delete(connectionId);
 
@@ -1290,8 +1314,8 @@ export class SSHService {
     }
   }
 
-  // 写入数据到shell
-  // 支持派生 shellId（如 'ssh-xxx__ai_shell'）写入额外的独立 shell
+  // Write data to shell
+  // Supports derived shellId (e.g., 'ssh-xxx__ai_shell') for writing to additional independent shell
   writeToShell(connectionId: string, data: string): boolean {
     const isExtraShell = connectionId.includes('__ai_shell');
     const baseConnectionId = isExtraShell ? connectionId.replace('__ai_shell', '') : connectionId;
@@ -1315,7 +1339,7 @@ export class SSHService {
     return false;
   }
 
-  // 调整shell终端大小
+  // Resize shell terminal
   resizeShell(connectionId: string, cols: number, rows: number): boolean {
     const connection = this.connections.get(connectionId);
     if (connection && connection.shell) {
@@ -1335,46 +1359,46 @@ export class SSHService {
     return false;
   }
 
-  // 检查连接状态
+  // Check connection status
   isConnected(connectionId: string): boolean {
     const connection = this.connections.get(connectionId);
     return connection ? connection.connected : false;
   }
 
-  // 获取连接对象（供隧道服务使用）
+  // Get connection object (for tunnel service use)
   getConnection(connectionId: string): SSHConnection | undefined {
     return this.connections.get(connectionId);
   }
 
-  // 获取连接的事件发射器
+  // Get connection event emitter
   getEventEmitter(connectionId: string): EventEmitter | null {
     const connection = this.connections.get(connectionId);
     return connection ? connection.eventEmitter : null;
   }
 
-  // 列出目录内容
+  // List directory contents
   async listDirectory(connectionId: string, path: string = '.'): Promise<string[]> {
     const connection = this.connections.get(connectionId);
     if (!connection || !connection.connected) {
       throw new Error('SSH connection not found or not connected');
     }
 
-    // 首先尝试使用 SFTP
+    // First try SFTP
     try {
       return await this.listDirectoryViaSFTP(connection, path);
-    } catch (sftpError) {
-      logger.warn(LOG_MODULE.SSH, 'sftp.readdir.fallback', 'SFTP failed, falling back to shell', {
-        module: LOG_MODULE.SFTP,
-        connection_id: connectionId,
-        path,
-        error_msg: (sftpError as Error).message,
-      });
-      // 回退到使用 shell 命令 ls
+      } catch (sftpError) {
+        logger.warn(LOG_MODULE.SSH, 'sftp.readdir.fallback', 'SFTP failed, falling back to shell', {
+          module: LOG_MODULE.SFTP,
+          connection_id: connectionId,
+          path,
+          error_msg: (sftpError as Error).message,
+        });
+        // Fallback to using shell command ls
       return await this.listDirectoryViaShell(connection, path);
     }
   }
 
-  // 通过 SFTP 列出目录
+  // List directory via SFTP
   private async listDirectoryViaSFTP(connection: SSHConnection, path: string): Promise<string[]> {
     await this.acquireOperationSlot(connection.id);
 
@@ -1396,7 +1420,7 @@ export class SSHService {
           try {
             sftp.end();
           } catch (e) {
-            // 忽略关闭错误
+            // Ignore close errors
           }
           this.releaseOperationSlot(connection.id);
 
@@ -1429,7 +1453,7 @@ export class SSHService {
     });
   }
 
-  // 通过 shell ls 命令列出目录
+  // List directory via shell ls command
   private async listDirectoryViaShell(connection: SSHConnection, path: string): Promise<string[]> {
     await this.acquireOperationSlot(connection.id);
 
@@ -1486,7 +1510,7 @@ export class SSHService {
     });
   }
 
-  // 获取当前工作目录
+  // Get current working directory
   async getCurrentDirectory(connectionId: string): Promise<string> {
     const connection = this.connections.get(connectionId);
     if (!connection || !connection.connected) {
@@ -1505,7 +1529,7 @@ export class SSHService {
     return connection.currentDirectory;
   }
 
-  // 获取用户的 home 目录
+  // Get user's home directory
   async getHomeDirectory(connectionId: string): Promise<string> {
     const connection = this.connections.get(connectionId);
     if (!connection || !connection.connected) {
@@ -1531,7 +1555,7 @@ export class SSHService {
     });
   }
 
-  // 更新当前工作目录
+  // Update current working directory
   updateCurrentDirectory(connectionId: string, newDirectory: string): void {
     const connection = this.connections.get(connectionId);
     if (connection) {
@@ -1550,7 +1574,7 @@ export class SSHService {
     }
   }
 
-  // 获取 SFTP 客户端实例
+  // Get SFTP client instance
   async getSFTPClient(connectionId: string): Promise<SFTPWrapper> {
     const connection = this.connections.get(connectionId);
     if (!connection || !connection.connected) {

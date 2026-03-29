@@ -1,5 +1,5 @@
 /**
- * 用户消息气泡
+ * User message bubble
  */
 
 import React from 'react';
@@ -19,7 +19,7 @@ interface Props {
 
 export const UserTextBubble: React.FC<Props> = React.memo(({ block, language }) => (
   <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300 items-end">
-    {/* 头部 */}
+    {/* Header */}
     <div className="flex items-center gap-2 px-2 flex-row-reverse">
       <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-indigo-600/20 text-indigo-400">
         <UserIcon className="w-3.5 h-3.5" />
@@ -29,7 +29,7 @@ export const UserTextBubble: React.FC<Props> = React.memo(({ block, language }) 
       </span>
     </div>
 
-    {/* 消息内容 */}
+    {/* Message content */}
     <div className="max-w-[90%] space-y-2">
       <div className="p-4 rounded-2xl text-xs leading-relaxed font-medium bg-indigo-600/10 border border-indigo-500/20 text-[var(--text-main)] rounded-tr-none select-text">
         {block.content}

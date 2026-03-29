@@ -39,7 +39,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
     tunnels: []
   });
 
-  // 当 host prop 变化时，同步更新 formData（处理编辑现有主机的情况）
+  // When host prop changes, sync update formData (handle editing existing host)
   React.useEffect(() => {
     if (host) {
       setFormData(host);
@@ -74,7 +74,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
   const handleSaveProxy = () => {
     if (!proxyEditData || !proxyEditData.name || !proxyEditData.hostname) return;
     
-    // 确保端口有有效的默认值
+    // Ensure port has valid default value
     const proxyToSave = {
       ...proxyEditData,
       port: proxyEditData.port || 1080
@@ -98,7 +98,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
     } else {
       setLocalProxies(localProxies.filter(p => p.id !== id));
     }
-    // 清除 proxyId 和 proxy 字段
+    // Clear proxyId and proxy fields
     if (formData.proxyId === id) {
       setFormData({...formData, proxyId: undefined, proxy: undefined});
     }
@@ -115,7 +115,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
   const handleSaveTunnel = () => {
     if (!tunnelEditData || !tunnelEditData.name) return;
     
-    // 确保端口有有效的默认值
+    // Ensure port has valid default value
     const tunnelToSave = {
       ...tunnelEditData,
       listenPort: tunnelEditData.listenPort || 8080,
@@ -151,7 +151,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
       proxyId: formData.proxyId,
       connectionType: formData.connectionType || 'direct',
       targetHost: isJump ? formData.targetHost : undefined,
-      // 隧道随 host 一起保存，新建隧道 id 传空（后端分配）
+      // Tunnels are saved with host, new tunnel id passed empty (assigned by backend)
       tunnels: (formData.tunnels || []).map(t => ({
         ...t,
         id: t.id && !t.id.match(/^[a-z0-9]{9}$/) ? t.id : '',
@@ -510,7 +510,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
                     value={proxyEditData.port} 
                     onChange={e => {
                       const val = e.target.value;
-                      // 允许清空，在保存时设置默认值
+                    // Allow clearing, default value set on save
                       if (val === '' || val === '-') {
                         setProxyEditData({...proxyEditData, port: val as any});
                       } else {
@@ -670,9 +670,9 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
                     value={tunnelEditData.listenPort}
                     onChange={e => {
                       const val = e.target.value;
-                      // 允许空字符串，让用户可以清空或重新输入
-                      if (val === '' || val === '-') {
-                        setTunnelEditData({...tunnelEditData, listenPort: val as any});
+                    // Allow empty string, user can clear or re-enter
+                    if (val === '' || val === '-') {
+                      setTunnelEditData({...tunnelEditData, listenPort: val as any});
                       } else {
                         const num = parseInt(val);
                         if (!isNaN(num)) {
@@ -702,9 +702,9 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
                     value={tunnelEditData.targetPort}
                     onChange={e => {
                       const val = e.target.value;
-                      // 允许空字符串，让用户可以清空或重新输入
-                      if (val === '' || val === '-') {
-                        setTunnelEditData({...tunnelEditData, targetPort: val as any});
+                    // Allow empty string, user can clear or re-enter
+                    if (val === '' || val === '-') {
+                      setTunnelEditData({...tunnelEditData, targetPort: val as any});
                       } else {
                         const num = parseInt(val);
                         if (!isNaN(num)) {

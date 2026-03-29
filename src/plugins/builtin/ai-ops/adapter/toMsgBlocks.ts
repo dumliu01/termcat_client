@@ -1,8 +1,8 @@
 /**
- * AIOpsMessage[] + AdMessage[] → MsgBlock[] 适配器
+ * AIOpsMessage[] + AdMessage[] → MsgBlock[] Adapter
  *
- * 将 AI 运维业务层的消息模型转换为 msg-viewer 的通用 Block 模型。
- * 一条 AIOpsMessage 可能映射为 1~N 个 MsgBlock（例如同时携带 content + suggestion）。
+ * Converts AI Ops business layer message model to msg-viewer's common Block model.
+ * One AIOpsMessage may map to 1~N MsgBlocks (e.g., carrying both content + suggestion).
  */
 
 import type { AIOpsMessage } from '@/features/terminal/types';
@@ -10,9 +10,9 @@ import type { AdMessage } from '@/core/ad/types';
 import type { MsgBlock, AdBlock, BlockStatus, RiskLevel } from '@/shared-components/msg-viewer/types';
 import { getLocale } from '../i18n';
 
-// ─── 辅助 ───
+// ─── Helpers ───
 
-/** 将 AITaskState.status 映射为 BlockStatus */
+/** Map AITaskState.status to BlockStatus */
 function mapTaskStatus(status: string | undefined): BlockStatus {
   switch (status) {
     case 'running': return 'running';
@@ -28,19 +28,19 @@ function mapTaskStatus(status: string | undefined): BlockStatus {
   }
 }
 
-/** 转换 token usage */
+/** Convert token usage */
 function mapTokenUsage(tu: { inputTokens: number; outputTokens: number; totalTokens: number; costGems: number; showTokens?: boolean; showGems?: boolean } | undefined) {
   if (!tu) return undefined;
   return { inputTokens: tu.inputTokens, outputTokens: tu.outputTokens, totalTokens: tu.totalTokens, costGems: tu.costGems, showTokens: tu.showTokens, showGems: tu.showGems };
 }
 
-// ─── 单条消息转换 ───
+// ─── Single Message Conversion ───
 
 function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
   const blocks: MsgBlock[] = [];
   const ts = msg.timestamp;
 
-  // 用户消息
+  // User message
   if (msg.role === 'user') {
     blocks.push({
       id: msg.id,
@@ -52,11 +52,11 @@ function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
     return blocks;
   }
 
-  // ── 以下均为 assistant ──
+  // ── The following are all assistant ──
 
   const task = msg.taskState;
 
-  // 纯文本回答（answer 类型 或 无 taskState 但有 content）
+  // Plain text answer (answer type, or no taskState but has content)
   if (task?.taskType === 'answer' || (!task && msg.content)) {
     blocks.push({
       id: `${msg.id}_text`,
@@ -70,7 +70,7 @@ function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
     });
   }
 
-  // 命令建议
+  // Command suggestion
   if (msg.suggestion) {
     blocks.push({
       id: `${msg.id}_cmd`,
@@ -83,7 +83,7 @@ function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
     });
   }
 
-  // 操作计划
+  // Operation plan
   if (task?.taskType === 'operation' && task.plan) {
     blocks.push({
       id: `${msg.id}_plan`,
@@ -99,7 +99,7 @@ function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
     });
   }
 
-  // 步骤详情
+  // Step detail
   if (task?.taskType === 'step_detail') {
     blocks.push({
       id: `${msg.id}_step`,
@@ -117,8 +117,8 @@ function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
     });
   }
 
-  // 工具调用（Code / Codex 模式）— Bash 命令复用 step_detail 展示
-  const isBashTool = task?.toolName === 'mcp__remote_ops__bash' || task?.toolName === 'bash';
+  // Tool call (Code / X-Agent mode) — Bash commands reuse step_detail display
+  const isBashTool = task?.toolName === 'mcp__remote_ops__bash' || task?.toolName === 'bash' || task?.toolName === 'Bash';
   if (task?.taskType === 'tool_use' && isBashTool) {
     blocks.push({
       id: `${msg.id}_step`,
@@ -135,11 +135,12 @@ function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
       passwordPrompt: task.passwordPrompt,
       tokenUsage: mapTokenUsage(task.tokenUsage),
       timestamp: ts,
-      // 额外字段用于处理 tool permission — 通过 block id 关联
+      permissionId: task.status === 'waiting_tool_permission' ? task.permissionId : undefined,
+      allowPermanent: task.allowPermanent,
     });
   }
 
-  // 工具调用（Code / Codex 模式）— 非 Bash 工具
+  // Tool call (Code / X-Agent mode) — Non-Bash tools
   if (task?.taskType === 'tool_use' && !isBashTool) {
     blocks.push({
       id: `${msg.id}_tool`,
@@ -152,11 +153,13 @@ function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
       isError: task.toolError,
       error: task.error,
       permissionId: task.permissionId,
+      permissionTitle: task.permissionTitle,
+      allowPermanent: task.allowPermanent,
       timestamp: ts,
     });
   }
 
-  // 用户选择
+  // User choice
   if (task?.taskType === 'user_choice' && task.choiceData) {
     blocks.push({
       id: `${msg.id}_choice`,
@@ -175,7 +178,7 @@ function convertMessage(msg: AIOpsMessage, language: string): MsgBlock[] {
     });
   }
 
-  // 任务完成反馈
+  // Task completion feedback
   if (task?.status === 'waiting_feedback') {
     blocks.push({
       id: `${msg.id}_feedback`,
@@ -206,14 +209,14 @@ function convertAdMessage(ad: AdMessage): AdBlock {
   };
 }
 
-// ─── 主导出 ───
+// ─── Main Export ───
 
 /**
- * 将 AIOpsMessage[] 和 AdMessage[] 合并转换为 MsgBlock[]
+ * Merge AIOpsMessage[] and AdMessage[] and convert to MsgBlock[]
  *
- * @param messages - AI 运维消息列表
- * @param adMessages - 广告消息列表
- * @param shouldShowAd - 是否展示广告
+ * @param messages - AI Ops message list
+ * @param adMessages - Ad message list
+ * @param shouldShowAd - Whether to display ads
  */
 export function toMsgBlocks(
   messages: AIOpsMessage[],
@@ -221,18 +224,18 @@ export function toMsgBlocks(
   shouldShowAd = false,
   language = 'zh',
 ): MsgBlock[] {
-  // 转换普通消息（保留顺序，一条可能产生多个 block）
+  // Convert normal messages (preserve order, one may produce multiple blocks)
   const msgBlocks: MsgBlock[] = [];
   for (const msg of messages) {
     msgBlocks.push(...convertMessage(msg, language));
   }
 
-  // 不展示广告 → 直接返回
+  // Not showing ads → return directly
   if (!shouldShowAd || adMessages.length === 0) {
     return msgBlocks;
   }
 
-  // 合并广告（双指针归并，按 timestamp 排序）
+  // Merge ads (merge sort by timestamp)
   const adBlocks = adMessages
     .slice()
     .sort((a, b) => a.timestamp - b.timestamp)
@@ -256,23 +259,23 @@ export function toMsgBlocks(
 }
 
 /**
- * 从 MsgBlock[] 中查找 permissionId
+ * Find permissionId from MsgBlock[]
  *
- * 用于工具调用场景：step_detail block 可能由 tool_use bash 命令生成，
- * 需要从原始 AIOpsMessage 中获取 permissionId 以批准/拒绝工具权限。
+ * Used in tool call scenarios: step_detail block may be generated by tool_use bash command,
+ * needs to get permissionId from original AIOpsMessage to approve/reject tool permissions.
  */
 export function findPermissionId(
   messages: AIOpsMessage[],
   blockId: string,
 ): string | undefined {
-  // blockId 格式为 `${msg.id}_step` 或 `${msg.id}_tool`
+  // blockId format is `${msg.id}_step` or `${msg.id}_tool`
   const msgId = blockId.replace(/_(step|tool|text|cmd|plan|choice|feedback)$/, '');
   const msg = messages.find(m => m.id === msgId);
   return msg?.taskState?.permissionId;
 }
 
 /**
- * 从 blockId 还原原始 AIOpsMessage 的 taskId 和 stepIndex
+ * Restore original AIOpsMessage's taskId and stepIndex from blockId
  */
 export function resolveTaskInfo(
   messages: AIOpsMessage[],

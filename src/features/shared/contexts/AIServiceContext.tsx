@@ -1,17 +1,19 @@
 /**
- * AI 服务上下文
+ * AI service context
  *
- * 为 AI Ops 插件提供 App 级别的依赖（user、sharedConn、availableModels）。
- * 由 App.tsx 在组件树顶层提供，插件组件通过 useAIService() 消费。
+ * Provides app-level dependencies (user, sharedConn, availableModels) for AI Ops plugin.
+ * Provided by App.tsx at the top of component tree, consumed by plugin components via useAIService().
  */
 
 import React, { createContext, useContext } from 'react';
-import type { User, AIModelInfo } from '@/utils/types';
+import type { User, AIModelInfo, AIModeInfo } from '@/utils/types';
 
 export interface AIServiceContextValue {
   user: User | null;
   availableModels?: AIModelInfo[];
   availableModes?: string[];
+  availableModeInfos?: AIModeInfo[];
+  localAgentUrl?: string | null;  // deprecated: kept for backward compatibility, will be removed
 }
 
 const AIServiceContext = createContext<AIServiceContextValue>({

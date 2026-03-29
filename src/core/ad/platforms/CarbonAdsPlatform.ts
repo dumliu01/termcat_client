@@ -1,14 +1,14 @@
 /**
- * Carbon Ads 广告平台
+ * Carbon Ads Ad Platform
  *
- * 面向开发者和技术人群的广告平台，
- * 广告质量高、无侵入性，常见于技术文档站和开发者工具。
+ * An ad platform targeting developers and tech-savvy audiences.
+ * High-quality, non-intrusive ads, commonly found on tech documentation sites and developer tools.
  *
- * 文档: https://www.carbonads.net/
- * API: Carbon Ads 提供 JSON endpoint 供服务端调用。
+ * Docs: https://www.carbonads.net/
+ * API: Carbon Ads provides JSON endpoint for server-side calls.
  *
- * 本实现采用服务端代理模式：
- * 客户端 → TermCat Server → Carbon Ads JSON API → 返回广告
+ * This implementation uses server-side proxy mode:
+ * Client → TermCat Server → Carbon Ads JSON API → Return ad
  */
 
 import { IAdPlatform, AdPlatformConfig, AdRequestContext, AdContent, AdPlatformType } from '../types';
@@ -34,7 +34,7 @@ export class CarbonAdsPlatform implements IAdPlatform {
     if (!this.initialized) return [];
 
     try {
-      // 通过 TermCat Server 代理请求 Carbon Ads
+      // Request Carbon Ads via TermCat Server proxy
       const response = await apiService.fetchPlatformAds('carbon', {
         serve_id: this.config.slotId,
         placement: this.config.extra?.placement || 'termcat',
@@ -78,7 +78,7 @@ export class CarbonAdsPlatform implements IAdPlatform {
     this.initialized = false;
   }
 
-  /** 将 Carbon Ads 数据格式化为 AI 助手口吻的 Markdown */
+  /** Format Carbon Ads data as AI assistant-style Markdown */
   private formatAdMessage(item: any, language: string): string {
     const company = item.company || '';
     const description = item.description || '';

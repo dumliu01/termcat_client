@@ -1,5 +1,4 @@
 /**
- * Axios类型扩展
  * Axios Type Extensions
  */
 

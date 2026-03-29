@@ -1,5 +1,5 @@
 /**
- * 加载指示器
+ * Loading indicator
  */
 
 import React from 'react';
@@ -8,7 +8,7 @@ import type { LoadingBlock } from '../types';
 
 interface Props {
   block?: LoadingBlock;
-  /** 直接传入状态（用于 footer 模式） */
+  /** Direct status (for footer mode) */
   status?: 'thinking' | 'generating' | 'waiting_user';
   message?: string;
   language?: 'zh' | 'en';

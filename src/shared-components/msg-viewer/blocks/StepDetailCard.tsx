@@ -1,11 +1,11 @@
 /**
- * 步骤详情卡片
+ * Step detail card
  *
- * 显示命令执行步骤、风险等级、执行按钮、密码输入、确认对话框、执行结果。
+ * Displays command execution steps, risk level, execute button, password input, confirmation dialog, execution result.
  */
 
 import React from 'react';
-import { Loader2, Check, XCircle } from 'lucide-react';
+import { Loader2, Check, XCircle, ShieldCheck, ShieldX } from 'lucide-react';
 import { getRiskColor } from '../utils/riskColors';
 import { PasswordInputRow } from '../shared/PasswordInput';
 import { CommandConfirmation } from '../shared/CommandConfirmation';
@@ -54,7 +54,7 @@ export const StepDetailCard: React.FC<Props> = React.memo(({ block, language, pa
 
   return (
     <div className="w-full mt-2 border-l-4 border-indigo-500 bg-slate-500/5 rounded-r-2xl overflow-hidden p-4 space-y-3">
-      {/* 步骤标题 */}
+      {/* Step title */}
       <div className="flex items-center gap-2">
         <div className="w-6 h-6 rounded-lg bg-indigo-500/20 flex items-center justify-center">
           <span className="text-xs font-black text-indigo-400">
@@ -66,7 +66,7 @@ export const StepDetailCard: React.FC<Props> = React.memo(({ block, language, pa
         </span>
       </div>
 
-      {/* 风险等级 */}
+      {/* Risk level */}
       {risk && (
         <div className="flex items-center gap-2">
           <span className="text-[9px] font-black uppercase" style={{ color: 'var(--text-dim)' }}>
@@ -78,7 +78,7 @@ export const StepDetailCard: React.FC<Props> = React.memo(({ block, language, pa
         </div>
       )}
 
-      {/* 命令内容 */}
+      {/* Command content */}
       {command && (
         <div className="space-y-2">
           <span className="text-[9px] font-black uppercase" style={{ color: 'var(--text-dim)' }}>
@@ -90,8 +90,37 @@ export const StepDetailCard: React.FC<Props> = React.memo(({ block, language, pa
         </div>
       )}
 
-      {/* 执行按钮 */}
-      {((isWaitingConfirm || isExecuting || isCompleted || isError) && command && !isWaitingUserConfirm) && (
+      {/* Tool permission buttons — Claude Code CLI style (Allow once / Always allow / Deny) */}
+      {isWaitingConfirm && command && block.permissionId && (
+        <div className="flex items-center gap-2 pt-2">
+          <button
+            onClick={() => actions.onStepConfirm?.(blockId, stepIndex, command, risk)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-all shadow-sm hover:shadow-emerald-500/10"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            {language === 'en' ? 'Allow once' : '本次允许'}
+          </button>
+          {block.allowPermanent && (
+            <button
+              onClick={() => actions.onToolApproveAlways?.(block.permissionId!)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 border border-indigo-500/30 transition-all shadow-sm hover:shadow-indigo-500/10"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              {language === 'en' ? 'Always allow' : '永久允许'}
+            </button>
+          )}
+          <button
+            onClick={() => actions.onStepCancel?.(blockId, stepIndex)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-all"
+          >
+            <ShieldX className="w-3.5 h-3.5" />
+            {language === 'en' ? 'Deny' : '拒绝'}
+          </button>
+        </div>
+      )}
+
+      {/* Regular execute button (non-permission steps) */}
+      {((isWaitingConfirm || isExecuting || isCompleted || isError) && command && !isWaitingUserConfirm && !block.permissionId) && (
         <div className="flex gap-2 pt-2">
           <button
             disabled={isExecuting || isCompleted || isError}
@@ -132,7 +161,25 @@ export const StepDetailCard: React.FC<Props> = React.memo(({ block, language, pa
         </div>
       )}
 
-      {/* 交互式命令确认 */}
+      {/* Executing/completed/error status for permission steps (after approval) */}
+      {((isExecuting || isCompleted || isError) && command && block.permissionId) && (
+        <div className="flex gap-2 pt-2">
+          <div className={`flex-1 text-white text-[10px] font-black uppercase py-2.5 rounded-lg flex items-center justify-center gap-1.5 ${buttonConfig.className}`}>
+            {buttonConfig.icon}
+            {buttonConfig.text}
+          </div>
+          {isExecuting && (
+            <button
+              onClick={() => actions.onStepCancel?.(blockId, stepIndex)}
+              className="px-4 py-2 text-[10px] font-black uppercase rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 transition-colors"
+            >
+              {language === 'en' ? 'Cancel' : '取消'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Interactive command confirmation */}
       {isWaitingUserConfirm && command && (
         <CommandConfirmation
           command={command}
@@ -144,7 +191,7 @@ export const StepDetailCard: React.FC<Props> = React.memo(({ block, language, pa
         />
       )}
 
-      {/* 密码输入 */}
+      {/* Password input */}
       {isWaitingPassword && passwordState && (
         <PasswordInputRow
           password={passwordState.value}
@@ -161,7 +208,7 @@ export const StepDetailCard: React.FC<Props> = React.memo(({ block, language, pa
         />
       )}
 
-      {/* 执行结果 */}
+      {/* Execution result */}
       {output && (
         <div className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
           <div className="flex items-center gap-2">
@@ -180,7 +227,7 @@ export const StepDetailCard: React.FC<Props> = React.memo(({ block, language, pa
         </div>
       )}
 
-      {/* 统计 */}
+      {/* Statistics */}
       {tokenUsage && status === 'completed' && (tokenUsage.showTokens !== false || tokenUsage.showGems !== false) && (() => {
         const loc = getMsgViewerLocale(language);
         return (

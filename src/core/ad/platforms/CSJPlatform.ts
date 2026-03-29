@@ -1,15 +1,15 @@
 /**
- * 穿山甲广告平台 (CSJ / Pangolin)
+ * ByteDance CSJ Ad Platform (Pangolin / 穿山甲)
  *
- * 字节跳动旗下广告联盟，国内最大广告平台之一。
- * 支持信息流广告、开屏广告、激励视频等多种形式。
+ * ByteDance's ad network, one of China's largest ad platforms.
+ * Supports various ad formats: feed ads, splash ads, reward videos, etc.
  *
- * 文档: https://www.csjplatform.com/
- * 服务端 API: https://open.oceanengine.com/
+ * Docs: https://www.csjplatform.com/
+ * Server API: https://open.oceanengine.com/
  *
- * 本实现采用服务端到服务端 (S2S) 模式：
- * 客户端 → TermCat Server → 穿山甲 API → 返回广告内容
- * 这样可以保护 AppKey，且适配桌面端场景。
+ * This implementation uses Server-to-Server (S2S) mode:
+ * Client → TermCat Server → CSJ API → Return ad content
+ * This protects AppKey and adapts to desktop scenarios.
  */
 
 import { IAdPlatform, AdPlatformConfig, AdRequestContext, AdContent, AdPlatformType } from '../types';
@@ -20,7 +20,7 @@ const log = logger.withFields({ module: LOG_MODULE.UI });
 
 export class CSJPlatform implements IAdPlatform {
   readonly platformId: AdPlatformType = 'csj';
-  readonly platformName = '穿山甲';
+  readonly platformName = 'CSJ';
 
   private config: AdPlatformConfig = {};
   private initialized = false;
@@ -35,7 +35,7 @@ export class CSJPlatform implements IAdPlatform {
     if (!this.initialized) return [];
 
     try {
-      // 通过 TermCat Server 代理请求穿山甲广告
+      // Request CSJ ads via TermCat Server proxy
       const response = await apiService.fetchPlatformAds('csj', {
         slot_id: this.config.slotId,
         tier: context.tier,
@@ -79,7 +79,7 @@ export class CSJPlatform implements IAdPlatform {
     this.initialized = false;
   }
 
-  /** 将穿山甲广告数据格式化为 AI 助手口吻的 Markdown */
+  /** Format CSJ ad data as AI assistant-style Markdown */
   private formatAdMessage(item: any): string {
     const title = item.title || '';
     const desc = item.description || '';

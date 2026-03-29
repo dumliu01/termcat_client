@@ -1,8 +1,8 @@
 /**
- * 商业化配置类型定义
+ * Commerce Configuration Type Definitions
  */
 
-/** 订阅版本配置 */
+/** Subscription tier config */
 export interface TierConfig {
   id: string;
   enabled?: boolean;
@@ -15,10 +15,10 @@ export interface TierConfig {
   features: string[];
   available_models: string[];
   agent_daily_limit: number;
-  [key: string]: unknown; // 允许未知字段，向前兼容
+  [key: string]: unknown; // Allow unknown fields for forward compatibility
 }
 
-/** 积分包配置 */
+/** Gem package config */
 export interface GemPackage {
   id: string;
   gems: number;
@@ -27,16 +27,17 @@ export interface GemPackage {
   [key: string]: unknown;
 }
 
-/** 完整商业化配置 */
+/** Complete commerce config */
 export interface CommerceConfig {
   seq: number;
   tiers: TierConfig[];
   gem_packages: GemPackage[];
   feature_meta?: Record<string, Record<string, string>>; // feature ID → { zh: "...", en: "..." }
-  [key: string]: unknown; // 允许未知字段
+  mock_pay_enabled?: boolean; // Server-side mock payment toggle (test env only)
+  [key: string]: unknown; // Allow unknown fields
 }
 
-/** 增量同步 seq */
+/** Incremental sync seq */
 export interface SyncSeqs {
   hosts: number;
   groups: number;
@@ -45,7 +46,7 @@ export interface SyncSeqs {
   tunnels: number;
 }
 
-/** 登录响应（扩展） */
+/** Login response (extended) */
 export interface LoginResponseWithSeqs {
   token: string;
   user: Record<string, unknown>;

@@ -32,6 +32,10 @@ export interface AIOpsHeaderProps {
   onShowHistory?: () => void;
   /** 新建会话 */
   onNewConversation?: () => void;
+  /** Code 模式：是否有活跃的持久会话 */
+  hasCodeSession?: boolean;
+  /** Code 模式：断开持久会话 */
+  onDisconnectCodeSession?: () => void;
 }
 
 export const AIOpsHeader: React.FC<AIOpsHeaderProps> = ({
@@ -45,6 +49,8 @@ export const AIOpsHeader: React.FC<AIOpsHeaderProps> = ({
   guestCannotClose = false,
   onShowHistory,
   onNewConversation,
+  hasCodeSession = false,
+  onDisconnectCodeSession,
 }) => {
   const t = useT();
 
@@ -72,10 +78,18 @@ export const AIOpsHeader: React.FC<AIOpsHeaderProps> = ({
 
       {/* 右侧：连接状态 + 广告开关 + 用户余额 + 关闭按钮 */}
       <div className="flex items-center gap-3">
-        {/* 连接状态 */}
+        {/* 连接状态 + Code 模式断开按钮 */}
         <div className="flex items-center gap-1">
           <div className={`w-1.5 h-1.5 rounded-full ${status.color} ${status.animate ? 'animate-pulse' : ''}`} />
           <span className="text-[9px]" style={{ color: 'var(--text-dim)' }}>{status.label}</span>
+          {hasCodeSession && onDisconnectCodeSession && (
+            <button
+              onClick={onDisconnectCodeSession}
+              className="ml-1 px-1.5 py-0.5 text-[9px] font-bold rounded bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 border border-rose-500/20 transition-colors"
+            >
+              {t.disconnectSession || '断开'}
+            </button>
+          )}
         </div>
 
         {/* 新建会话（仅登录用户可见） */}

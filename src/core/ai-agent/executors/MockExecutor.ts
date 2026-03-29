@@ -1,18 +1,18 @@
 /**
- * Mock 命令执行器
+ * Mock Command Executor
  *
- * 用于 headless 模式验证和单元测试。
- * 不依赖 Electron 或 SSH，返回可配置的模拟结果。
+ * Used for headless mode verification and unit testing.
+ * Does not depend on Electron or SSH, returns configurable mock results.
  *
- * 使用示例：
+ * Usage example:
  * ```typescript
  * const executor = new MockExecutor();
  *
- * // 添加预设响应
+ * // Add preset responses
  * executor.addResponse('ls -la', { success: true, output: 'file1\nfile2', exitCode: 0 });
  * executor.addResponse('cat /etc/hosts', { success: true, output: '127.0.0.1 localhost', exitCode: 0 });
  *
- * // 或设置通配符默认响应
+ * // Or set wildcard default response
  * executor.setDefaultResponse({ success: true, output: 'mock output', exitCode: 0 });
  *
  * agent.setExecutor(executor);
@@ -23,11 +23,11 @@ import { ICommandExecutor, ExecuteOptions } from '../ICommandExecutor';
 import { CommandResult } from '../types';
 
 export interface MockExecutorConfig {
-  /** 默认响应，当没有匹配的预设时使用 */
+  /** Default response, used when no matching preset exists */
   defaultResponse?: CommandResult;
-  /** 模拟执行延迟（毫秒），默认 100 */
+  /** Mock execution delay in milliseconds, default 100 */
   delayMs?: number;
-  /** 是否记录执行历史 */
+  /** Whether to record execution history */
   recordHistory?: boolean;
 }
 
@@ -66,15 +66,15 @@ export class MockExecutor implements ICommandExecutor {
       throw new Error('MockExecutor not initialized. Call initialize() first.');
     }
 
-    // 模拟延迟
+    // Mock delay
     if (this.delayMs > 0) {
       await new Promise(resolve => setTimeout(resolve, this.delayMs));
     }
 
-    // 查找精确匹配
+    // Find exact match
     let result = this.responses.get(command);
 
-    // 查找正则匹配
+    // Find regex match
     if (!result) {
       for (const { pattern, result: patternResult } of this.patternResponses) {
         if (pattern.test(command)) {
@@ -84,12 +84,12 @@ export class MockExecutor implements ICommandExecutor {
       }
     }
 
-    // 使用默认响应
+    // Use default response
     if (!result) {
       result = { ...this.defaultResponse };
     }
 
-    // 记录历史
+    // Record history
     if (this.recordHistory) {
       this.history.push({
         command,
@@ -110,62 +110,62 @@ export class MockExecutor implements ICommandExecutor {
     return this._isReady;
   }
 
-  // ==================== 配置 API ====================
+  // ==================== Configuration API ====================
 
-  /** 添加精确匹配的命令响应 */
+  /** Add exact-match command response */
   addResponse(command: string, result: CommandResult): void {
     this.responses.set(command, result);
   }
 
-  /** 添加正则匹配的命令响应 */
+  /** Add regex-match command response */
   addPatternResponse(pattern: RegExp, result: CommandResult): void {
     this.patternResponses.push({ pattern, result });
   }
 
-  /** 设置默认响应 */
+  /** Set default response */
   setDefaultResponse(result: CommandResult): void {
     this.defaultResponse = result;
   }
 
-  /** 设置执行延迟 */
+  /** Set execution delay */
   setDelay(ms: number): void {
     this.delayMs = ms;
   }
 
-  // ==================== 查询 API ====================
+  // ==================== Query API ====================
 
-  /** 获取执行历史 */
+  /** Get execution history */
   getHistory(): readonly ExecutionRecord[] {
     return this.history;
   }
 
-  /** 获取最后一条执行记录 */
+  /** Get last execution record */
   getLastExecution(): ExecutionRecord | undefined {
     return this.history[this.history.length - 1];
   }
 
-  /** 获取执行次数 */
+  /** Get execution count */
   getExecutionCount(): number {
     return this.history.length;
   }
 
-  /** 检查某个命令是否被执行过 */
+  /** Check if a command was executed */
   wasExecuted(command: string): boolean {
     return this.history.some(r => r.command === command);
   }
 
-  /** 清空历史 */
+  /** Clear history */
   clearHistory(): void {
     this.history = [];
   }
 
-  /** 清空所有预设响应 */
+  /** Clear all preset responses */
   clearResponses(): void {
     this.responses.clear();
     this.patternResponses = [];
   }
 
-  /** 重置所有状态 */
+  /** Reset all state */
   reset(): void {
     this.clearHistory();
     this.clearResponses();

@@ -1,7 +1,7 @@
 /**
- * 插件状态栏组件
+ * Plugin status bar component
  *
- * 渲染在应用底部，显示插件注册的状态栏项目。
+ * Renders at the bottom of the application, displaying status bar items registered by plugins.
  */
 
 import React from 'react';

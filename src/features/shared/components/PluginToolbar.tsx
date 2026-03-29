@@ -1,7 +1,7 @@
 /**
- * 插件工具栏按钮组件
+ * Plugin toolbar button component
  *
- * 在终端/AI面板/文件浏览器的工具栏区域渲染插件注册的按钮。
+ * Renders buttons registered by plugins in the toolbar area of terminal/AI panel/file browser.
  */
 
 import React from 'react';

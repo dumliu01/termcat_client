@@ -38,8 +38,8 @@ const FileBrowserWrapper: React.FC<BottomPanelProps> = ({ connectionId, fsHandle
 
 export const fileBrowserPlugin: BuiltinPlugin = {
   id: 'builtin-file-browser',
-  displayName: '文件浏览器',
-  description: 'SFTP 文件浏览、编辑和传输管理',
+  displayName: 'File Browser',
+  description: 'SFTP file browsing, editing and transfer management',
   version: '1.0.0',
   getLocalizedName: (lang) => getLocale(lang).displayName,
   getLocalizedDescription: (lang) => getLocale(lang).description,

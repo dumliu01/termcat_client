@@ -1,7 +1,7 @@
 /**
- * usePlugins - 插件系统 React Hook
+ * usePlugins - Plugin System React Hook
  *
- * 提供插件列表、状态栏、工具栏等数据的响应式访问。
+ * Provides reactive access to plugin list, status bar, toolbar, and other data.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -16,14 +16,14 @@ import type {
   FileContextMenuItem,
 } from '@/plugins/types';
 
-/** 插件列表管理 Hook */
+/** Plugin list management hook */
 export function usePluginList(language?: string) {
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      // 合并内置插件（Renderer）和外部插件（Main IPC）
+      // Merge builtin plugins (Renderer) and external plugins (Main IPC)
       const builtinList = builtinPluginManager.getPluginList(language);
       const externalList = await pluginService.getPlugins() || [];
       setPlugins([...builtinList, ...externalList]);
@@ -72,7 +72,7 @@ export function usePluginList(language?: string) {
   return { plugins, loading, refresh, enablePlugin, disablePlugin };
 }
 
-/** 插件状态栏 Hook */
+/** Plugin status bar hook */
 export function usePluginStatusBar() {
   const [items, setItems] = useState<StatusBarItem[]>([]);
 
@@ -97,9 +97,9 @@ export function usePluginStatusBar() {
   }, [refresh]);
 
   const handleClick = useCallback(async (item: StatusBarItem) => {
-    // 状态栏点击触发关联的命令
+    // Status bar click triggers associated command
     if (item.onClick) {
-      // onClick 在 Main 进程，通过命令系统触发
+      // onClick is in Main process, trigger via command system
       await pluginService.executeCommand(`statusbar:click:${item.id}`);
     }
   }, []);
@@ -107,7 +107,7 @@ export function usePluginStatusBar() {
   return { items, handleClick, refresh };
 }
 
-/** 插件工具栏按钮 Hook */
+/** Plugin toolbar button hook */
 export function usePluginToolbar(area: 'terminal' | 'aiops' | 'filebrowser') {
   const [buttons, setButtons] = useState<Array<Omit<ToolbarButton, 'onClick'>>>([]);
 
@@ -138,7 +138,7 @@ export function usePluginToolbar(area: 'terminal' | 'aiops' | 'filebrowser') {
   return { buttons, handleClick, refresh };
 }
 
-/** 插件通知 Hook */
+/** Plugin notification hook */
 export function usePluginNotifications() {
   const [notifications, setNotifications] = useState<PluginNotification[]>([]);
 
@@ -149,7 +149,7 @@ export function usePluginNotifications() {
       const notification = data as PluginNotification;
       setNotifications(prev => [...prev, notification]);
 
-      // 5 秒后自动移除
+      // Auto-remove after 5 seconds
       setTimeout(() => {
         setNotifications(prev => prev.filter(n => n !== notification));
       }, 5000);
@@ -165,7 +165,7 @@ export function usePluginNotifications() {
   return { notifications, dismiss };
 }
 
-/** AI 斜杠命令 Hook */
+/** AI slash command hook */
 export function usePluginSlashCommands() {
   const [commands, setCommands] = useState<Array<Omit<SlashCommand, 'execute'>>>([]);
 
@@ -196,7 +196,7 @@ export function usePluginSlashCommands() {
   return { commands, executeSlashCommand, refresh };
 }
 
-/** 文件右键菜单 Hook */
+/** File context menu hook */
 export function usePluginFileContextMenus() {
   const [menuItems, setMenuItems] = useState<Array<Omit<FileContextMenuItem, 'onClick'>>>([]);
 

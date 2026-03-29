@@ -1,6 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, globalShortcut, powerMonitor, Notification, nativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 import { sshService } from '../core/ssh/ssh-manager';
 import { fileTransferService } from '../core/transfer/file-transfer-handler';
@@ -12,27 +14,27 @@ import { logFileWriter } from '../base/logger/log-file-writer';
 import { localPtyService } from '../core/pty/local-pty-manager';
 import { localFsProvider } from './services/local-fs-provider';
 
-// Dev 模式使用独立的 userData 目录，避免与 release 版本冲突
+// In Dev mode, use a separate userData directory to avoid conflicts with the release version
 const isDev = !app.isPackaged;
 if (isDev) {
   app.setName('TermCat-Dev');
   app.setPath('userData', path.join(app.getPath('appData'), 'TermCat-Dev'));
 }
 
-// 初始化日志文件写入（自动注册为 logger 的文件传输）
+// Initialize log file writer (automatically registered as a file sink for logger)
 logFileWriter.initialize({ logDir: app.getPath('logs') });
 
-// Renderer 进程日志通过 IPC 写入文件
+// Renderer process logs are written to file via IPC
 ipcMain.on('log:write', (_event, line: string) => {
   logFileWriter.write(line);
 });
 
-// 获取日志目录路径
+// Get log directory path
 ipcMain.handle('log:get-dir', () => {
   return logFileWriter.getLogDir();
 });
 
-// 注册 termcat:// 自定义协议
+// Register termcat:// custom protocol
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
     app.setAsDefaultProtocolClient('termcat', process.execPath, [path.resolve(process.argv[1])]);
@@ -41,7 +43,7 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('termcat');
 }
 
-// 处理 termcat:// 协议回调
+// Handle termcat:// protocol callback
 function handleAuthCallback(url: string) {
   try {
     const parsed = new URL(url);
@@ -53,7 +55,7 @@ function handleAuthCallback(url: string) {
           has_token: true,
         });
         mainWindow.webContents.send('auth-callback', { token, user });
-        // 确保窗口聚焦
+        // Ensure window is focused
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
       }
@@ -67,24 +69,24 @@ function handleAuthCallback(url: string) {
   }
 }
 
-// macOS: open-url 事件
+// macOS: open-url event
 app.on('open-url', (event, url) => {
   event.preventDefault();
   handleAuthCallback(url);
 });
 
-// Windows/Linux: second-instance 事件
+// Windows/Linux: second-instance event
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', (_event, commandLine) => {
-    // 从命令行参数中查找 termcat:// URL
+    // Find termcat:// URL from command line arguments
     const url = commandLine.find((arg) => arg.startsWith('termcat://'));
     if (url) {
       handleAuthCallback(url);
     }
-    // 聚焦主窗口
+    // Focus main window
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -92,10 +94,10 @@ if (!gotTheLock) {
   });
 }
 
-// 渲染进程到主进程再转发回渲染进程
-// 用于终端焦点变化的广播
+// Forward from renderer process to main process and back to renderer process
+// Used for broadcasting terminal focus changes
 ipcMain.on('terminal-focus-gained', (event, connectionId) => {
-  // 通过 webContents.send 转发回渲染进程，ipcRenderer.on 才能接收到
+  // Forward back to renderer process via webContents.send so ipcRenderer.on can receive it
   event.sender.send('terminal-focus-gained', connectionId);
 });
 
@@ -120,18 +122,18 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    // macOS: hiddenInset 保留原生红绿灯; Windows: 去掉原生标题栏
+    // macOS: hiddenInset preserves native traffic lights; Windows: remove native title bar
     titleBarStyle: isWin ? undefined : 'hiddenInset',
     frame: !isWin,
     backgroundColor: '#020617',
   });
 
-  // Windows 下隐藏菜单栏（dev 模式保留，方便使用 View → Toggle Developer Tools）
+  // Hide menu bar on Windows (keep it in dev mode for easier access to View → Toggle Developer Tools)
   if (isWin && !process.env.VITE_DEV_SERVER_URL) {
     mainWindow.setMenuBarVisibility(false);
   }
 
-  // 设置SSH服务的webContents
+  // Set webContents for SSH service
   sshService.setWebContents(mainWindow.webContents);
 
   const enableDevTools = process.argv.includes('--devtools');
@@ -140,7 +142,7 @@ function createWindow() {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools();
 
-    // Dev 模式：注册 F12 / Ctrl+Shift+I 切换 DevTools
+    // Dev mode: register F12 / Ctrl+Shift+I to toggle DevTools
     const toggleDevTools = () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.toggleDevTools();
@@ -161,21 +163,21 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  // Release 版本使用精简菜单，Dev 版本保留默认菜单方便调试
+  // Release version uses simplified menu, Dev version keeps default menu for easier debugging
   if (app.isPackaged && process.platform === 'darwin') {
     const template: Electron.MenuItemConstructorOptions[] = [
       {
         label: app.name,
         submenu: [
           {
-            label: '关于 TermCat',
+            label: 'About TermCat',
             click: () => {
               mainWindow?.webContents.send('navigate-to', 'settings', 'help');
             },
           },
           { type: 'separator' },
           {
-            label: '设置...',
+            label: 'Settings...',
             accelerator: 'Cmd+,',
             click: () => {
               mainWindow?.webContents.send('navigate-to', 'settings');
@@ -218,7 +220,7 @@ app.whenReady().then(async () => {
   chatHistoryService.registerHandlers();
   createWindow();
 
-  // 初始化插件系统
+  // Initialize plugin system
   try {
     const pluginManager = getPluginManager();
     if (mainWindow) {
@@ -232,10 +234,26 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
-      // 窗口重建后更新插件管理器的窗口引用，否则 sendToRenderer 会静默丢失消息
+      // Update plugin manager's window reference after window reconstruction,
+      // otherwise sendToRenderer will silently lose messages
       if (mainWindow) {
         getPluginManager().setMainWindow(mainWindow);
       }
+    }
+  });
+
+  // Power monitor: detect system sleep/wake to handle stale connections
+  powerMonitor.on('resume', () => {
+    logger.info(LOG_MODULE.MAIN, 'power.resumed', 'System resumed from sleep');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('system-resumed');
+    }
+  });
+
+  powerMonitor.on('unlock-screen', () => {
+    logger.info(LOG_MODULE.MAIN, 'power.screen_unlocked', 'Screen unlocked');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('system-resumed');
     }
   });
 });
@@ -246,7 +264,7 @@ app.on('window-all-closed', () => {
   }
 });
 
-// 应用退出时关闭插件系统和日志服务
+// Shutdown plugin system and log service when application exits
 app.on('before-quit', async () => {
   localPtyService.destroyAll();
   const pluginManager = getPluginManager();
@@ -269,6 +287,25 @@ ipcMain.on('window:close', () => {
   mainWindow?.close();
 });
 
+// ── Desktop Notification IPC ──
+ipcMain.handle('notification:show', (_event, options: { title: string; body: string }) => {
+  // Only show notification when window is not focused
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
+    const notification = new Notification({
+      title: options.title,
+      body: options.body,
+    });
+    notification.on('click', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+    notification.show();
+  }
+});
+
 // IPC handlers
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
@@ -276,6 +313,45 @@ ipcMain.handle('get-app-version', () => {
 
 ipcMain.handle('get-platform', () => {
   return process.platform;
+});
+
+// Device fingerprint for license verification
+ipcMain.handle('license:getMachineId', async () => {
+  // Try cached value first
+  const cacheFile = path.join(app.getPath('userData'), 'machine-id.json');
+  try {
+    if (fs.existsSync(cacheFile)) {
+      const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf-8'));
+      if (cached.machineId) return cached.machineId;
+    }
+  } catch {
+    // Cache read failed, regenerate
+  }
+
+  // Get first non-internal MAC address
+  const nets = os.networkInterfaces();
+  let mac = '';
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name] || []) {
+      if (!net.internal && net.mac !== '00:00:00:00:00:00') {
+        mac = net.mac;
+        break;
+      }
+    }
+    if (mac) break;
+  }
+
+  const raw = `${mac}|${os.platform()}|${os.hostname()}`;
+  const machineId = createHash('sha256').update(raw).digest('hex').substring(0, 32);
+
+  // Cache to file
+  try {
+    fs.writeFileSync(cacheFile, JSON.stringify({ machineId }), 'utf-8');
+  } catch {
+    // Cache write failed, non-critical
+  }
+
+  return machineId;
 });
 
 ipcMain.handle('open-external', async (_event, url: string) => {
@@ -303,7 +379,8 @@ ipcMain.handle('ssh-connect', async (event, config) => {
       connectedAt: Date.now(),
     };
     pluginManager.registerSSHConnection(connInfo);
-    // await 确保外部插件在 SSH 连接返回前完成面板注册，避免 Renderer 端竞态
+    // await ensures external plugins complete panel registration before SSH connection returns,
+    // avoiding race conditions on the Renderer side
     await pluginManager.emitSSHConnect(connInfo);
 
     return connectionId;
@@ -333,7 +410,7 @@ ipcMain.handle('ssh-execute', async (event, connectionId, command, options?: { u
 
 ipcMain.handle('ssh-disconnect', async (event, connectionId) => {
   try {
-    // 触发插件 SSH 断开事件
+    // Trigger plugin SSH disconnect event
     const pluginManager = getPluginManager();
     const connInfo = { sessionId: connectionId, hostId: connectionId, host: '', port: 22, username: '', connectedAt: 0 };
     pluginManager.emitSSHDisconnect(connInfo);
@@ -356,7 +433,7 @@ ipcMain.handle('ssh-create-shell', async (event, connectionId, encoding?: string
     const webContents = event.sender;
     const shellId = await sshService.createShell(connectionId, webContents, encoding);
 
-    // 触发插件终端打开事件
+    // Trigger plugin terminal open event
     const pluginManager = getPluginManager();
     const terminalInfo = {
       sessionId: shellId,
@@ -376,6 +453,12 @@ ipcMain.handle('ssh-create-shell', async (event, connectionId, encoding?: string
     });
     throw new Error(`SSH shell creation failed: ${error.message}`);
   }
+});
+
+ipcMain.handle('ssh-close-shell', (_event, shellId: string) => {
+  if (!sshService) return { success: false };
+  const success = sshService.closeShell(shellId);
+  return { success };
 });
 
 ipcMain.handle('ssh-shell-write', (event, connectionId, data) => {
@@ -444,7 +527,7 @@ ipcMain.handle('ssh-update-cwd', (event, connectionId, newDirectory) => {
 
 ipcMain.handle('ssh-focus-terminal', (event, connectionId) => {
   try {
-    // 通过 webContents.send 发送到渲染进程，让 XTermTerminal 的 onFocusTerminal 监听器接收
+    // Send to renderer process via webContents.send so XTermTerminal's onFocusTerminal listener can receive it
     event.sender.send('focus-terminal', connectionId);
     return { success: true };
   } catch (error: any) {
@@ -457,7 +540,7 @@ ipcMain.handle('ssh-focus-terminal', (event, connectionId) => {
   }
 });
 
-// 获取远程服务器操作系统信息
+// Get remote server operating system information
 ipcMain.handle('ssh-get-os-info', async (event, connectionId) => {
   const osInfo = await sshService.getOSInfo(connectionId);
   return osInfo || null;
@@ -498,6 +581,14 @@ ipcMain.on('local-pty-write', (_event, ptyId: string, data: string) => {
   localPtyService.write(ptyId, data);
 });
 
+ipcMain.handle('local-pty-health-check', async (_event, ptyId: string) => {
+  return localPtyService.healthCheck(ptyId);
+});
+
+ipcMain.handle('local-pty-rebuild', async (_event, ptyId: string, cols: number, rows: number) => {
+  return localPtyService.rebuild(ptyId, _event.sender, cols, rows);
+});
+
 // ── Local FS IPC Handlers ──
 
 ipcMain.handle('local-fs-list', async (_event, dirPath: string) => localFsProvider.list(dirPath));
@@ -516,7 +607,7 @@ ipcMain.handle('local-fs-homedir', async () => localFsProvider.getHomedir());
 ipcMain.handle('local-fs-copy-file', async (_event, src: string, dest: string) => localFsProvider.copyFile(src, dest));
 ipcMain.handle('local-fs-copy-dir', async (_event, src: string, dest: string) => localFsProvider.copyDirectory(src, dest));
 
-// ── Local Exec IPC Handler（系统监控等使用） ──
+// ── Local Exec IPC Handler (used for system monitoring, etc.) ──
 
 ipcMain.handle('local-exec', async (_event, command: string) => {
   const { exec } = require('child_process');
@@ -537,7 +628,7 @@ ipcMain.handle('local-exec', async (_event, command: string) => {
 // File Transfer IPC handlers
 ipcMain.handle('file-upload', async (event, connectionId, localPath, remotePath) => {
   try {
-    // 检查本地路径是否为目录，如果是则使用异步启动目录上传并立即返回 transferId
+    // Check if local path is a directory; if so, start async directory upload and return transferId immediately
     if (fs.existsSync(localPath) && fs.statSync(localPath).isDirectory()) {
       const transferId = fileTransferService.startUploadDirectory(connectionId, localPath, remotePath, event.sender);
       return transferId;
@@ -569,7 +660,7 @@ ipcMain.handle('file-download', async (event, connectionId, remotePath, localPat
 
 ipcMain.handle('file-upload-dir', async (event, connectionId, localPath, remotePath) => {
   try {
-    // 启动后台目录上传并立即返回 transferId
+    // Start background directory upload and return transferId immediately
     const transferId = fileTransferService.startUploadDirectory(connectionId, localPath, remotePath, event.sender);
     return transferId;
   } catch (error: any) {
@@ -595,7 +686,7 @@ ipcMain.handle('file-download-dir', async (event, connectionId, remotePath, loca
   }
 });
 
-// 文件对话框处理器
+// File dialog handler
 ipcMain.handle('show-save-dialog', async (event, options) => {
   try {
     return await dialog.showSaveDialog(mainWindow!, options);
@@ -699,7 +790,7 @@ ipcMain.handle('tunnel-get-statuses', (event, connectionId: string) => {
   return tunnelService.getTunnelStatuses(connectionId);
 });
 
-// 监听隧道状态更新并转发到渲染进程
+// Forward tunnel status updates to renderer process
 tunnelService.onStatusUpdate((connectionId, status) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('tunnel-status-update', connectionId, status);

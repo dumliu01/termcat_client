@@ -1,29 +1,36 @@
 /**
- * 工具调用展示卡片
+ * Tool use display card
  *
- * 显示工具名、命令/路径、权限确认、执行结果等。
+ * Displays tool name, command/path, permission confirmation, execution result, etc.
  */
 
 import React, { useState } from 'react';
 import { Loader2, Check, XCircle, ChevronDown, Terminal, FileText, Search, FolderSearch, ShieldCheck, ShieldX, Clock } from 'lucide-react';
 import type { ToolUseBlock, MsgViewerActions } from '../types';
 
-/** 工具信息映射 */
+/** Tool info mapping */
 const TOOL_INFO: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  // Code 模式（MCP 工具名）
+  // Code mode (MCP tool name)
   'mcp__remote_ops__bash': { label: 'Bash', icon: <Terminal className="w-3 h-3" />, color: 'text-indigo-400 bg-indigo-500/20' },
   'mcp__remote_ops__read_file': { label: 'Read', icon: <FileText className="w-3 h-3" />, color: 'text-cyan-400 bg-cyan-500/20' },
   'mcp__remote_ops__write_file': { label: 'Write', icon: <FileText className="w-3 h-3" />, color: 'text-amber-400 bg-amber-500/20' },
   'mcp__remote_ops__edit_file': { label: 'Edit', icon: <FileText className="w-3 h-3" />, color: 'text-emerald-400 bg-emerald-500/20' },
   'mcp__remote_ops__glob': { label: 'Glob', icon: <FolderSearch className="w-3 h-3" />, color: 'text-violet-400 bg-violet-500/20' },
   'mcp__remote_ops__grep': { label: 'Grep', icon: <Search className="w-3 h-3" />, color: 'text-orange-400 bg-orange-500/20' },
-  // Codex 模式（直接工具名）
+  // X-Agent mode (direct tool name)
   'bash': { label: 'Bash', icon: <Terminal className="w-3 h-3" />, color: 'text-indigo-400 bg-indigo-500/20' },
   'read_file': { label: 'Read', icon: <FileText className="w-3 h-3" />, color: 'text-cyan-400 bg-cyan-500/20' },
   'write_file': { label: 'Write', icon: <FileText className="w-3 h-3" />, color: 'text-amber-400 bg-amber-500/20' },
   'edit_file': { label: 'Edit', icon: <FileText className="w-3 h-3" />, color: 'text-emerald-400 bg-emerald-500/20' },
   'glob': { label: 'Glob', icon: <FolderSearch className="w-3 h-3" />, color: 'text-violet-400 bg-violet-500/20' },
   'grep': { label: 'Grep', icon: <Search className="w-3 h-3" />, color: 'text-orange-400 bg-orange-500/20' },
+  // Claude Agent SDK (Code mode — local execution, capitalized tool names)
+  'Bash': { label: 'Bash', icon: <Terminal className="w-3 h-3" />, color: 'text-indigo-400 bg-indigo-500/20' },
+  'Read': { label: 'Read', icon: <FileText className="w-3 h-3" />, color: 'text-cyan-400 bg-cyan-500/20' },
+  'Write': { label: 'Write', icon: <FileText className="w-3 h-3" />, color: 'text-amber-400 bg-amber-500/20' },
+  'Edit': { label: 'Edit', icon: <FileText className="w-3 h-3" />, color: 'text-emerald-400 bg-emerald-500/20' },
+  'Glob': { label: 'Glob', icon: <FolderSearch className="w-3 h-3" />, color: 'text-violet-400 bg-violet-500/20' },
+  'Grep': { label: 'Grep', icon: <Search className="w-3 h-3" />, color: 'text-orange-400 bg-orange-500/20' },
 };
 
 function getToolInfo(toolName: string) {
@@ -50,7 +57,7 @@ interface Props {
 
 export const ToolUseCard: React.FC<Props> = ({ block, language, actions }) => {
   const [showOutput, setShowOutput] = useState(false);
-  const { toolName, toolInput, output, isError, error, status, permissionId } = block;
+  const { toolName, toolInput, output, isError, error, status, permissionId, permissionTitle, allowPermanent } = block;
   if (!toolName) return null;
 
   const info = getToolInfo(toolName);
@@ -64,7 +71,7 @@ export const ToolUseCard: React.FC<Props> = ({ block, language, actions }) => {
 
   return (
     <div className={`w-full mt-2 border-l-4 ${borderColor} bg-slate-500/5 rounded-r-2xl overflow-hidden p-4 space-y-3`}>
-      {/* 工具标题行 */}
+      {/* Tool title row */}
       <div className="flex items-center gap-2">
         <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${info.color}`}>
           {info.icon}
@@ -100,14 +107,21 @@ export const ToolUseCard: React.FC<Props> = ({ block, language, actions }) => {
         </div>
       </div>
 
-      {/* 命令/路径 */}
+      {/* Command/path */}
       {description && (
         <div className="p-3 rounded-lg font-mono text-[11px] bg-black/40 text-indigo-300 break-all select-text cursor-text">
           {description}
         </div>
       )}
 
-      {/* 权限确认按钮 */}
+      {/* SDK permission title (e.g. "Claude wants to run: lsof -iTCP") */}
+      {isWaitingPermission && permissionTitle && (
+        <div className="text-[11px] font-medium text-amber-300/80">
+          {permissionTitle}
+        </div>
+      )}
+
+      {/* Permission confirmation buttons — Claude Code CLI style */}
       {isWaitingPermission && permissionId && (
         <div className="flex items-center gap-2 pt-1">
           <button
@@ -115,8 +129,17 @@ export const ToolUseCard: React.FC<Props> = ({ block, language, actions }) => {
             className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30 transition-all shadow-sm hover:shadow-emerald-500/10"
           >
             <ShieldCheck className="w-3.5 h-3.5" />
-            {language === 'en' ? 'Approve' : '批准执行'}
+            {language === 'en' ? 'Allow once' : '本次允许'}
           </button>
+          {allowPermanent && (
+            <button
+              onClick={() => actions.onToolApproveAlways?.(permissionId)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 border border-indigo-500/30 transition-all shadow-sm hover:shadow-indigo-500/10"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              {language === 'en' ? 'Always allow' : '永久允许'}
+            </button>
+          )}
           <button
             onClick={() => actions.onToolDeny?.(permissionId)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 transition-all"
@@ -127,7 +150,7 @@ export const ToolUseCard: React.FC<Props> = ({ block, language, actions }) => {
         </div>
       )}
 
-      {/* edit_file diff */}
+      {/* Edit file diff */}
       {info.label === 'Edit' && toolInput?.old_string && (
         <div className="space-y-1">
           <div className="p-2 rounded-lg font-mono text-[10px] bg-rose-500/5 text-rose-300 break-all select-text">
@@ -141,19 +164,19 @@ export const ToolUseCard: React.FC<Props> = ({ block, language, actions }) => {
         </div>
       )}
 
-      {/* write_file 预览 */}
+      {/* write_file preview */}
       {info.label === 'Write' && toolInput?.content && (
         <div className="p-2 rounded-lg font-mono text-[10px] bg-black/20 text-slate-400 break-all select-text max-h-20 overflow-y-auto">
           {toolInput.content.length > 300 ? toolInput.content.slice(0, 300) + '\n...' : toolInput.content}
         </div>
       )}
 
-      {/* 错误信息 */}
+      {/* Error message */}
       {hasError && error && !output && (
         <div className="p-2 rounded-lg text-[11px] bg-rose-500/5 text-rose-400 font-medium">{error}</div>
       )}
 
-      {/* 执行结果 */}
+      {/* Execution result */}
       {output && (
         <div className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--border-color)' }}>
           <button onClick={() => setShowOutput(!showOutput)} className="flex items-center gap-2 w-full text-left">

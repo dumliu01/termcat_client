@@ -1,14 +1,14 @@
 import { User } from '@/utils/types';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
-/** 客户端保底最小续期间隔（分钟） */
+/** Client-side minimum refresh interval (minutes) */
 const MIN_REFRESH_INTERVAL_MINUTES = 30;
-/** 默认续期间隔（分钟），服务端未返回时使用 */
+/** Default refresh interval (minutes), used when server doesn't return */
 const DEFAULT_REFRESH_INTERVAL_MINUTES = 60;
 
 /**
- * 认证服务
- * 管理用户认证状态、token 存储、自动续期等
+ * Authentication Service
+ * Manages user authentication state, token storage, auto-refresh, etc.
  */
 class AuthService {
   private readonly TOKEN_KEY = 'termcat_auth_token';
@@ -19,49 +19,49 @@ class AuthService {
   private onSeqsUpdated: ((seqs: any) => void) | null = null;
 
   /**
-   * 保存 token
+   * Save token
    */
   setToken(token: string): void {
     localStorage.setItem(this.TOKEN_KEY, token);
   }
 
   /**
-   * 获取 token
+   * Get token
    */
   getToken(): string | null {
     return localStorage.getItem(this.TOKEN_KEY);
   }
 
   /**
-   * 移除 token
+   * Remove token
    */
   removeToken(): void {
     localStorage.removeItem(this.TOKEN_KEY);
   }
 
   /**
-   * 检查是否已登录
+   * Check if logged in
    */
   isAuthenticated(): boolean {
     return !!this.getToken();
   }
 
   /**
-   * 保存用户信息
+   * Save user info
    */
   setUser(user: User): void {
-    // 保存 token
+    // Save token
     if (user.token) {
       this.setToken(user.token);
     }
 
-    // 保存用户信息（不包含 token，避免重复存储）
+    // Save user info (does not include token to avoid duplicate storage)
     const { token, ...userWithoutToken } = user;
     localStorage.setItem(this.USER_KEY, JSON.stringify(userWithoutToken));
   }
 
   /**
-   * 获取用户信息
+   * Get user info
    */
   getUser(): User | null {
     try {
@@ -71,7 +71,7 @@ class AuthService {
       const user = JSON.parse(userJson);
       const token = this.getToken();
 
-      // 合并 token
+      // Merge token
       if (token) {
         user.token = token;
       }
@@ -87,14 +87,14 @@ class AuthService {
   }
 
   /**
-   * 移除用户信息
+   * Remove user info
    */
   removeUser(): void {
     localStorage.removeItem(this.USER_KEY);
   }
 
   /**
-   * 登出
+   * Logout
    */
   logout(): void {
     this.stopAutoRefresh();
@@ -103,27 +103,27 @@ class AuthService {
   }
 
   /**
-   * 清空所有认证数据
+   * Clear all authentication data
    */
   clear(): void {
     this.logout();
   }
 
   /**
-   * 注册认证失败监听器
-   * 当收到401错误时会调用这些监听器
+   * Register authentication failure listener
+   * Called when 401 error is received
    */
   onAuthFailed(listener: () => void): () => void {
     this.authFailedListeners.push(listener);
-    // 返回取消监听的函数
+    // Return function to unsubscribe
     return () => {
       this.authFailedListeners = this.authFailedListeners.filter(l => l !== listener);
     };
   }
 
   /**
-   * 触发认证失败事件
-   * 在收到401错误时调用
+   * Trigger authentication failure event
+   * Called when 401 error is received
    */
   notifyAuthFailed(): void {
     logger.info(LOG_MODULE.AUTH, 'auth.failed', 'Authentication failed', {
@@ -143,9 +143,9 @@ class AuthService {
   }
 
   /**
-   * 启动自动续期定时器
-   * @param refreshFn 调用服务端 /auth/refresh 的函数
-   * @param intervalMinutes 服务端返回的续期间隔（分钟），保底不小于 30 分钟
+   * Start auto-refresh timer
+   * @param refreshFn Function to call server /auth/refresh
+   * @param intervalMinutes Server-returned refresh interval (minutes), minimum 30 minutes
    */
   startAutoRefresh(
     refreshFn: () => Promise<{ token: string; refresh_interval_minutes: number; seqs?: any }>,
@@ -169,7 +169,7 @@ class AuthService {
   }
 
   /**
-   * 停止自动续期定时器
+   * Stop auto-refresh timer
    */
   stopAutoRefresh(): void {
     if (this.refreshTimer) {
@@ -180,7 +180,7 @@ class AuthService {
   }
 
   /**
-   * 执行一次 token 续期
+   * Perform one token refresh
    */
   private async doRefresh(): Promise<void> {
     if (!this.refreshFn || !this.isAuthenticated()) {
@@ -192,12 +192,12 @@ class AuthService {
       const result = await this.refreshFn();
       this.setToken(result.token);
 
-      // 通知 seqs 更新（由调用方处理增量同步）
+      // Notify seqs update (handled by caller for incremental sync)
       if (result.seqs && this.onSeqsUpdated) {
         this.onSeqsUpdated(result.seqs);
       }
 
-      // 如果服务端返回了新的续期间隔，动态调整定时器
+      // If server returns new refresh interval, dynamically adjust timer
       const newInterval = Math.max(
         result.refresh_interval_minutes ?? DEFAULT_REFRESH_INTERVAL_MINUTES,
         MIN_REFRESH_INTERVAL_MINUTES,
@@ -207,7 +207,7 @@ class AuthService {
         next_interval_minutes: newInterval,
       });
 
-      // 重新设置定时器（间隔可能变了）
+      // Reset timer (interval may have changed)
       if (this.refreshFn) {
         const fn = this.refreshFn;
         this.stopAutoRefresh();
@@ -217,7 +217,7 @@ class AuthService {
       logger.warn(LOG_MODULE.AUTH, 'auth.auto_refresh.failed', 'Token refresh failed', {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
-      // 续期失败不立即踢出，等下次请求 401 时再处理
+      // Refresh failure doesn't kick out immediately, wait for next 401
     }
   }
 }

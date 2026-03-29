@@ -1,15 +1,15 @@
 /**
- * msg-viewer 公共 API
+ * msg-viewer public API
  *
- * 通用富消息展示控件，支持 AI 对话、广告、运维操作等多种消息类型。
+ * Universal rich message display component, supports AI chat, ads, ops operations, and various message types.
  */
 
-// 主组件
+// Main component
 export { MsgViewer } from './MsgViewer';
 
-// 类型
+// Types
 export type {
-  // Block 类型
+  // Block types
   MsgBlock,
   UserTextBlock,
   AssistantTextBlock,
@@ -21,7 +21,7 @@ export type {
   AdBlock,
   FeedbackBlock,
   LoadingBlock,
-  // 子类型
+  // Sub types
   RiskLevel,
   StepStatus,
   BlockStatus,
@@ -35,14 +35,14 @@ export type {
   PasswordState,
 } from './types';
 
-// 可复用子组件（供外部直接使用）
+// Reusable sub-components (for external direct use)
 export { MarkdownRenderer } from './shared/MarkdownRenderer';
 export { CodeBlock, StableCodeBlock } from './shared/CodeBlock';
 export { CopyButton } from './shared/CopyButton';
 export { PasswordInputRow } from './shared/PasswordInput';
 export { CommandConfirmation } from './shared/CommandConfirmation';
 
-// Block 组件（供需要自定义渲染的场景使用）
+// Block components (for scenarios requiring custom rendering)
 export { BlockRenderer } from './blocks/BlockRenderer';
 export { UserTextBubble } from './blocks/UserTextBubble';
 export { AssistantTextBubble } from './blocks/AssistantTextBubble';
@@ -55,6 +55,6 @@ export { AdBubble } from './blocks/AdBubble';
 export { FeedbackPrompt } from './blocks/FeedbackPrompt';
 export { LoadingIndicator } from './blocks/LoadingIndicator';
 
-// 工具函数
+// Utility functions
 export { getRiskColor, getStepStatusBgColor } from './utils/riskColors';
 export { getStepStatusIcon } from './utils/stepIcons';

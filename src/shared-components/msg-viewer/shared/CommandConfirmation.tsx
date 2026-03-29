@@ -1,7 +1,7 @@
 /**
- * 交互式命令确认组件
+ * Interactive command confirmation component
  *
- * 显示风险提示、命令预览和确认/取消按钮。
+ * Displays risk warnings, command preview, and confirm/cancel buttons.
  */
 
 import React from 'react';

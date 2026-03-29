@@ -1,14 +1,14 @@
 /**
- * UI 贡献点 React Hooks
+ * UI Contribution Point React Hooks
  *
- * 提供模板驱动面板的数据订阅。
+ * Provides template-driven panel data subscription.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { panelDataStore } from '@/plugins/ui-contribution/panel-data-store';
 import type { PanelRegistration, SectionDescriptor } from '@/plugins/ui-contribution/types';
 
-/** 获取指定插槽的面板列表 */
+/** Get panel list for a specific slot */
 export function usePanelList(slot?: string): PanelRegistration[] {
   const [panels, setPanels] = useState<PanelRegistration[]>([]);
 
@@ -25,7 +25,7 @@ export function usePanelList(slot?: string): PanelRegistration[] {
   return panels;
 }
 
-/** 获取某个面板的 sections 数据 */
+/** Get sections data for a specific panel */
 export function usePanelSections(panelId: string): SectionDescriptor[] {
   const [sections, setSections] = useState<SectionDescriptor[]>([]);
 

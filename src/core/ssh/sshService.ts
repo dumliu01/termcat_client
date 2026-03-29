@@ -17,12 +17,12 @@ class SSHService {
   private sessions: Map<string, SSHSession> = new Map();
   private currentSession: SSHSession | null = null;
 
-  // 检查是否在Electron环境中
+  // Check if in Electron environment
   private isElectron(): boolean {
     return !!(window && window.electron);
   }
 
-  // 测试IPC连接
+  // Test IPC connection
   async testIPC(): Promise<{ message: string; timestamp: number }> {
     if (!this.isElectron()) {
       return { message: 'Not in Electron environment', timestamp: Date.now() };
@@ -42,10 +42,10 @@ class SSHService {
     }
   }
 
-  // 连接到SSH服务器
+  // Connect to SSH server
   async connect(host: Host): Promise<SSHSession> {
     try {
-      // 在开发环境下使用mock数据
+      // Use mock data in development environment
       if (import.meta.env.DEV && !this.isElectron()) {
         log.info('ssh.connection.mock', 'Using mock SSH connection for development', {
           host_id: host.id,
@@ -91,7 +91,7 @@ class SSHService {
         return session;
       }
 
-      // 使用Electron IPC进行SSH连接
+      // Use Electron IPC for SSH connection
       if (this.isElectron()) {
         log.info('ssh.connection.starting', 'Starting SSH connection', {
           host_id: host.id,
@@ -101,8 +101,8 @@ class SSHService {
           auth_type: host.authType,
         });
 
-        // 如果缺少本地凭据且已登录，尝试从服务器获取（受保护接口）
-        // 游客模式无 token，跳过服务器请求
+        // If local credentials are missing and user is logged in, try to fetch from server (protected endpoint)
+        // Guest mode has no token, skip server request
         try {
           if ((!host.password || host.password.length === 0) && (!host.sshKey || host.sshKey.length === 0) && host.id && authService.isAuthenticated()) {
             try {
@@ -129,20 +129,20 @@ class SSHService {
           });
         }
 
-        // 根据认证类型构建SSH配置
+        // Build SSH config based on auth type
         const sshConfig: any = {
           host: host.connectionType === 'jump' ? host.targetHost : host.hostname,
           port: host.connectionType === 'jump' ? 22 : (Number(host.port) || 22),
           username: host.username
         };
 
-        // 跳板机配置
+        // Jump host configuration
         if (host.connectionType === 'jump' && host.targetHost) {
           sshConfig.jumpHost = {
             host: host.hostname,
             port: Number(host.port) || 22,
             username: host.username,
-            // 认证凭据与目标主机共享
+            // Auth credentials shared with target host
           };
           log.info('ssh.jump.configured', 'Jump host configuration detected', {
             host_id: host.id,
@@ -152,7 +152,7 @@ class SSHService {
           });
         }
 
-        // 如果主机配置了代理，添加代理配置
+        // If host has proxy configured, add proxy configuration
         if (host.proxy) {
           log.info('ssh.proxy.configured', 'Proxy configuration detected', {
             host_id: host.id,
@@ -162,7 +162,7 @@ class SSHService {
           });
           sshConfig.proxy = {
             type: host.proxy.type,
-            host: host.proxy.hostname,  // 注意：主进程期望的字段名是 host，不是 hostname
+            host: host.proxy.hostname,  // Note: main process expects 'host', not 'hostname'
             port: host.proxy.port,
             username: host.proxy.username,
             password: host.proxy.password
@@ -181,7 +181,7 @@ class SSHService {
           username: sshConfig.username,
         });
 
-        // 根据认证类型设置认证方式
+        // Set auth method based on auth type
         if (host.authType === 'password' && host.password) {
           log.debug('ssh.auth.using_password', 'Using password authentication');
           sshConfig.password = host.password;
@@ -194,7 +194,7 @@ class SSHService {
             has_password: !!host.password,
             has_ssh_key: !!host.sshKey,
           });
-          // 如果认证类型不匹配或没有认证信息，尝试提供所有可用的认证方式
+          // If auth type doesn't match or no auth info, try all available auth methods
           if (host.password) {
             log.debug('ssh.auth.fallback_password', 'Fallback: adding password');
             sshConfig.password = host.password;
@@ -205,7 +205,7 @@ class SSHService {
           }
         }
 
-        // 跳板机使用相同的认证凭据
+        // Jump host uses same auth credentials
         if (sshConfig.jumpHost) {
           if (sshConfig.password) {
             sshConfig.jumpHost.password = sshConfig.password;
@@ -255,14 +255,14 @@ class SSHService {
         this.sessions.set(connectionId, session);
         this.currentSession = session;
 
-        // 自动启动配置的隧道
+        // Auto-start configured tunnels
         if (host.tunnels && host.tunnels.length > 0) {
           log.info('ssh.tunnels.starting', 'Starting configured tunnels', {
             connection_id: connectionId,
             tunnel_count: host.tunnels.length,
           });
 
-          // 异步启动隧道，不阻塞连接
+          // Start tunnels asynchronously, don't block connection
           tunnelService.startTunnels(connectionId, host.tunnels)
             .then((statuses) => {
               const running = statuses.filter(s => s.status === 'running').length;
@@ -298,14 +298,14 @@ class SSHService {
     }
   }
 
-  // 执行命令
+  // Execute command
   async executeCommand(command: string): Promise<TerminalLine[]> {
     if (!this.currentSession || !this.currentSession.isConnected) {
       throw new Error('No active SSH session');
     }
 
     try {
-      // 添加输入行
+      // Add input line
       const inputLine: TerminalLine = {
         id: Math.random().toString(),
         content: `${this.currentSession.host.username}@${this.currentSession.host.name}:~$ ${command}`,
@@ -313,16 +313,16 @@ class SSHService {
         timestamp: Date.now()
       };
 
-      // 在开发环境下使用mock数据 (非Electron环境)
+      // Use mock data in development (non-Electron environment)
       if (import.meta.env.DEV && !this.isElectron()) {
         log.debug('ssh.command.mock', 'Mock executing command', {
           command: command.substring(0, 100),
         });
 
-        // 模拟命令执行延迟
+        // Simulate command execution delay
         await new Promise(resolve => setTimeout(resolve, 300 + Math.random() * 500));
 
-        // 模拟不同命令的输出
+        // Simulate different command outputs
         let mockOutput = '';
         if (command === 'ls -la') {
           mockOutput = `total 64\ndrwxr-xr-x  2 ubuntu ubuntu 4096 Jan 16 10:30 .\ndrwxr-xr-x  3 ubuntu ubuntu 4096 Jan 16 10:30 ..\n-rw-r--r--  1 ubuntu ubuntu  220 Jan 16 10:30 .bash_logout\n-rw-r--r--  1 ubuntu ubuntu 3771 Jan 16 10:30 .bashrc\n-rw-r--r--  1 ubuntu ubuntu  655 Jan 16 10:30 .profile\n-rw-r--r--  1 ubuntu ubuntu  807 Jan 16 10:30 .vimrc`;
@@ -340,7 +340,7 @@ class SSHService {
           mockOutput = `Command '${command}' executed successfully.`;
         }
 
-        // 添加输出行
+        // Add output lines
         const outputLines: TerminalLine[] = [];
         if (mockOutput) {
           const lines = mockOutput.split('\n');
@@ -356,10 +356,10 @@ class SSHService {
           });
         }
 
-        // 更新会话
+        // Update session
         this.currentSession.lines = [...this.currentSession.lines, inputLine, ...outputLines];
 
-        // 添加新的提示符
+        // Add new prompt
         const promptLine: TerminalLine = {
           id: Math.random().toString(),
           content: `${this.currentSession.host.username}@${this.currentSession.host.name}:~$ `,
@@ -372,7 +372,7 @@ class SSHService {
         return [inputLine, ...outputLines, promptLine];
       }
 
-      // 使用Electron IPC执行命令
+      // Use Electron IPC to execute command
       if (this.isElectron()) {
         log.info('ssh.command.executing', 'Executing SSH command', {
           connection_id: this.currentSession.connectionId,
@@ -381,7 +381,7 @@ class SSHService {
 
         const result = await window.electron.sshExecute(this.currentSession.connectionId, command);
 
-        // 处理命令输出
+        // Handle command output
         const outputLines: TerminalLine[] = [];
         if (result.output) {
           const lines = result.output.split('\n');
@@ -397,10 +397,10 @@ class SSHService {
           });
         }
 
-        // 更新会话
+        // Update session
         this.currentSession.lines = [...this.currentSession.lines, inputLine, ...outputLines];
 
-        // 添加新的提示符
+        // Add new prompt
         const promptLine: TerminalLine = {
           id: Math.random().toString(),
           content: `${this.currentSession.host.username}@${this.currentSession.host.name}:~$ `,
@@ -413,16 +413,16 @@ class SSHService {
         return [inputLine, ...outputLines, promptLine];
       }
 
-      // 生产环境使用真实API (备用方案)
+      // Use real API in production (fallback)
       const response = await apiService.executeCommand(this.currentSession.connectionId, command);
 
-      // 添加输出行
+      // Add output lines
       const outputLines: TerminalLine[] = [];
       if (response.output) {
-        // 处理多行输出
+        // Process multi-line output
         const lines = response.output.split('\n');
         lines.forEach((line: string, index: number) => {
-          if (line.trim() || index < lines.length - 1) { // 保留空行，但过滤最后的空行
+          if (line.trim() || index < lines.length - 1) { // Keep empty lines but filter last empty line
             outputLines.push({
               id: Math.random().toString(),
               content: line,
@@ -433,10 +433,10 @@ class SSHService {
         });
       }
 
-      // 更新会话
+      // Update session
       this.currentSession.lines = [...this.currentSession.lines, inputLine, ...outputLines];
 
-      // 添加新的提示符
+      // Add new prompt
       const promptLine: TerminalLine = {
         id: Math.random().toString(),
         content: `${this.currentSession.host.username}@${this.currentSession.host.name}:~$ `,
@@ -454,7 +454,7 @@ class SSHService {
         msg: error instanceof Error ? error.message : 'Unknown error',
       });
 
-      // 添加错误行
+      // Add error line
       const errorLine: TerminalLine = {
         id: Math.random().toString(),
         content: `Error: ${error}`,
@@ -462,7 +462,7 @@ class SSHService {
         timestamp: Date.now()
       };
 
-      // 添加新的提示符
+      // Add new prompt
       const promptLine: TerminalLine = {
         id: Math.random().toString(),
         content: `${this.currentSession.host.username}@${this.currentSession.host.name}:~$ `,
@@ -478,7 +478,7 @@ class SSHService {
     }
   }
 
-  // 断开连接（断开当前会话）
+  // Disconnect (disconnect current session)
   async disconnect(): Promise<void> {
     if (!this.currentSession) {
       return;
@@ -487,7 +487,7 @@ class SSHService {
     const sessionId = this.currentSession.connectionId;
 
     try {
-      // 先停止所有隧道
+      // Stop all tunnels first
       if (this.isElectron()) {
         await tunnelService.stopAllTunnels(sessionId).catch((err) => {
           log.warn('ssh.tunnels.stop_failed', 'Failed to stop tunnels on disconnect', {
@@ -497,15 +497,15 @@ class SSHService {
         });
       }
 
-      // 使用Electron IPC断开连接
+      // Use Electron IPC to disconnect
       if (this.isElectron()) {
         await window.electron.sshDisconnect(sessionId);
       } else {
-        // 备用方案：使用API断开连接
+        // Fallback: use API to disconnect
         await apiService.disconnectSSH(sessionId);
       }
 
-      // 添加断开连接的消息
+      // Add disconnect message
       const disconnectLine: TerminalLine = {
         id: Math.random().toString(),
         content: 'Connection closed.',
@@ -520,14 +520,14 @@ class SSHService {
         error: 1,
         msg: error instanceof Error ? error.message : 'Unknown error',
       });
-      // 即使断开失败，也标记为已断开
+      // Even if disconnect fails, mark as disconnected
       if (this.currentSession) {
         this.currentSession.isConnected = false;
       }
     }
   }
 
-  // 断开指定会话的连接
+  // Disconnect specified session
   async disconnectSession(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -535,7 +535,7 @@ class SSHService {
     }
 
     try {
-      // 先停止所有隧道
+      // Stop all tunnels first
       if (this.isElectron()) {
         await tunnelService.stopAllTunnels(sessionId).catch((err) => {
           log.warn('ssh.tunnels.stop_failed', 'Failed to stop tunnels on disconnect', {
@@ -545,15 +545,15 @@ class SSHService {
         });
       }
 
-      // 使用Electron IPC断开连接
+      // Use Electron IPC to disconnect
       if (this.isElectron()) {
         await window.electron.sshDisconnect(sessionId);
       } else {
-        // 备用方案：使用API断开连接
+        // Fallback: use API to disconnect
         await apiService.disconnectSSH(sessionId);
       }
 
-      // 添加断开连接的消息
+      // Add disconnect message
       const disconnectLine: TerminalLine = {
         id: Math.random().toString(),
         content: 'Connection closed.',
@@ -564,7 +564,7 @@ class SSHService {
       session.lines.push(disconnectLine);
       session.isConnected = false;
 
-      // 如果断开的是当前会话，清空当前会话
+      // If disconnecting current session, clear current session
       if (this.currentSession?.connectionId === sessionId) {
         this.currentSession = null;
       }
@@ -574,22 +574,22 @@ class SSHService {
         error: 1,
         msg: error instanceof Error ? error.message : 'Unknown error',
       });
-      // 即使断开失败，也标记为已断开
+      // Even if disconnect fails, mark as disconnected
       session.isConnected = false;
     }
   }
 
-  // 获取当前会话
+  // Get current session
   getCurrentSession(): SSHSession | null {
     return this.currentSession;
   }
 
-  // 获取所有会话
+  // Get all sessions
   getSessions(): SSHSession[] {
     return Array.from(this.sessions.values());
   }
 
-  // 切换会话（通过 sessionId）
+  // Switch session (by sessionId)
   switchSession(sessionId: string): SSHSession | null {
     const session = this.sessions.get(sessionId);
     if (session) {
@@ -598,16 +598,16 @@ class SSHService {
     return session || null;
   }
 
-  // 获取指定会话（通过 sessionId）
+  // Get specified session (by sessionId)
   getSession(sessionId: string): SSHSession | null {
     return this.sessions.get(sessionId) || null;
   }
 
-  // 清理会话（通过 sessionId）
+  // Clear session (by sessionId)
   clearSession(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (session && session.isConnected) {
-      // 断开指定会话的连接
+      // Disconnect specified session
       if (this.isElectron()) {
         window.electron.sshDisconnect(sessionId).catch(err => {
           log.error('ssh.disconnect.catch_error', 'Failed to disconnect session', {

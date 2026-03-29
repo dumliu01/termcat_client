@@ -1,35 +1,35 @@
 /**
- * useSharedAIConnection — 用户级共享 AI WebSocket 连接管理
+ * useSharedAIConnection — User-level shared AI WebSocket connection management
  *
- * 核心特性：
- * - 懒建连：不主动建连，通过 ensureConnected() 按需建连
- * - 空闲断连：所有会话空闲超时后自动断开（默认 2 分钟）
- * - 活跃任务保护：有进行中的任务时不会触发空闲断连
- * - 用户级共享：多个终端 Tab 共用同一条连接，切 Tab 零开销
+ * Core features:
+ * - Lazy connection: Does not connect proactively; connects on-demand via ensureConnected()
+ * - Idle disconnect: Auto-disconnects after idle timeout (default 2 minutes)
+ * - Active task protection: Active tasks prevent idle disconnect
+ * - User-level sharing: Multiple terminal tabs share the same connection, zero overhead on tab switch
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AIAgentConnection } from '@/core/ai-agent';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
-const DEFAULT_IDLE_TIMEOUT_MS = 2 * 60 * 1000; // 2 分钟
+const DEFAULT_IDLE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 export type AIConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected';
 
 export interface SharedAIConnection {
-  /** 当前连接实例（可能为 null） */
+  /** Current connection instance (may be null) */
   connection: AIAgentConnection | null;
-  /** 是否已连接 */
+  /** Whether connected */
   isConnected: boolean;
-  /** 连接状态：idle（未连接过）、connecting、connected、disconnected */
+  /** Connection status: idle (never connected), connecting, connected, disconnected */
   connectionStatus: AIConnectionStatus;
-  /** 确保连接已建立（懒建连入口） */
+  /** Ensure connection is established (lazy connection entry point) */
   ensureConnected: () => Promise<AIAgentConnection>;
-  /** 标记活跃（收发消息时调用，重置空闲计时器） */
+  /** Mark as active (called when sending/receiving messages, resets idle timer) */
   markActive: () => void;
-  /** 注册活跃任务（有任务期间不触发空闲断连） */
+  /** Register active task (prevents idle disconnect during task execution) */
   holdConnection: (taskId: string) => void;
-  /** 释放活跃任务（所有任务结束后恢复空闲倒计时） */
+  /** Release active task (resumes idle countdown when all tasks are complete) */
   releaseConnection: (taskId: string) => void;
 }
 
@@ -45,7 +45,7 @@ export function useSharedAIConnection(
   const tokenRef = useRef(token);
   tokenRef.current = token;
 
-  // ---- 活跃任务追踪（用 Set 防止重复计数） ----
+  // ---- Active task tracking (use Set to prevent duplicate counting) ----
   const activeTasksRef = useRef<Set<string>>(new Set());
 
   const baseUrl = useMemo(() =>
@@ -56,7 +56,7 @@ export function useSharedAIConnection(
     [wsUrl]
   );
 
-  // ---- 空闲计时器 ----
+  // ---- Idle timer ----
   const clearIdleTimer = useCallback(() => {
     if (idleTimerRef.current) {
       clearTimeout(idleTimerRef.current);
@@ -66,7 +66,7 @@ export function useSharedAIConnection(
 
   const startIdleTimer = useCallback(() => {
     clearIdleTimer();
-    // 有活跃任务时不启动空闲倒计时
+    // Skip idle timer when there are active tasks
     if (activeTasksRef.current.size > 0) return;
     idleTimerRef.current = setTimeout(() => {
       if (connectionRef.current) {
@@ -79,32 +79,32 @@ export function useSharedAIConnection(
     }, idleTimeoutMs);
   }, [idleTimeoutMs, clearIdleTimer]);
 
-  // ---- 标记活跃 ----
+  // ---- Mark active ----
   const markActive = useCallback(() => {
     if (connectionRef.current) {
       startIdleTimer();
     }
   }, [startIdleTimer]);
 
-  // ---- 活跃任务管理 ----
+  // ---- Active task management ----
   const holdConnection = useCallback((taskId: string) => {
-    if (activeTasksRef.current.has(taskId)) return; // 同一任务不重复计数
+    if (activeTasksRef.current.has(taskId)) return; // Prevent duplicate counting for the same task
     activeTasksRef.current.add(taskId);
-    clearIdleTimer(); // 有任务了，取消正在进行的空闲倒计时
+    clearIdleTimer(); // Cancel any ongoing idle timer when there are active tasks
   }, [clearIdleTimer]);
 
   const releaseConnection = useCallback((taskId: string) => {
-    if (!activeTasksRef.current.has(taskId)) return; // 未注册的任务忽略
+    if (!activeTasksRef.current.has(taskId)) return; // Ignore unregistered tasks
     activeTasksRef.current.delete(taskId);
-    // 所有任务都结束了，开始空闲倒计时
+    // All tasks completed, start idle countdown
     if (activeTasksRef.current.size === 0) {
       startIdleTimer();
     }
   }, [startIdleTimer]);
 
-  // ---- 懒建连 ----
+  // ---- Lazy connection ----
   const ensureConnected = useCallback(async (): Promise<AIAgentConnection> => {
-    // 已有可用连接
+    // Already has an available connection
     if (connectionRef.current?.isConnected()) {
       startIdleTimer();
       return connectionRef.current;
@@ -115,7 +115,7 @@ export function useSharedAIConnection(
       throw new Error('No auth token available');
     }
 
-    // 清理旧连接（可能存在但已断开的）
+    // Clean up old connection (may exist but disconnected)
     if (connectionRef.current) {
       connectionRef.current.disconnect();
       connectionRef.current = null;
@@ -144,10 +144,10 @@ export function useSharedAIConnection(
     }
   }, [baseUrl, startIdleTimer]);
 
-  // ---- token 变化 / 登出清理 ----
+  // ---- Token change / Logout cleanup ----
   useEffect(() => {
     if (!token && connectionRef.current) {
-      // 登出：立即断连
+      // Logout: disconnect immediately
       clearIdleTimer();
       activeTasksRef.current.clear();
       connectionRef.current.disconnect();
@@ -157,7 +157,7 @@ export function useSharedAIConnection(
     }
 
     return () => {
-      // token 引用变化时断开旧连接（下次 ensureConnected 用新 token）
+      // Disconnect old connection when token reference changes (use new token on next ensureConnected)
       if (connectionRef.current) {
         clearIdleTimer();
         activeTasksRef.current.clear();
@@ -169,7 +169,7 @@ export function useSharedAIConnection(
     };
   }, [token, clearIdleTimer]);
 
-  // ---- 组件卸载最终清理 ----
+  // ---- Final cleanup on component unmount ----
   useEffect(() => {
     return () => {
       clearIdleTimer();

@@ -1,23 +1,23 @@
 /**
- * 代码块组件
+ * Code block component
  *
- * 完全独立管理滚动状态，不受外部重渲染影响。
- * 支持复制和可选的执行按钮。
+ * Completely independent scroll state management, unaffected by external re-renders.
+ * Supports copy and optional execution button.
  */
 
 import React, { useState, useRef, useLayoutEffect, useCallback } from 'react';
 import { Copy, Play } from 'lucide-react';
 
-/** 全局存储：保存代码块的滚动状态 */
+/** Global storage: save code block scroll state */
 const codeBlockScrollState = new Map<string, number>();
 
-/** 生成代码块唯一标识 */
+/** Generate unique identifier for code block */
 export const getCodeBlockKey = (text: string): string => text.slice(0, 100);
 
 interface CodeBlockProps {
   text: string;
   className?: string;
-  /** 可执行的语言列表（如 ['bash','sh']），匹配时显示执行按钮 */
+  /** List of executable languages (e.g. ['bash','sh']), show execute button when matched */
   executableLangs?: string[];
   onExecuteCommand?: (command: string) => void;
 }
@@ -59,7 +59,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ text, className, executabl
     }
   }, []);
 
-  // 判断当前代码块语言是否可执行
+  // Determine if current code block language is executable
   const isExecutable = executableLangs && className && executableLangs.some(
     lang => className.includes(`language-${lang}`)
   );
@@ -99,7 +99,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ text, className, executabl
   );
 };
 
-/** 稳定的代码块包装器：相同内容不重建 */
+/** Stable code block wrapper: same content doesn't rebuild */
 export const StableCodeBlock = React.memo(CodeBlock, (prev, next) => {
   return getCodeBlockKey(prev.text) === getCodeBlockKey(next.text);
 });

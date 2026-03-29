@@ -1,7 +1,7 @@
 /**
- * Block 分发渲染器
+ * Block dispatcher renderer
  *
- * 根据 block.type 分发到对应的 block 组件。
+ * Dispatches to corresponding block component based on block.type.
  */
 
 import React from 'react';

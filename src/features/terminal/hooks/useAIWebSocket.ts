@@ -3,18 +3,18 @@ import { aiWebSocketService, AIMessage, AIMessageType } from '@/base/websocket/a
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
 /**
- * AI WebSocket 连接 Hook
+ * AI WebSocket Connection Hook
  *
- * 管理与 AI 服务的 WebSocket 连接状态
+ * Manages WebSocket connection state with AI service
  */
 export const useAIWebSocket = (token: string | undefined) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  // 使用 ref 跟踪连接状态，避免 StrictMode 下的竞态条件
+  // Use ref to track connection state, avoid race condition in StrictMode
   const connectingRef = useRef(false);
 
   useEffect(() => {
-    // 如果没有 token，不尝试连接
+    // If no token, don't attempt connection
     if (!token) {
       setIsConnected(false);
       return;
@@ -23,13 +23,13 @@ export const useAIWebSocket = (token: string | undefined) => {
     let isMounted = true;
 
     const connect = async () => {
-      // 如果已经连接，直接返回
+      // If already connected, return directly
       if (aiWebSocketService.isConnected()) {
         setIsConnected(true);
         return;
       }
 
-      // 如果正在连接中，跳过（使用 ref 避免竞态条件）
+      // If already connecting, skip (use ref to avoid race condition)
       if (connectingRef.current) {
         return;
       }
@@ -43,7 +43,7 @@ export const useAIWebSocket = (token: string | undefined) => {
           setIsConnected(true);
         }
       } catch (err) {
-        // 忽略 "Connection already in progress" 错误
+        // Ignore "Connection already in progress" error
         if (err instanceof Error && err.message.includes('Connection already in progress')) {
           logger.warn(LOG_MODULE.AI, 'ai.ws.connection_in_progress', 'AI WebSocket connection already in progress, skipping', {
             module: LOG_MODULE.AI,
@@ -77,9 +77,9 @@ export const useAIWebSocket = (token: string | undefined) => {
 };
 
 /**
- * AI 消息监听 Hook
+ * AI Message Listener Hook
  *
- * 提供消息监听和取消监听的功能
+ * Provides message listening and unsubscribe functionality
  */
 export const useAIMessageListener = (
   callback: (message: AIMessage) => void,
@@ -97,7 +97,7 @@ export const useAIMessageListener = (
 };
 
 /**
- * 发送 AI 问题的 Hook
+ * Send AI Question Hook
  */
 export const useAISendQuestion = () => {
   const sendQuestion = useCallback((
@@ -117,7 +117,7 @@ export const useAISendQuestion = () => {
 };
 
 /**
- * 确认执行命令的 Hook
+ * Confirm Execute Command Hook
  */
 export const useAIConfirmExecute = () => {
   const confirmExecute = useCallback((
@@ -141,7 +141,7 @@ export const useAIConfirmExecute = () => {
 };
 
 /**
- * 取消执行的 Hook
+ * Cancel Execute Hook
  */
 export const useAICancelExecute = () => {
   const cancelExecute = useCallback((taskId: string, stepIndex: number) => {
@@ -152,7 +152,7 @@ export const useAICancelExecute = () => {
 };
 
 /**
- * 终止任务的 Hook
+ * Stop Task Hook
  */
 export const useAIStopTask = () => {
   const stopTask = useCallback((taskId: string, frontendTaskId?: string) => {

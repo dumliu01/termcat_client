@@ -1,7 +1,7 @@
 /**
- * 终端后端工厂
+ * Terminal backend factory
  *
- * 根据 Session 的 connectionType 创建对应的 Backend 实例。
+ * Creates corresponding Backend instance based on Session's connectionType.
  */
 
 import { ITerminalBackend } from './ITerminalBackend';

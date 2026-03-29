@@ -1,16 +1,16 @@
 /**
- * AI Agent WebSocket 连接管理
+ * AI Agent WebSocket Connection Management
  *
- * 任务级连接：每个 AI 任务独立建连，任务完成/取消时断连。
- * 不重连（任务级连接断开 = 任务结束）。
+ * Task-level connection: each AI task establishes independent connection, disconnects when task completes/cancels.
+ * No reconnection (task-level disconnection = task end).
  */
 
 import { AIMessage, AIMessageType, AIMessageCallback, OperationStep, RiskLevel } from './types';
 
 export interface AIAgentConnectionConfig {
-  /** WebSocket 基础 URL（如 ws://localhost:5001 或 wss://domain） */
+  /** WebSocket base URL (e.g., ws://localhost:5001 or wss://domain) */
   wsUrl: string;
-  /** 认证 token */
+  /** Authentication token */
   token: string;
 }
 
@@ -26,7 +26,7 @@ export class AIAgentConnection {
     this.config = config;
   }
 
-  /** 建立 WebSocket 连接 */
+  /** Establish WebSocket connection */
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.ws?.readyState === WebSocket.OPEN) {
@@ -42,7 +42,7 @@ export class AIAgentConnection {
       this.isConnecting = true;
       this._isDisconnecting = false;
 
-      // wsUrl 可能带 /ws 后缀（如 ws://host:8080/ws），需要去掉再拼接 API 路径
+      // wsUrl may contain /ws suffix (e.g., ws://host:8080/ws), need to remove and concatenate API path
       const baseUrl = this.config.wsUrl.replace(/\/ws\/?$/, '');
       const wsUrl = `${baseUrl}/ws/ai?token=${encodeURIComponent(this.config.token)}`;
 
@@ -68,7 +68,7 @@ export class AIAgentConnection {
         };
 
         this.ws.onclose = () => {
-          // 任务级连接不重连
+          // No reconnection for task-level connection
         };
       } catch (error) {
         this.isConnecting = false;
@@ -77,7 +77,7 @@ export class AIAgentConnection {
     });
   }
 
-  /** 断开连接 */
+  /** Disconnect */
   disconnect(): void {
     this._isDisconnecting = true;
     if (this.ws) {
@@ -88,12 +88,12 @@ export class AIAgentConnection {
     this.globalCallbacks = [];
   }
 
-  /** 检查连接状态 */
+  /** Check connection status */
   isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }
 
-  /** 发送原始消息 */
+  /** Send raw message */
   send(message: Partial<AIMessage> & Record<string, any>): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket not connected');
@@ -101,13 +101,13 @@ export class AIAgentConnection {
     this.ws.send(JSON.stringify(message));
   }
 
-  /** 发送问题 */
+  /** Send question */
   sendQuestion(
     prompt: string,
     options?: {
       context?: Record<string, any>;
       model?: string;
-      mode?: 'normal' | 'agent' | 'code' | 'codex';
+      mode?: 'normal' | 'agent' | 'code' | 'x-agent';
       sshMode?: 'associated' | 'independent';
       hostId?: string;
       sessionId?: string;
@@ -123,7 +123,7 @@ export class AIAgentConnection {
       ssh_mode: options?.sshMode || 'associated',
     };
 
-    // 注入远程服务器 OS 信息到 context
+    // Inject remote server OS info into context
     if (options?.osType) {
       context.os_type = options.osType;
     }
@@ -147,7 +147,7 @@ export class AIAgentConnection {
     });
   }
 
-  /** 确认执行命令 */
+  /** Confirm command execution */
   confirmExecute(
     taskId: string,
     stepIndex: number,
@@ -167,7 +167,7 @@ export class AIAgentConnection {
     });
   }
 
-  /** 发送远程执行结果（Code 模式，对应 remote_terminal_proxy） */
+  /** Send remote execution result (Code mode, corresponds to remote_terminal_proxy) */
   sendExecuteResult(
     executionId: string,
     result: { success: boolean; output: string; exitCode: number; error?: string }
@@ -182,7 +182,7 @@ export class AIAgentConnection {
     });
   }
 
-  /** 发送执行活动心跳（通知后端命令仍在运行，重置超时） */
+  /** Send execution activity heartbeat (notify backend that command is still running, reset timeout) */
   sendExecuteActivity(executionId: string): void {
     this.send({
       type: 'execute_activity' as AIMessageType,
@@ -190,7 +190,7 @@ export class AIAgentConnection {
     });
   }
 
-  /** 取消执行 */
+  /** Cancel execution */
   cancelExecute(taskId: string, stepIndex: number): void {
     this.send({
       type: AIMessageType.CANCEL_EXECUTE,
@@ -199,7 +199,7 @@ export class AIAgentConnection {
     });
   }
 
-  /** 终止任务 */
+  /** Stop task */
   stopTask(taskId: string, frontendTaskId?: string): void {
     this.send({
       type: AIMessageType.STOP_TASK,
@@ -208,21 +208,23 @@ export class AIAgentConnection {
     });
   }
 
-  /** 发送工具权限响应（Code 模式） */
+  /** Send tool permission response (Code mode) */
   sendToolPermissionResponse(
     permissionId: string,
     allowed: boolean,
     reason?: string,
+    permanent?: boolean,
   ): void {
     this.send({
       type: AIMessageType.TOOL_PERMISSION_RESPONSE,
       permission_id: permissionId,
       allowed,
       reason,
+      permanent,
     });
   }
 
-  /** 发送用户反馈响应（Code 模式） */
+  /** Send user feedback response (Code mode) */
   sendUserFeedbackResponse(
     taskId: string,
     action: 'accept' | 'continue',
@@ -236,7 +238,7 @@ export class AIAgentConnection {
     });
   }
 
-  /** 发送用户选择响应 */
+  /** Send user choice response */
   sendUserChoice(
     taskId: string,
     stepIndex: number,
@@ -253,7 +255,7 @@ export class AIAgentConnection {
     });
   }
 
-  /** 注册全局消息回调，返回取消函数 */
+  /** Register global message callback, returns unsubscribe function */
   onMessage(callback: AIMessageCallback): () => void {
     this.globalCallbacks.push(callback);
     return () => {
@@ -264,7 +266,7 @@ export class AIAgentConnection {
     };
   }
 
-  /** 注册任务特定的消息回调，返回取消函数 */
+  /** Register task-specific message callback, returns unsubscribe function */
   onTaskMessage(taskId: string, callback: AIMessageCallback): () => void {
     if (!this.messageCallbacks.has(taskId)) {
       this.messageCallbacks.set(taskId, []);
@@ -285,9 +287,9 @@ export class AIAgentConnection {
     };
   }
 
-  /** 处理收到的消息 */
+  /** Handle received message */
   private handleMessage(message: AIMessage): void {
-    // 全局回调
+    // Global callbacks
     for (const callback of this.globalCallbacks) {
       try {
         callback(message);
@@ -296,7 +298,7 @@ export class AIAgentConnection {
       }
     }
 
-    // 任务特定回调
+    // Task-specific callbacks
     if (message.task_id) {
       const callbacks = this.messageCallbacks.get(message.task_id);
       if (callbacks) {
@@ -308,7 +310,7 @@ export class AIAgentConnection {
           }
         }
 
-        // 任务完成或出错时清理回调
+        // Cleanup callbacks when task completes or errors
         if (message.type === AIMessageType.COMPLETE || message.type === AIMessageType.ERROR) {
           this.messageCallbacks.delete(message.task_id);
         }

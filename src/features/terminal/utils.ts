@@ -2,7 +2,7 @@ import { RiskLevel, StepStatus } from './types';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
 /**
- * 获取风险等级对应的颜色类名
+ * Get the color class name for risk level
  */
 export const getRiskColor = (risk?: string): string => {
   switch (risk) {
@@ -18,7 +18,7 @@ export const getRiskColor = (risk?: string): string => {
 };
 
 /**
- * 获取风险等级对应的图标颜色（用于风险徽章）
+ * Get the icon color for risk level (used for risk badge)
  */
 export const getRiskBadgeColor = (risk?: string): string => {
   switch (risk) {
@@ -34,7 +34,7 @@ export const getRiskBadgeColor = (risk?: string): string => {
 };
 
 /**
- * 获取步骤状态的背景色
+ * Get the background color for step status
  */
 export const getStepStatusBgColor = (status?: StepStatus): string => {
   switch (status) {
@@ -50,21 +50,21 @@ export const getStepStatusBgColor = (status?: StepStatus): string => {
 };
 
 /**
- * 检测命令是否包含 sudo
+ * Check if command contains sudo
  */
 export const containsSudo = (command: string): boolean => {
   return /\bsudo\s+/.test(command);
 };
 
 /**
- * 生成消息 ID
+ * Generate message ID
  */
 export const generateMessageId = (): string => {
   return Math.random().toString(36).substr(2, 9);
 };
 
 /**
- * 获取步骤执行结果的显示文本
+ * Get the display text for step execution result
  */
 export const getStepResultText = (success?: boolean, language: 'zh' | 'en' = 'zh'): string => {
   if (success === undefined) return '';
@@ -77,12 +77,12 @@ export const getStepResultText = (success?: boolean, language: 'zh' | 'en' = 'zh
       : '❌ 失败';
 };
 
-// ==================== 密码管理（用于 sudo 命令） ====================
+// ==================== Password management (for sudo commands) ====================
 
 const REMEMBERED_PASSWORD_KEY = 'aiops_sudo_password';
 
 /**
- * 获取保存的密码
+ * Get saved password
  */
 export const getSavedPassword = (): string => {
   try {
@@ -93,7 +93,7 @@ export const getSavedPassword = (): string => {
 };
 
 /**
- * 保存密码
+ * Save password
  */
 export const savePassword = (password: string): void => {
   try {
@@ -112,7 +112,7 @@ export const savePassword = (password: string): void => {
 };
 
 /**
- * 清除保存的密码
+ * Clear saved password
  */
 export const clearSavedPassword = (): void => {
   try {

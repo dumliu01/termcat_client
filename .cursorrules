@@ -1,0 +1,918 @@
+# TermCat Client - Cursor Rules
+
+你正在开发 **TermCat Client**，这是一个基于 Electron + React + TypeScript 的远程终端管理客户端。
+
+---
+
+## 🎯 项目概述
+
+**项目名称**: TermCat Client
+**技术栈**: Electron 28, React 18, TypeScript 5, Vite 5, Tailwind CSS 3
+**架构模式**: Electron 主进程 + 渲染进程 + Preload 脚本
+**核心功能**:
+- SSH 远程终端连接和管理
+- 多标签页终端会话
+- AI 智能运维助手集成
+- 主机配置管理
+- 文件上传下载
+
+---
+
+## 🚨 核心开发原则
+
+### 1. **Electron 架构原则**
+
+#### 进程隔离
+- **主进程 (Main Process)**: 系统级操作、窗口管理、SSH 连接
+- **渲染进程 (Renderer Process)**: UI 渲染、用户交互
+- **Preload 脚本**: 安全的 IPC 通信桥梁
+
+```typescript
+// ✅ 好的示例 - 使用 contextBridge
+// src/preload/index.ts
+contextBridge.exposeInMainWorld('electronAPI', {
+  ssh: {
+    connect: (config: SSHConfig) => ipcRenderer.invoke('ssh:connect', config),
+    disconnect: (sessionId: string) => ipcRenderer.invoke('ssh:disconnect', sessionId)
+  }
+});
+
+// ❌ 避免 - 直接暴露 ipcRenderer
+contextBridge.exposeInMainWorld('ipcRenderer', ipcRenderer);
+```
+
+#### IPC 通信规范
+- 使用 `ipcRenderer.invoke()` 进行请求-响应通信
+- 使用 `ipcRenderer.on()` 监听事件
+- 事件命名格式: `模块:操作` (如 `ssh:connect`, `terminal:input`)
+
+```typescript
+// ✅ 主进程处理
+ipcMain.handle('ssh:connect', async (event, config: SSHConfig) => {
+  try {
+    const session = await sshService.connect(config);
+    return { success: true, sessionId: session.id };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// ✅ 渲染进程调用
+const result = await window.electronAPI.ssh.connect(config);
+if (result.success) {
+  console.log('Connected:', result.sessionId);
+}
+```
+
+---
+
+### 2. **TypeScript 类型安全**
+
+#### 严格类型定义
+- 所有函数必须有类型注解
+- 使用 interface 定义数据结构
+- 避免使用 `any`，优先使用 `unknown`
+
+```typescript
+// ✅ 好的示例
+interface SSHConfig {
+  host: string;
+  port: number;
+  username: string;
+  authMethod: 'password' | 'publickey';
+  password?: string;
+  privateKey?: string;
+}
+
+async function connectSSH(config: SSHConfig): Promise<SSHSession> {
+  // ...
+}
+
+// ❌ 避免
+async function connectSSH(config: any): Promise<any> {
+  // ...
+}
+```
+
+#### 类型文件组织
+- 共享类型放在 `src/types/` 目录
+- 每个模块的类型放在对应的 `.d.ts` 文件
+
+```typescript
+// src/types/ssh.d.ts
+export interface SSHConfig {
+  // ...
+}
+
+export interface SSHSession {
+  id: string;
+  host: string;
+  status: 'connected' | 'disconnected' | 'error';
+}
+
+// src/types/terminal.d.ts
+export interface TerminalConfig {
+  cols: number;
+  rows: number;
+  fontSize: number;
+  theme: 'dark' | 'light';
+}
+```
+
+---
+
+### 3. **React 组件规范**
+
+#### 函数组件 + Hooks
+- 使用函数组件，不使用类组件
+- 使用 React Hooks 管理状态和副作用
+- 自定义 Hook 以 `use` 开头
+
+```typescript
+// ✅ 好的示例
+import { useState, useEffect } from 'react';
+
+interface TerminalProps {
+  sessionId: string;
+  onClose: () => void;
+}
+
+export function Terminal({ sessionId, onClose }: TerminalProps) {
+  const [output, setOutput] = useState<string>('');
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.terminal.onOutput(
+      sessionId,
+      (data: string) => setOutput(prev => prev + data)
+    );
+
+    return () => unsubscribe();
+  }, [sessionId]);
+
+  return <div className="terminal">{output}</div>;
+}
+
+// ❌ 避免 - 类组件
+class Terminal extends React.Component {
+  // ...
+}
+```
+
+#### 组件职责分离
+- **容器组件 (Container)**: 处理业务逻辑、状态管理
+- **展示组件 (Presentational)**: 纯 UI 展示、接收 props
+
+```typescript
+// ✅ 展示组件
+interface HostCardProps {
+  host: Host;
+  onConnect: (hostId: string) => void;
+  onEdit: (hostId: string) => void;
+}
+
+export function HostCard({ host, onConnect, onEdit }: HostCardProps) {
+  return (
+    <div className="host-card">
+      <h3>{host.name}</h3>
+      <button onClick={() => onConnect(host.id)}>Connect</button>
+      <button onClick={() => onEdit(host.id)}>Edit</button>
+    </div>
+  );
+}
+
+// ✅ 容器组件
+export function HostList() {
+  const [hosts, setHosts] = useState<Host[]>([]);
+
+  const handleConnect = async (hostId: string) => {
+    const result = await window.electronAPI.ssh.connect(hostId);
+    // 处理连接逻辑
+  };
+
+  return (
+    <div>
+      {hosts.map(host => (
+        <HostCard
+          key={host.id}
+          host={host}
+          onConnect={handleConnect}
+          onEdit={handleEdit}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+### 4. **状态管理**
+
+#### 本地状态 vs 全局状态
+- **本地状态**: 使用 `useState`，仅组件内使用
+- **全局状态**: 使用 Context API 或状态管理库
+
+```typescript
+// ✅ 全局状态 - Context
+import { createContext, useContext, useState } from 'react';
+
+interface AppState {
+  user: User | null;
+  theme: 'dark' | 'light';
+}
+
+const AppContext = createContext<AppState | undefined>(undefined);
+
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<AppState>({
+    user: null,
+    theme: 'dark'
+  });
+
+  return (
+    <AppContext.Provider value={state}>
+      {children}
+    </AppContext.Provider>
+  );
+}
+
+export function useApp() {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within AppProvider');
+  }
+  return context;
+}
+```
+
+---
+
+### 5. **错误处理**
+
+#### 统一错误处理
+- 所有异步操作必须有 try-catch
+- 错误信息要用户友好
+- 记录详细的错误日志
+
+```typescript
+// ✅ 好的示例
+async function connectToHost(hostId: string) {
+  try {
+    const result = await window.electronAPI.ssh.connect(hostId);
+
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+
+    return result.sessionId;
+  } catch (error) {
+    console.error('Failed to connect:', error);
+
+    // 用户友好的错误提示
+    if (error.message.includes('ECONNREFUSED')) {
+      showError('无法连接到服务器，请检查主机地址和端口');
+    } else if (error.message.includes('Authentication failed')) {
+      showError('认证失败，请检查用户名和密码');
+    } else {
+      showError('连接失败: ' + error.message);
+    }
+
+    throw error;
+  }
+}
+
+// ❌ 避免 - 忽略错误
+async function connectToHost(hostId: string) {
+  const result = await window.electronAPI.ssh.connect(hostId);
+  return result.sessionId; // 没有错误处理
+}
+```
+
+---
+
+### 6. **性能优化**
+
+#### React 性能优化
+- 使用 `React.memo` 避免不必要的重渲染
+- 使用 `useMemo` 缓存计算结果
+- 使用 `useCallback` 缓存函数引用
+
+```typescript
+// ✅ 使用 memo 优化
+import { memo } from 'react';
+
+export const HostCard = memo(function HostCard({ host, onConnect }: HostCardProps) {
+  return (
+    <div className="host-card">
+      <h3>{host.name}</h3>
+      <button onClick={() => onConnect(host.id)}>Connect</button>
+    </div>
+  );
+});
+
+// ✅ 使用 useMemo 缓存计算
+function HostList({ hosts }: { hosts: Host[] }) {
+  const sortedHosts = useMemo(() => {
+    return [...hosts].sort((a, b) => a.name.localeCompare(b.name));
+  }, [hosts]);
+
+  return <div>{/* render sortedHosts */}</div>;
+}
+
+// ✅ 使用 useCallback 缓存函数
+function HostList() {
+  const handleConnect = useCallback((hostId: string) => {
+    // 连接逻辑
+  }, []);
+
+  return <div>{/* ... */}</div>;
+}
+```
+
+#### 虚拟化长列表
+- 使用 `react-window` 或 `react-virtualized` 渲染大量数据
+
+```typescript
+import { FixedSizeList } from 'react-window';
+
+function HostList({ hosts }: { hosts: Host[] }) {
+  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => (
+    <div style={style}>
+      <HostCard host={hosts[index]} />
+    </div>
+  );
+
+  return (
+    <FixedSizeList
+      height={600}
+      itemCount={hosts.length}
+      itemSize={80}
+      width="100%"
+    >
+      {Row}
+    </FixedSizeList>
+  );
+}
+```
+
+---
+
+### 7. **样式规范**
+
+#### Tailwind CSS 使用
+- 优先使用 Tailwind 工具类
+- 复杂样式使用 `@apply` 提取
+- 自定义主题在 `tailwind.config.js` 配置
+
+```typescript
+// ✅ 使用 Tailwind 类
+export function Button({ children, onClick }: ButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+    >
+      {children}
+    </button>
+  );
+}
+
+// ✅ 提取复杂样式
+// styles/components.css
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-blue-500 text-white rounded;
+    @apply hover:bg-blue-600 transition-colors;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+}
+
+// 使用
+<button className="btn-primary">Click me</button>
+```
+
+---
+
+### 8. **安全规范**
+
+#### 输入验证
+- 所有用户输入必须验证
+- 使用白名单而非黑名单
+- 防止 XSS 攻击
+
+```typescript
+// ✅ 输入验证
+function validateSSHConfig(config: SSHConfig): string[] {
+  const errors: string[] = [];
+
+  // 验证主机地址
+  if (!config.host || !/^[\w\.\-]+$/.test(config.host)) {
+    errors.push('Invalid host address');
+  }
+
+  // 验证端口
+  if (config.port < 1 || config.port > 65535) {
+    errors.push('Port must be between 1 and 65535');
+  }
+
+  // 验证用户名
+  if (!config.username || !/^[\w\-]+$/.test(config.username)) {
+    errors.push('Invalid username');
+  }
+
+  return errors;
+}
+
+// ❌ 避免 - 不验证直接使用
+function connectSSH(config: any) {
+  // 直接使用未验证的输入
+  ssh.connect(config.host, config.port);
+}
+```
+
+#### 敏感数据处理
+- 密码不在渲染进程存储
+- 使用主进程的安全存储 (keytar)
+- 传输时加密敏感数据
+
+```typescript
+// ✅ 安全存储密码
+// 主进程
+import keytar from 'keytar';
+
+ipcMain.handle('credentials:save', async (event, hostId: string, password: string) => {
+  await keytar.setPassword('termcat', hostId, password);
+  return { success: true };
+});
+
+ipcMain.handle('credentials:get', async (event, hostId: string) => {
+  const password = await keytar.getPassword('termcat', hostId);
+  return password;
+});
+
+// 渲染进程
+async function saveCredentials(hostId: string, password: string) {
+  await window.electronAPI.credentials.save(hostId, password);
+  // 不在渲染进程存储密码
+}
+```
+
+---
+
+### 9. **测试规范**
+
+#### 单元测试
+- 使用 Vitest 或 Jest
+- 测试覆盖率 > 80%
+- 关键功能必须有测试
+
+```typescript
+// ✅ 组件测试
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Button } from './Button';
+
+describe('Button', () => {
+  it('should render with text', () => {
+    render(<Button>Click me</Button>);
+    expect(screen.getByText('Click me')).toBeInTheDocument();
+  });
+
+  it('should call onClick when clicked', () => {
+    const handleClick = vi.fn();
+    render(<Button onClick={handleClick}>Click me</Button>);
+
+    fireEvent.click(screen.getByText('Click me'));
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('should be disabled when disabled prop is true', () => {
+    render(<Button disabled>Click me</Button>);
+    expect(screen.getByText('Click me')).toBeDisabled();
+  });
+});
+```
+
+---
+
+### 10. **日志规范**
+
+#### 日志级别
+- `DEBUG`: 调试信息，开发环境按模块启用
+- `INFO`: 一般信息，生产环境显示
+- `WARN`: 警告信息，生产环境显示
+- `ERROR`: 错误信息，生产环境显示
+
+#### 使用方式
+```typescript
+// 导入 logger 和模块常量
+import { logger, LOG_MODULE } from '@/utils/logger';
+
+// 方式 1：直接调用，module 作为第一个参数（必填）
+logger.info(LOG_MODULE.SSH, 'ssh.connection.established', 'SSH connection established', {
+  session_id: 'ssh-123',
+  host: '192.168.1.100',
+});
+
+// 方式 2：使用 withFields 创建模块化日志器（推荐在模块顶部定义）
+const log = logger.withFields({ module: LOG_MODULE.SSH });
+log.info('ssh.command.executed', 'Command executed', {
+  session_id: connectionId,
+  command: 'ls -la',
+  exit_code: 0,
+});
+
+// 错误日志
+logger.error(LOG_MODULE.SSH, 'ssh.connection.failed', 'SSH connection failed', {
+  error: 1001,
+  host: config.host,
+});
+
+// 性能日志
+const startTime = Date.now();
+await executeCommand(cmd);
+logger.performance(LOG_MODULE.SSH, 'ssh.command.completed', 'Command completed', Date.now() - startTime, {
+  session_id: connectionId,
+});
+```
+
+
+#### 字段出现要求
+* 必须出现的字段：
+- event: 事件名称
+- msg: 消息描述
+- module: 模块名称
+
+#尽量出现的字段：
+- user_id: 用户ID
+- client: 客户端IP
+- error: 错误码（0表示成功）
+
+
+#### 模块常量
+```typescript
+LOG_MODULE.TERMINAL  // 终端模块
+LOG_MODULE.SSH       // SSH 模块
+LOG_MODULE.HTTP      // HTTP 模块
+LOG_MODULE.AI        // AI 模块
+LOG_MODULE.FILE     // 文件模块
+LOG_MODULE.AUTH     // 认证模块
+LOG_MODULE.UI       // UI 模块
+LOG_MODULE.MAIN     // 主进程模块
+LOG_MODULE.SFTP     // SFTP 模块
+```
+
+#### 模块化 Debug 开关
+```typescript
+import { setLogConfig, LogLevel, LOG_MODULE } from '@/utils/logger';
+
+// 按模块启用 DEBUG 日志
+setLogConfig({
+  level: LogLevel.DEBUG,
+  debugModules: {
+    [LOG_MODULE.TERMINAL]: true,
+    [LOG_MODULE.SSH]: true,
+    [LOG_MODULE.HTTP]: false,  // 关闭 HTTP 模块的 DEBUG 日志
+    [LOG_MODULE.AI]: false,
+    [LOG_MODULE.FILE]: false,
+  },
+});
+```
+
+#### 事件命名规范
+- 格式: `模块.资源.操作.状态`
+- 示例: `ssh.connection.established`, `terminal.session.created`
+- 错误码: 0 表示成功，非 0 表示错误
+
+#### 敏感信息脱敏
+```typescript
+// 禁止记录密码、Token、私钥
+logger.info('auth.login.attempt', 'Login attempt', {
+  username: 'admin',
+  password: '***REDACTED***',  // 脱敏
+  token: `${token.substring(0, 8)}...${token.slice(-8)}`,  // 部分脱敏
+});
+```
+
+#### 用户操作日志指引
+**每一次用户能感受到的改变界面流程事件，都要有一条 INFO 或 ERROR 日志。**
+
+需要记录的事件：
+- ✅ 按钮点击（连接、上传、AI助手等）
+- ✅ 界面切换（打开设置页、切换标签页）
+- ✅ 弹窗操作（确认对话框、表单提交）
+- ✅ 登录相关（登录成功/失败、登出）
+- ✅ 连接操作（SSH 连接成功/失败）
+- ✅ 文件操作（文件上传成功/失败）
+
+不需要记录的事件：
+- ❌ 文本框输入（高频临时交互）
+- ❌ 鼠标悬停 Tooltip
+- ❌ 实时搜索建议
+
+```typescript
+// ✅ 正确：记录按钮点击
+logger.info(LOG_MODULE.UI, 'ui.button.clicked', 'Connect button clicked', {
+  button_id: 'btn_connect_host',
+  page: 'host_list',
+});
+
+// ✅ 正确：记录页面切换
+logger.info(LOG_MODULE.UI, 'ui.page.changed', 'Navigated to settings page', {
+  from_page: 'dashboard',
+  to_page: 'settings',
+});
+
+// ✅ 正确：记录登录成功
+logger.info(LOG_MODULE.AUTH, 'auth.login.success', 'User logged in successfully', {
+  user_id: 'user-123',
+});
+
+// 设置用户上下文（登录成功后）
+import { setLogContext } from '@/utils/logger';
+setLogContext({
+  user_id: user.id,
+  client: '192.168.1.100',
+});
+
+// 清除上下文（登出后）
+import { clearLogContext } from '@/utils/logger';
+clearLogContext();
+```
+
+#### 文件路径别名
+开发时使用 `@/` 别名引用路径，如 `@/utils/logger`，构建时会正确解析为 `src/utils/logger`。
+
+---
+
+## 📁 项目结构
+
+```
+termcat_client/
+├── src/
+│   ├── main/                    # 主进程
+│   │   ├── main.ts             # 主进程入口
+│   │   ├── window.ts           # 窗口管理
+│   │   └── services/           # 主进程服务
+│   │       ├── ssh.ts          # SSH 服务
+│   │       └── storage.ts      # 数据存储
+│   ├── preload/                # Preload 脚本
+│   │   └── index.ts            # IPC 桥梁
+│   ├── renderer/               # 渲染进程
+│   │   ├── App.tsx             # 根组件
+│   │   ├── components/         # UI 组件
+│   │   │   ├── Terminal/       # 终端组件
+│   │   │   ├── HostList/       # 主机列表
+│   │   │   └── AIAssistant/    # AI 助手
+│   │   ├── hooks/              # 自定义 Hooks
+│   │   ├── services/           # 渲染进程服务
+│   │   └── styles/             # 样式文件
+│   ├── types/                  # 类型定义
+│   │   ├── ssh.d.ts
+│   │   ├── terminal.d.ts
+│   │   └── global.d.ts
+│   └── utils/                  # 工具函数
+├── .cursorrules                # 本文件
+├── .claude/                    # Claude Code 配置
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── tailwind.config.js
+```
+
+---
+
+## 🔧 常见任务
+
+### 添加新的 IPC 通道
+
+```typescript
+// 1. 在主进程注册处理器
+// src/main/main.ts
+ipcMain.handle('feature:action', async (event, param: ParamType) => {
+  try {
+    const result = await performAction(param);
+    return { success: true, data: result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 2. 在 preload 暴露 API
+// src/preload/index.ts
+contextBridge.exposeInMainWorld('electronAPI', {
+  feature: {
+    action: (param: ParamType) => ipcRenderer.invoke('feature:action', param)
+  }
+});
+
+// 3. 在渲染进程使用
+// src/renderer/components/Feature.tsx
+const result = await window.electronAPI.feature.action(param);
+```
+
+### 添加新的 React 组件
+
+```typescript
+// 1. 创建组件文件
+// src/renderer/components/MyComponent/MyComponent.tsx
+import { useState } from 'react';
+
+interface MyComponentProps {
+  title: string;
+  onAction: () => void;
+}
+
+export function MyComponent({ title, onAction }: MyComponentProps) {
+  const [state, setState] = useState<string>('');
+
+  return (
+    <div className="my-component">
+      <h2>{title}</h2>
+      <button onClick={onAction}>Action</button>
+    </div>
+  );
+}
+
+// 2. 导出组件
+// src/renderer/components/MyComponent/index.ts
+export { MyComponent } from './MyComponent';
+
+// 3. 使用组件
+import { MyComponent } from '@/components/MyComponent';
+
+<MyComponent title="Hello" onAction={handleAction} />
+```
+
+---
+
+## 📚 参考文档
+
+- **Electron 文档**: https://www.electronjs.org/docs
+- **React 文档**: https://react.dev
+- **TypeScript 文档**: https://www.typescriptlang.org/docs
+- **Tailwind CSS**: https://tailwindcss.com/docs
+- **Vite 文档**: https://vitejs.dev
+
+---
+
+## 🎓 关键经验
+
+1. **安全第一**: 永远不要信任用户输入，验证所有数据
+2. **类型安全**: 充分利用 TypeScript 的类型系统
+3. **进程隔离**: 主进程和渲染进程职责分离
+4. **性能优化**: 使用 memo、useMemo、useCallback 优化渲染
+5. **错误处理**: 所有异步操作必须有错误处理
+6. **代码复用**: 提取公共逻辑到 Hooks 和工具函数
+7. **测试驱动**: 关键功能必须有单元测试
+8. **用户体验**: 提供友好的错误提示和加载状态
+
+---
+
+---
+
+## 🌍 多语言开发规范
+
+### 核心原则
+**所有用户可见的文本必须使用多语言系统，禁止硬编码中文或英文！**
+
+### 文件结构
+```
+src/
+├── locales/              # 多语言配置
+│   ├── index.ts         # 配置导出
+│   ├── zh.ts            # 中文语言包
+│   ├── en.ts            # 英文语言包
+│   └── [lang].ts        # 新语言
+├── contexts/
+│   └── I18nContext.tsx  # Context 和 Hook
+```
+
+### 使用规范
+
+#### ❌ 错误示例
+```tsx
+// 不要这样写！
+<button>保存</button>
+<h1>主机管理</h1>
+<p>{language === 'zh' ? '成功' : 'Success'}</p>
+```
+
+#### ✅ 正确示例
+```tsx
+import { useI18n } from '../contexts/I18nContext';
+
+function Component() {
+  const { t } = useI18n();
+  return (
+    <>
+      <button>{t.common.save}</button>
+      <h1>{t.dashboard.title}</h1>
+      <p>{t.success.saved}</p>
+    </>
+  );
+}
+```
+
+### Hook 使用
+
+```tsx
+// 需要切换语言功能
+import { useI18n } from '../contexts/I18nContext';
+const { t, language, setLanguage } = useI18n();
+
+// 仅需要翻译
+import { useTranslation } from '../contexts/I18nContext';
+const t = useTranslation();
+```
+
+### 添加新文本流程
+
+1. 在 `src/locales/zh.ts` 添加中文翻译
+2. 在 `src/locales/en.ts` 添加对应英文翻译
+3. 在组件中使用 `t.xxx.xxx` 访问
+
+```typescript
+// 1. zh.ts
+export const zh = {
+  myFeature: {
+    title: '我的功能',
+    description: '这是描述',
+  },
+};
+
+// 2. en.ts
+export const en = {
+  myFeature: {
+    title: 'My Feature',
+    description: 'This is description',
+  },
+};
+
+// 3. Component.tsx
+<h1>{t.myFeature.title}</h1>
+<p>{t.myFeature.description}</p>
+```
+
+### 动态文本处理
+
+```typescript
+// 语言包中使用占位符
+dashboard: {
+  confirmDeleteHost: '确定要删除主机 "{name}" 吗？',
+}
+
+// 组件中替换
+const msg = t.dashboard.confirmDeleteHost.replace('{name}', hostName);
+```
+
+### 条件文本
+
+```tsx
+// 三元运算符
+{user.tier === 'VIP' ? t.sidebar.vipMember : t.sidebar.freeMember}
+
+// 对象映射
+const labels = {
+  VIP: t.sidebar.vipMember,
+  Free: t.sidebar.freeMember,
+};
+<span>{labels[user.tier]}</span>
+```
+
+### 可用翻译模块
+
+- `common` - 通用词汇（保存、取消、确认等）
+- `app` - 应用标题
+- `sidebar` - 侧边栏
+- `dashboard` - 主机管理
+- `terminal` - 终端
+- `aiOps` - AI 运维
+- `settings` - 设置
+- `login` - 登录
+- `payment` - 支付
+- `fileBrowser` - 文件浏览器
+- `transfer` - 文件传输
+- `monitoring` - 系统监控
+- `commandLibrary` - 命令库
+- `errors` - 错误消息
+- `success` - 成功消息
+- `confirmations` - 确认消息
+
+### 代码审查检查清单
+
+- [ ] 没有硬编码的中文或英文文本
+- [ ] 所有用户可见的文本都使用了 `t.xxx.xxx`
+- [ ] 新增翻译在 `zh.ts` 和 `en.ts` 中都有定义
+- [ ] 翻译键命名符合现有结构
+- [ ] 动态文本使用占位符而非字符串拼接
+- [ ] 正确导入和使用 `useI18n` 或 `useTranslation`
+
+### 详细文档
+
+- 完整指南：`docs/I18N_GUIDE.md`
+- Claude Code 规则：`.claude/i18n-rules.md`
+
+---
+
+**最后更新**: 2026-02-10
+**维护者**: TermCat Team

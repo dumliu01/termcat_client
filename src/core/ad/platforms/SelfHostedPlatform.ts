@@ -1,8 +1,8 @@
 /**
- * 自建广告平台
+ * Self-Hosted Ad Platform
  *
- * 从 TermCat Server 拉取广告规则和内容，完全自主可控。
- * 适合运营自有广告位、推广升级会员等场景。
+ * Fetches ad rules and content from TermCat Server, fully controllable.
+ * Suitable for operating self-owned ad slots, promoting member upgrades, etc.
  */
 
 import { IAdPlatform, AdPlatformConfig, AdRequestContext, AdContent, AdPlatformType } from '../types';
@@ -66,7 +66,7 @@ export class SelfHostedPlatform implements IAdPlatform {
     // no-op
   }
 
-  /** 将自建广告数据格式化为 Markdown，支持图片嵌入 */
+  /** Format self-hosted ad data as Markdown, supports image embedding */
   private formatAdMessage(item: any): string {
     const message = item.message || '';
     const imageUrl = item.image_url;

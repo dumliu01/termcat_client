@@ -1,19 +1,19 @@
 /**
- * AI WebSocket 服务（兼容层）
+ * AI WebSocket Service (Compatibility Layer)
  *
- * 保留原有单例 API，内部委托给 AIAgentConnection。
- * 现有代码（useAIWebSocket、useAIMessageHandler 等）无需修改即可继续工作。
+ * Retains the original singleton API, internally delegates to AIAgentConnection.
+ * Existing code (useAIWebSocket, useAIMessageHandler, etc.) can continue to work without modification.
  *
- * 新代码应直接使用 AIAgentConnection：
+ * New code should directly use AIAgentConnection:
  *   import { AIAgentConnection } from '@/core/ai-agent';
  */
 
 import { AIAgentConnection } from '@/core/ai-agent/AIAgentConnection';
 import { logger, LOG_MODULE } from '../logger/logger';
 
-// ==================== 类型定义（保留原有导出，向后兼容） ====================
+// ==================== Type Definitions (retained for backward compatibility) ====================
 
-// 从模块 re-export，保持外部 import 路径不变
+// Re-export from module, keeping external import paths unchanged
 export {
   AIMessageType,
   TaskType,
@@ -26,11 +26,11 @@ export type {
   OperationStep,
 } from '@/core/ai-agent/types';
 
-// 导入内部使用的类型
+// Import internal types
 import type { AIMessage, AIMessageCallback } from '@/core/ai-agent/types';
 import { AIMessageType } from '@/core/ai-agent/types';
 
-// ==================== 兼容层实现 ====================
+// ==================== Compatibility Layer Implementation ====================
 
 class AIWebSocketService {
   private connection: AIAgentConnection | null = null;
@@ -38,7 +38,7 @@ class AIWebSocketService {
   private isConnectingFlag = false;
 
   /**
-   * 连接到 AI WebSocket 服务
+   * Connect to AI WebSocket service
    */
   connect(token: string): Promise<void> {
     if (this.connection?.isConnected()) {
@@ -54,7 +54,7 @@ class AIWebSocketService {
 
     const wsBaseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8080';
 
-    // 创建新的 AIAgentConnection
+    // Create new AIAgentConnection
     this.connection = new AIAgentConnection({ wsUrl: wsBaseUrl, token });
 
     return this.connection.connect()
@@ -69,7 +69,7 @@ class AIWebSocketService {
   }
 
   /**
-   * 断开连接
+   * Disconnect
    */
   disconnect(): void {
     this.token = null;
@@ -80,7 +80,7 @@ class AIWebSocketService {
   }
 
   /**
-   * 发送问题
+   * Send question
    */
   sendQuestion(
     prompt: string,
@@ -103,7 +103,7 @@ class AIWebSocketService {
   }
 
   /**
-   * 确认执行命令
+   * Confirm command execution
    */
   confirmExecute(
     taskId: string,
@@ -116,7 +116,7 @@ class AIWebSocketService {
   }
 
   /**
-   * 取消执行
+   * Cancel execution
    */
   cancelExecute(taskId: string, stepIndex: number): void {
     if (!this.connection) return;
@@ -124,7 +124,7 @@ class AIWebSocketService {
   }
 
   /**
-   * 终止任务
+   * Stop task
    */
   stopTask(taskId: string, frontendTaskId?: string): void {
     if (!this.connection) return;
@@ -132,7 +132,7 @@ class AIWebSocketService {
   }
 
   /**
-   * 发送用户选择响应
+   * Send user choice response
    */
   sendUserChoice(
     taskId: string,
@@ -151,7 +151,7 @@ class AIWebSocketService {
   }
 
   /**
-   * 发送消息（通用）
+   * Send message (generic)
    */
   sendMessage(message: Partial<AIMessage>): void {
     if (!this.connection) return;
@@ -159,12 +159,12 @@ class AIWebSocketService {
   }
 
   /**
-   * 注册全局消息回调
+   * Register global message callback
    */
   onMessage(callback: AIMessageCallback): () => void {
     if (!this.connection) {
-      // 连接还没建立时，缓存 callback，等连接后自动注册
-      // 简单处理：返回空取消函数
+      // When connection is not established, cache callback, auto-register after connection
+      // Simple handling: return empty cancel function
       logger.warn(LOG_MODULE.AI, 'ai.ws.no_connection', 'onMessage called before connection');
       return () => {};
     }
@@ -172,7 +172,7 @@ class AIWebSocketService {
   }
 
   /**
-   * 注册任务特定的消息回调
+   * Register task-specific message callback
    */
   onTaskMessage(taskId: string, callback: AIMessageCallback): () => void {
     if (!this.connection) return () => {};
@@ -180,21 +180,21 @@ class AIWebSocketService {
   }
 
   /**
-   * 检查连接状态
+   * Check connection status
    */
   isConnected(): boolean {
     return this.connection?.isConnected() ?? false;
   }
 
   /**
-   * 获取连接状态
+   * Get connection state
    */
   getReadyState(): number {
     return this.isConnected() ? WebSocket.OPEN : WebSocket.CLOSED;
   }
 
   /**
-   * 获取底层 AIAgentConnection 实例（供新代码使用）
+   * Get underlying AIAgentConnection instance (for new code)
    */
   getConnection(): AIAgentConnection | null {
     return this.connection;

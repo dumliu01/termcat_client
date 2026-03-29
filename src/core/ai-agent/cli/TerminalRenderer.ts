@@ -1,11 +1,11 @@
 /**
- * 终端渲染器
+ * Terminal Renderer
  *
- * 提供彩色输出、spinner、操作计划展示等终端 UI 能力。
- * 仅使用 ANSI 转义码，无额外依赖。
+ * Provides terminal UI capabilities: colored output, spinner, operation plan display, etc.
+ * Uses only ANSI escape codes, no additional dependencies.
  */
 
-// ANSI 颜色
+// ANSI colors
 const C = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
@@ -33,44 +33,44 @@ export class TerminalRenderer {
   private spinnerFrame = 0;
   private spinnerText = '';
 
-  /** 打印带颜色的标题横幅 */
+  /** Print banner with colors */
   printBanner(): void {
     console.log(`\n${C.cyan}${C.bold}TermCat AI Agent CLI${C.reset}`);
     console.log(`${C.gray}${'='.repeat(40)}${C.reset}\n`);
   }
 
-  /** 打印服务器信息 */
+  /** Print server information */
   printServerInfo(apiServer: string, wsServer: string): void {
     console.log(`${C.gray}API Server: ${C.white}${apiServer}${C.reset}`);
     console.log(`${C.gray}WS Server:  ${C.white}${wsServer}${C.reset}\n`);
   }
 
-  /** 打印成功消息 */
+  /** Print success message */
   printSuccess(msg: string): void {
     console.log(`${C.green}✓ ${msg}${C.reset}`);
   }
 
-  /** 打印错误消息 */
+  /** Print error message */
   printError(msg: string): void {
     console.log(`${C.red}✗ ${msg}${C.reset}`);
   }
 
-  /** 打印警告消息 */
+  /** Print warning message */
   printWarning(msg: string): void {
     console.log(`${C.yellow}⚠ ${msg}${C.reset}`);
   }
 
-  /** 打印信息消息 */
+  /** Print info message */
   printInfo(msg: string): void {
     console.log(`${C.blue}ℹ ${msg}${C.reset}`);
   }
 
-  /** 打印模式和模型信息 */
+  /** Print mode and model info */
   printModeInfo(mode: string, model: string): void {
     console.log(`${C.gray}Mode: ${C.cyan}${mode}${C.gray} | Model: ${C.cyan}${model}${C.reset}`);
   }
 
-  /** 开始 spinner */
+  /** Start spinner */
   startSpinner(text: string): void {
     this.stopSpinner();
     this.spinnerText = text;
@@ -82,26 +82,26 @@ export class TerminalRenderer {
     }, 80);
   }
 
-  /** 停止 spinner */
+  /** Stop spinner */
   stopSpinner(): void {
     if (this.spinnerTimer) {
       clearInterval(this.spinnerTimer);
       this.spinnerTimer = null;
-      process.stderr.write('\r\x1b[K'); // 清除行
+      process.stderr.write('\r\x1b[K'); // Clear line
     }
   }
 
-  /** 输出流式文本块（不换行） */
+  /** Output streaming text chunk (no newline) */
   writeChunk(text: string): void {
     process.stdout.write(text);
   }
 
-  /** 输出换行 */
+  /** Output newline */
   newLine(): void {
     console.log();
   }
 
-  /** 打印操作计划 */
+  /** Print operation plan */
   printPlan(plan: Array<{ index: number; description: string; command?: string; risk?: string }>): void {
     console.log(`\n${C.bold}${C.blue}📋 Operation Plan:${C.reset}`);
     for (const step of plan) {
@@ -113,13 +113,13 @@ export class TerminalRenderer {
     console.log();
   }
 
-  /** 打印执行请求确认提示 */
+  /** Print execution request confirmation prompt */
   printExecutePrompt(stepIndex: number, command: string, risk: string): string {
     const riskColor = RISK_COLORS[risk] || C.yellow;
     return `${riskColor}[${risk}]${C.reset} Execute step ${stepIndex + 1}: ${C.bold}${command}${C.reset}? [Y/n] `;
   }
 
-  /** 打印用户选择提示 */
+  /** Print user choice prompt */
   printChoicePrompt(question: string, options: Array<{ value: string; label: string; description?: string; recommended?: boolean }>): void {
     console.log(`\n${C.bold}${C.yellow}❓ ${question}${C.reset}`);
     for (let i = 0; i < options.length; i++) {
@@ -130,7 +130,7 @@ export class TerminalRenderer {
     }
   }
 
-  /** 打印步骤执行结果 */
+  /** Print step execution result */
   printStepResult(stepIndex: number, success: boolean, output?: string): void {
     if (success) {
       console.log(`${C.green}✓ Step ${stepIndex + 1} completed${C.reset}`);
@@ -142,7 +142,7 @@ export class TerminalRenderer {
     }
   }
 
-  /** 打印任务完成 */
+  /** Print task complete */
   printTaskComplete(summary: string): void {
     if (summary) {
       console.log(`\n${C.green}${C.bold}✓ Task Complete${C.reset}`);
@@ -150,7 +150,7 @@ export class TerminalRenderer {
     }
   }
 
-  /** 打印 Token 使用量 */
+  /** Print token usage */
   printTokenUsage(usage: { inputTokens: number; outputTokens: number; totalTokens: number; costGems: number }): void {
     console.log(
       `${C.gray}[Tokens: in=${usage.inputTokens} out=${usage.outputTokens} total=${usage.totalTokens}` +
@@ -159,7 +159,7 @@ export class TerminalRenderer {
     );
   }
 
-  /** 打印帮助信息 */
+  /** Print help information */
   printHelp(): void {
     console.log(`\n${C.bold}Commands:${C.reset}`);
     console.log(`  ${C.cyan}/mode agent|normal${C.reset}  Switch AI mode`);

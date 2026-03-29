@@ -1,33 +1,33 @@
 import { User, AITaskState, AIOperationStep, AICmdSuggestion, AIModelInfo } from '@/utils/types';
 
-// 附件文件
+// Attached file
 export interface AttachedFile {
   id: string;
   name: string;
   size: number;
   type: string;
-  content: string;  // Base64 编码的内容
-  previewUrl?: string;  // 图片附件缩略图 URL
+  content: string;  // Base64 encoded content
+  previewUrl?: string;  // Image attachment thumbnail URL
 }
 
-// AI 运维消息类型定义
+// AI Ops message type definition
 export interface AIOpsMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   suggestion?: AICmdSuggestion;
   taskState?: AITaskState;
-  files?: AttachedFile[];  // 新增：附件列表
+  files?: AttachedFile[];  // Added: attachment list
   timestamp: number;
 }
 
-// 消息模式
-export type AIOpsMode = 'ask' | 'agent' | 'code' | 'codex';
+// Message mode
+export type AIOpsMode = 'ask' | 'agent' | 'code' | 'x-agent';
 
-// SSH 模式
+// SSH mode
 export type SshMode = 'associated' | 'independent';
 
-// AIOps 面板属性
+// AIOps panel props
 export interface AIOpsPanelProps {
   prompt: string;
   onPromptChange: (val: string) => void;
@@ -41,13 +41,13 @@ export interface AIOpsPanelProps {
   width?: number;
   availableModels?: AIModelInfo[];
   onGemsUpdated?: (newBalance: number) => void;
-  /** 嵌入模式：不渲染外层 aside 容器，由父组件控制布局 */
+  /** Embedded mode: does not render outer aside container, parent component controls layout */
   embedded?: boolean;
 }
 
-// 风险等级颜色映射
+// Risk level color mapping
 export type RiskLevel = 'low' | 'medium' | 'high';
 
-// 步骤状态
+// Step status
 export type StepStatus = 'pending' | 'executing' | 'completed' | 'failed';
 

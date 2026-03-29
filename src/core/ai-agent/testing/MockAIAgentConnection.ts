@@ -1,17 +1,17 @@
 /**
- * Mock AI Agent 连接
+ * Mock AI Agent Connection
  *
- * 模拟 AIAgentConnection 的行为，无需真实 WebSocket。
- * 可编程模拟服务端消息序列，用于离线测试 AIAgent 状态机。
+ * Simulates AIAgentConnection behavior without real WebSocket.
+ * Programmatically simulates server message sequences, used for offline testing of AIAgent state machine.
  *
- * 使用示例：
+ * Usage example:
  * ```typescript
  * const mockConn = new MockAIAgentConnection();
  *
- * // 创建 agent（传入 mock 连接）
+ * // Create agent (pass mock connection)
  * const agent = new AIAgent(mockConn as any, config);
  *
- * // 模拟服务端发来的消息
+ * // Simulate server-sent messages
  * mockConn.simulateMessage({
  *   type: AIMessageType.ANSWER,
  *   content: 'Hello',
@@ -22,7 +22,7 @@
 
 import { AIMessage, AIMessageType, AIMessageCallback } from '../types';
 
-/** 消息序列项：延迟 + 消息 */
+/** Scheduled message: delay + message */
 export interface ScheduledMessage {
   message: Partial<AIMessage>;
   delayMs?: number;
@@ -34,29 +34,29 @@ export class MockAIAgentConnection {
   private _isConnected = false;
   private sentMessages: Array<Partial<AIMessage> & Record<string, any>> = [];
 
-  /** 建立连接（模拟） */
+  /** Connect (mock) */
   async connect(): Promise<void> {
     this._isConnected = true;
   }
 
-  /** 断开连接（模拟） */
+  /** Disconnect (mock) */
   disconnect(): void {
     this._isConnected = false;
     this.globalCallbacks = [];
     this.taskCallbacks.clear();
   }
 
-  /** 检查连接状态 */
+  /** Check connection status */
   isConnected(): boolean {
     return this._isConnected;
   }
 
-  /** 发送消息（记录，不实际发送） */
+  /** Send message (record, don't actually send) */
   send(message: Partial<AIMessage> & Record<string, any>): void {
     this.sentMessages.push({ ...message });
   }
 
-  /** 发送问题（记录） */
+  /** Send question (record) */
   sendQuestion(
     prompt: string,
     options?: {
@@ -80,7 +80,7 @@ export class MockAIAgentConnection {
     });
   }
 
-  /** 确认执行（记录） */
+  /** Confirm execution (record) */
   confirmExecute(
     taskId: string,
     stepIndex: number,
@@ -98,7 +98,7 @@ export class MockAIAgentConnection {
     });
   }
 
-  /** 取消执行（记录） */
+  /** Cancel execution (record) */
   cancelExecute(taskId: string, stepIndex: number): void {
     this.send({
       type: AIMessageType.CANCEL_EXECUTE,
@@ -107,7 +107,7 @@ export class MockAIAgentConnection {
     });
   }
 
-  /** 停止任务（记录） */
+  /** Stop task (record) */
   stopTask(taskId: string, frontendTaskId?: string): void {
     this.send({
       type: AIMessageType.STOP_TASK,
@@ -116,7 +116,7 @@ export class MockAIAgentConnection {
     });
   }
 
-  /** 发送用户选择（记录） */
+  /** Send user choice (record) */
   sendUserChoice(
     taskId: string,
     stepIndex: number,
@@ -133,7 +133,7 @@ export class MockAIAgentConnection {
     });
   }
 
-  /** 注册全局消息回调 */
+  /** Register global message callback */
   onMessage(callback: AIMessageCallback): () => void {
     this.globalCallbacks.push(callback);
     return () => {
@@ -142,7 +142,7 @@ export class MockAIAgentConnection {
     };
   }
 
-  /** 注册任务消息回调 */
+  /** Register task message callback */
   onTaskMessage(taskId: string, callback: AIMessageCallback): () => void {
     if (!this.taskCallbacks.has(taskId)) {
       this.taskCallbacks.set(taskId, []);
@@ -157,18 +157,18 @@ export class MockAIAgentConnection {
     };
   }
 
-  // ==================== 模拟 API ====================
+  // ==================== Simulation API ====================
 
-  /** 模拟收到一条服务端消息（同步触发回调） */
+  /** Simulate receiving a server message (triggers callbacks synchronously) */
   simulateMessage(message: Partial<AIMessage>): void {
     const fullMessage = message as AIMessage;
 
-    // 触发全局回调
+    // Trigger global callbacks
     for (const cb of [...this.globalCallbacks]) {
       try { cb(fullMessage); } catch { /* ignore */ }
     }
 
-    // 触发任务回调
+    // Trigger task callbacks
     if (fullMessage.task_id) {
       const callbacks = this.taskCallbacks.get(fullMessage.task_id);
       if (callbacks) {
@@ -179,7 +179,7 @@ export class MockAIAgentConnection {
     }
   }
 
-  /** 模拟一组消息序列（按延迟依次发送） */
+  /** Simulate a sequence of messages (send sequentially with delays) */
   async simulateMessageSequence(messages: ScheduledMessage[]): Promise<void> {
     for (const item of messages) {
       if (item.delayMs && item.delayMs > 0) {
@@ -190,14 +190,14 @@ export class MockAIAgentConnection {
   }
 
   /**
-   * 模拟完整的 agent 模式流程：
-   * 1. ANSWER（流式文本）
-   * 2. OPERATION_PLAN（计划）
-   * 3. EXECUTE_REQUEST（请求执行命令）
-   * 4. COMPLETE（完成）
+   * Simulate complete agent mode flow:
+   * 1. ANSWER (streaming text)
+   * 2. OPERATION_PLAN (plan)
+   * 3. EXECUTE_REQUEST (request command execution)
+   * 4. COMPLETE (complete)
    *
-   * 注意：步骤 3→4 之间需要 agent 的 confirmExecute 回传执行结果，
-   * 所以 COMPLETE 需要在收到 CONFIRM_EXECUTE 后手动调用 simulateMessage。
+   * Note: Step 3→4 requires agent's confirmExecute to send execution result back,
+   * so COMPLETE needs to manually call simulateMessage after receiving CONFIRM_EXECUTE.
    */
   simulateAgentFlow(options: {
     taskId: string;
@@ -214,7 +214,7 @@ export class MockAIAgentConnection {
       executeStepIndex = 0,
     } = options;
 
-    // 1. 流式回答
+    // 1. Streaming answer
     this.simulateMessage({
       type: AIMessageType.ANSWER,
       task_id: taskId,
@@ -230,7 +230,7 @@ export class MockAIAgentConnection {
       is_complete: true,
     });
 
-    // 2. 操作计划
+    // 2. Operation plan
     this.simulateMessage({
       type: AIMessageType.OPERATION_PLAN,
       task_id: taskId,
@@ -246,7 +246,7 @@ export class MockAIAgentConnection {
       total_steps: planSteps.length,
     });
 
-    // 3. 执行请求
+    // 3. Execution request
     const step = planSteps[executeStepIndex];
     this.simulateMessage({
       type: AIMessageType.EXECUTE_REQUEST,
@@ -259,7 +259,7 @@ export class MockAIAgentConnection {
     });
   }
 
-  /** 模拟任务完成 */
+  /** Simulate task complete */
   simulateComplete(taskId: string, summary?: string, sessionId?: string): void {
     this.simulateMessage({
       type: AIMessageType.COMPLETE,
@@ -269,7 +269,7 @@ export class MockAIAgentConnection {
     });
   }
 
-  /** 模拟错误 */
+  /** Simulate error */
   simulateError(taskId: string, error: string, sessionId?: string): void {
     this.simulateMessage({
       type: AIMessageType.ERROR,
@@ -279,24 +279,24 @@ export class MockAIAgentConnection {
     });
   }
 
-  // ==================== 查询 API ====================
+  // ==================== Query API ====================
 
-  /** 获取所有发送过的消息 */
+  /** Get all sent messages */
   getSentMessages(): ReadonlyArray<Partial<AIMessage> & Record<string, any>> {
     return this.sentMessages;
   }
 
-  /** 获取最后发送的消息 */
+  /** Get last sent message */
   getLastSentMessage(): (Partial<AIMessage> & Record<string, any>) | undefined {
     return this.sentMessages[this.sentMessages.length - 1];
   }
 
-  /** 获取指定类型的发送消息 */
+  /** Get sent messages of specified type */
   getSentMessagesByType(type: AIMessageType): Array<Partial<AIMessage> & Record<string, any>> {
     return this.sentMessages.filter(m => m.type === type);
   }
 
-  /** 清空发送历史 */
+  /** Clear sent messages history */
   clearSentMessages(): void {
     this.sentMessages = [];
   }

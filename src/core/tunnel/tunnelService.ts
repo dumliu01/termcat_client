@@ -53,7 +53,7 @@ class TunnelService {
   }
 
   /**
-   * 从 Host 的 Tunnel 配置转换为 TunnelConfig
+   * Convert Tunnel from Host config to TunnelConfig
    */
   tunnelToConfig(tunnel: Tunnel): TunnelConfig {
     return {
@@ -67,7 +67,7 @@ class TunnelService {
   }
 
   /**
-   * 启动隧道
+   * Start tunnel
    */
   async startTunnel(connectionId: string, config: TunnelConfig): Promise<TunnelStatus> {
     if (!window.electron) {
@@ -103,7 +103,7 @@ class TunnelService {
   }
 
   /**
-   * 启动多个隧道
+   * Start multiple tunnels
    */
   async startTunnels(connectionId: string, tunnels: Tunnel[]): Promise<TunnelStatus[]> {
     const results: TunnelStatus[] = [];
@@ -120,7 +120,7 @@ class TunnelService {
           tunnel_name: tunnel.name,
           msg: error instanceof Error ? error.message : String(error),
         });
-        // 继续启动其他隧道
+        // Continue starting other tunnels
         results.push({
           id: tunnel.id,
           name: tunnel.name,
@@ -139,7 +139,7 @@ class TunnelService {
   }
 
   /**
-   * 停止隧道
+   * Stop tunnel
    */
   async stopTunnel(connectionId: string, tunnelId: string): Promise<void> {
     if (!window.electron) {
@@ -169,7 +169,7 @@ class TunnelService {
   }
 
   /**
-   * 停止连接的所有隧道
+   * Stop all tunnels for a connection
    */
   async stopAllTunnels(connectionId: string): Promise<void> {
     if (!window.electron) {
@@ -196,7 +196,7 @@ class TunnelService {
   }
 
   /**
-   * 获取连接的所有隧道状态
+   * Get all tunnel statuses for a connection
    */
   async getTunnelStatuses(connectionId: string): Promise<TunnelStatus[]> {
     if (!window.electron) {
@@ -216,7 +216,7 @@ class TunnelService {
   }
 
   /**
-   * 订阅隧道状态更新
+   * Subscribe to tunnel status updates
    */
   subscribeToStatusUpdates(
     connectionId: string,
@@ -240,7 +240,7 @@ class TunnelService {
   }
 
   /**
-   * 清理资源
+   * Cleanup resources
    */
   cleanup(): void {
     if (this.cleanupFn) {

@@ -1,11 +1,11 @@
 /**
- * 用户认证与登录 Hook
+ * User Authentication and Login Hook
  *
- * 管理用户状态、登录/登出流程、AI 模型列表、认证事件监听。
+ * Manages user state, login/logout flow, AI model list, and authentication event listening.
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { Host, User, TierType, HostGroup, ViewState, AIModelInfo, Proxy } from '@/utils/types';
+import { Host, User, TierType, HostGroup, ViewState, AIModelInfo, AIModeInfo, Proxy } from '@/utils/types';
 import { hostService, StorageMode } from '@/core/host/hostService';
 import { hostStorageService } from '@/core/host/hostStorageService';
 import { authService } from '@/core/auth/authService';
@@ -16,6 +16,7 @@ import { logger, LOG_MODULE } from '@/base/logger/logger';
 import { builtinPluginManager } from '@/plugins/builtin';
 import { AI_OPS_EVENTS } from '@/plugins/builtin/events';
 import { useI18n } from '@/base/i18n/I18nContext';
+import { licenseService } from '@/core/license/licenseService';
 
 const getDefaultGroups = (t: ReturnType<typeof useI18n>['t']): HostGroup[] => [
   { id: 'group_prod', name: t.dashboard.defaultGroupProduction, color: '#ef4444' },
@@ -23,7 +24,7 @@ const getDefaultGroups = (t: ReturnType<typeof useI18n>['t']): HostGroup[] => [
 ];
 
 const getDefaultHosts = (_t: ReturnType<typeof useI18n>['t']): Host[] => [];
-// 本地终端已内置，不再自动创建 127.0.0.1 SSH 主机
+// Local terminal is built-in, no need to auto-create 127.0.0.1 SSH host
 
 interface UseUserAuthDeps {
   setHosts: (hosts: Host[]) => void;
@@ -42,22 +43,43 @@ export function useUserAuth(deps: UseUserAuthDeps) {
   const [user, setUser] = useState<User | null>(null);
   const [showLogin, setShowLogin] = useState(false);
 
-  // AI 可用模型/模式列表（全局共享，登录时拉取一次）
+  // AI available models/modes list (globally shared, fetched once on login)
   const [availableModels, setAvailableModels] = useState<AIModelInfo[]>([]);
-  const [availableModes, setAvailableModes] = useState<string[]>(['ask', 'agent']);
+  const [availableModes, setAvailableModes] = useState<string[]>(['ask', 'agent', 'x-agent']);
+  const [availableModeInfos, setAvailableModeInfos] = useState<AIModeInfo[]>([]);
   const [showCloudSyncPrompt, setShowCloudSyncPrompt] = useState(false);
 
-  // 从服务端获取 AI 可用模型列表
+  // Built-in mode display info
+  const MODE_DISPLAY: Record<string, { name: string; icon: string }> = {
+    ask:   { name: 'Ask',   icon: 'zap' },
+    agent: { name: 'Agent', icon: 'brain-circuit' },
+    code:  { name: 'Code',  icon: 'code-2' },
+    codex: { name: 'X-Agent', icon: 'zap' },
+  };
+
+  // Fetch AI available models list from server
   const fetchAIModels = useCallback(async () => {
     try {
       const response = await apiService.getAIModels();
       if (response.success && response.data) {
         setAvailableModels(response.data.models || []);
         if (response.data.modes && Array.isArray(response.data.modes)) {
-          const modes = (response.data.modes as Array<{ mode: string }>).map(m =>
-            m.mode === 'normal' ? 'ask' : m.mode
-          );
-          if (modes.length > 0) setAvailableModes(modes);
+          const modeInfos: AIModeInfo[] = (response.data.modes as Array<{ mode: string; cost_per_question?: number; allowed_models?: string[] }>).map(m => {
+            const modeId = m.mode === 'normal' ? 'ask' : m.mode;
+            const display = MODE_DISPLAY[modeId] || { name: modeId, icon: 'zap' };
+            return {
+              id: modeId,
+              name: display.name,
+              icon: display.icon,
+              allowedModels: m.allowed_models && m.allowed_models.length > 0 ? m.allowed_models : undefined,
+              costPerQuestion: m.cost_per_question,
+              source: 'server' as const,
+            };
+          });
+          if (modeInfos.length > 0) {
+            setAvailableModeInfos(modeInfos);
+            setAvailableModes(modeInfos.map(m => m.id));
+          }
         }
         logger.info(LOG_MODULE.APP, 'app.ai_models.fetched', 'AI models fetched', {
           count: response.data.models?.length || 0,
@@ -71,7 +93,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
     }
   }, []);
 
-  // 监听认证失败事件（401错误）
+  // Listen for authentication failure events (401 error)
   useEffect(() => {
     const unsubscribe = authService.onAuthFailed(() => {
       logger.info(LOG_MODULE.APP, 'app.auth.failed', 'Auth failed, showing login view', {
@@ -84,7 +106,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
     return () => unsubscribe();
   }, [setActiveView]);
 
-  // 监听 AI Ops 插件的宝石余额更新事件
+  // Listen for gem balance update events from AI Ops plugin
   useEffect(() => {
     const disposable = builtinPluginManager.on(AI_OPS_EVENTS.GEMS_UPDATED, (payload) => {
       const newBalance = payload as number;
@@ -96,6 +118,25 @@ export function useUserAuth(deps: UseUserAuthDeps) {
       });
     });
     return () => disposable.dispose();
+  }, []);
+
+  // License change listener: re-check and inject locked status into plugin modes
+  useEffect(() => {
+    const unsubscribe = licenseService.onChange(() => {
+      // Re-enrich mode infos with latest license status (driven by pluginData.licenseFeature)
+      setAvailableModeInfos(prev => prev.map(mode => {
+        const licenseFeature = mode.pluginData?.licenseFeature;
+        if (licenseFeature) {
+          return {
+            ...mode,
+            locked: !licenseService.isFeatureUnlocked(licenseFeature),
+            price: mode.pluginData?.licensePrice,
+          };
+        }
+        return mode;
+      }));
+    });
+    return unsubscribe;
   }, []);
 
   const updateUserState = useCallback((updates: Partial<User>) => {
@@ -111,7 +152,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
     return { type, amount, tierId };
   }, []);
 
-  const handlePaymentSuccess = useCallback((type: 'gems' | 'vip_month' | 'vip_year', order: PaymentOrder) => {
+  const handlePaymentSuccess = useCallback((type: 'gems' | 'vip_month' | 'vip_year' | 'agent_pack', order: PaymentOrder) => {
     if (type === 'gems') {
       setUser(prev => {
         if (!prev) return prev;
@@ -119,6 +160,9 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         authService.setUser(newUser);
         return newUser;
       });
+    } else if (type === 'agent_pack') {
+      // Force refresh license cache so agent modes get unlocked
+      licenseService.checkLicense(true).catch(() => {});
     } else {
       const tierExpiry = order.tier_days > 0
         ? new Date(Date.now() + order.tier_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
@@ -130,8 +174,8 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         return newUser;
       });
     }
-    // 从服务端拉取最新用户信息，确保数据准确
-    // getUserProfile 返回 { user, seqs }
+    // Pull latest user info from server to ensure data accuracy
+    // getUserProfile returns { user, seqs }
     apiService.getUserProfile().then((resp: any) => {
       const profile = resp?.user ?? resp;
       if (profile) {
@@ -159,20 +203,20 @@ export function useUserAuth(deps: UseUserAuthDeps) {
       };
       setUser(userWithGems);
       authService.setUser(userWithGems);
-      // 启动自动续期
+      // Start auto-refresh
       authService.startAutoRefresh(() => apiService.refreshToken());
 
-      // 新登录不做增量同步回调（handleLogin 内已全量拉取）
-      // App.tsx init 路径会配置带 seqs 回调的 auto-refresh
+      // New login, no incremental sync callback needed (full fetch already done in handleLogin)
+      // App.tsx init path will configure auto-refresh with seqs callback
 
-      // 切换用户时，关闭上一个用户/游客遗留的终端会话
+      // When switching users, close terminal sessions left by previous user/guest
       resetSessions();
       setActiveView('dashboard');
 
-      // 切换到该用户的存储作用域
+      // Switch to this user's storage scope
       hostService.setUserScope(userWithGems.id);
 
-      // 读取用户上次选择的存储模式
+      // Read user's last selected storage mode
       const savedMode = hostService.getMode();
       const useLocal = savedMode === StorageMode.LOCAL;
       setStorageMode(useLocal ? 'local' : 'server');
@@ -183,14 +227,14 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         storage_mode: useLocal ? 'local' : 'cloud',
       });
 
-      // 并行拉取所有用户数据：hosts, groups, proxies, AI models
+      // Fetch all user data in parallel: hosts, groups, proxies, AI models
       const [hostResult, groupsResult, proxiesResult] = await Promise.allSettled([
         hostService.getHosts().then(hosts => ({ success: true as const, hosts, error: undefined })),
         hostService.getGroups(),
         useLocal ? Promise.resolve([]) : apiService.getProxies(),
       ]);
 
-      // 同步刷新 hosts
+      // Sync refresh hosts
       if (hostResult.status === 'fulfilled' && hostResult.value.success) {
         setHosts(hostResult.value.hosts);
         logger.info(LOG_MODULE.APP, 'app.login.hosts_synced', 'Hosts synced after login', {
@@ -205,7 +249,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         });
       }
 
-      // 同步刷新 groups
+      // Sync refresh groups
       if (groupsResult.status === 'fulfilled' && groupsResult.value.length > 0) {
         setGroups(groupsResult.value);
         logger.info(LOG_MODULE.APP, 'app.login.groups_synced', 'Groups synced after login', {
@@ -217,7 +261,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         });
       }
 
-      // 同步刷新代理列表
+      // Sync refresh proxy list
       if (proxiesResult.status === 'fulfilled') {
         setProxies(proxiesResult.value);
         logger.info(LOG_MODULE.APP, 'app.login.proxies_synced', 'Proxies synced after login', {
@@ -229,7 +273,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         });
       }
 
-      // 新账号首次登录，如果本地 hosts 为空则创建默认 localhost
+      // First-time login for new account: if local hosts are empty, create default localhost
       const loginHosts = hostResult.status === 'fulfilled' && hostResult.value.success ? hostResult.value.hosts : [];
       if (loginHosts.length === 0) {
         const defaultHosts = getDefaultHosts(t);
@@ -239,34 +283,37 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         setHosts(defaultHosts);
       }
 
-      // 商业化配置（不阻塞登录流程）
+      // Commerce config (non-blocking for login flow)
       commerceService.fetchConfig();
 
-      // AI 模型列表（不阻塞登录流程）
+      // AI model list (non-blocking for login flow)
       fetchAIModels();
 
-      // 获取并保存 seqs，使下次启动可以走增量同步
+      // License check (force refresh to sync with server)
+      licenseService.checkLicense(true);
+
+      // Get and save seqs, so next startup can do incremental sync
       apiService.getUserProfile().then((resp: any) => {
         if (resp?.seqs) {
           hostStorageService.saveSeqs(resp.seqs);
         }
       }).catch(() => {});
 
-      // 首次登录提示：该用户从未选择过存储模式 → 提示开启云端同步
+      // First login prompt: if this user has never selected a storage mode -> prompt to enable cloud sync
       const CLOUD_PROMPTED_KEY = `termcat_cloud_prompted_${userWithGems.id}`;
       if (!localStorage.getItem(CLOUD_PROMPTED_KEY)) {
         localStorage.setItem(CLOUD_PROMPTED_KEY, '1');
-        // 仅当前是本地模式时才提示（已经是云端的不需要提示）
+        // Only prompt when currently in local mode (already in cloud mode doesn't need prompt)
         if (useLocal) {
           setShowCloudSyncPrompt(true);
         }
       }
     } else {
-      // 游客模式：关闭上一个用户遗留的终端会话
+      // Guest mode: close terminal sessions left by previous user
       resetSessions();
       setActiveView('dashboard');
 
-      // 切换到游客存储作用域并加载游客数据
+      // Switch to guest storage scope and load guest data
       hostService.setUserScope(null);
       hostService.setMode(StorageMode.LOCAL);
       const guestHosts = await hostService.getHosts();
@@ -293,7 +340,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
   }, [t, setHosts, setGroups, setProxies, setStorageMode, resetSessions, setActiveView, fetchAIModels]);
 
   const handleLogout = useCallback(async (clearServerCache?: boolean) => {
-    // 在 logout 清除 token 之前获取 userId，用于清除服务器缓存
+    // Get userId before clearing token in logout, for clearing server cache
     const currentUser = authService.getUser();
     if (clearServerCache && currentUser?.id) {
       hostStorageService.clearServerCache(currentUser.id);
@@ -302,11 +349,12 @@ export function useUserAuth(deps: UseUserAuthDeps) {
     setUser(null);
     authService.logout();
     commerceService.clear();
+    licenseService.clear();
     resetSessions();
     setActiveView('dashboard');
     setShowLogin(true);
 
-    // 退出登录时，切换到游客存储作用域和本地模式
+    // On logout, switch to guest storage scope and local mode
     hostService.setUserScope(null);
     hostService.setMode(StorageMode.LOCAL);
 
@@ -338,6 +386,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
     setShowLogin,
     availableModels,
     availableModes,
+    availableModeInfos,
     fetchAIModels,
     updateUserState,
     handleLogin,

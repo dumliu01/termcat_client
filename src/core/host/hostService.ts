@@ -5,29 +5,29 @@ import { hostStorageService } from './hostStorageService';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 
 /**
- * 存储模式
- * - LOCAL: 纯本地 localStorage，不与服务器交互
- * - CLOUD: 服务器为数据源，本地仅缓存（含密码/私钥等服务器不返回的敏感字段）
+ * Storage mode
+ * - LOCAL: Pure local localStorage, no server interaction
+ * - CLOUD: Server as data source, local only caches (including sensitive fields like password/privateKey that server doesn't return)
  */
 export enum StorageMode {
   LOCAL = 'local',
   CLOUD = 'cloud',
 }
 
-// 兼容旧值：localStorage 中可能存有旧的 SyncMode 值
+// Backward compatible with legacy values: old SyncMode values may exist in localStorage
 const LEGACY_CLOUD_VALUES = new Set(['server_only', 'server_first', 'dual_sync']);
 
 /**
- * Host 管理服务
+ * Host Management Service
  *
- * local 模式：读写 localStorage（key 后缀 _local）
- * cloud 模式：CRUD 走 API → 成功后更新本地缓存（key 后缀 _cloud）
- *            读取时 server-first，失败 fallback 到本地缓存
+ * local mode: read/write localStorage (key suffix _local)
+ * cloud mode: CRUD via API → update local cache after success (key suffix _cloud)
+ *             Read: server-first, fallback to local cache on failure
  */
 class HostService {
   private mode: StorageMode = StorageMode.LOCAL;
 
-  // ── 模式管理 ──
+  // ── Mode Management ──
 
   setUserScope(userId: string | null): void {
     hostStorageService.setUserScope(userId);
@@ -41,7 +41,7 @@ class HostService {
 
   getMode(): StorageMode {
     const saved = localStorage.getItem('termcat_storage_mode');
-    // 兼容旧 key
+    // Backward compatible with legacy key
     if (!saved) {
       const legacy = localStorage.getItem('termcat_sync_mode');
       if (legacy && LEGACY_CLOUD_VALUES.has(legacy)) return StorageMode.CLOUD;
@@ -55,11 +55,11 @@ class HostService {
     return this.mode === StorageMode.CLOUD;
   }
 
-  // ── Seq 增量同步 ──
+  // ── Seq Incremental Sync ──
 
   /**
-   * 根据服务端 seqs 与本地缓存 seqs 对比，仅拉取有变化的资源
-   * 返回 { hosts, groups, proxies } 最新数据
+   * Compare server seqs with local cached seqs, only fetch changed resources
+   * Returns { hosts, groups, proxies } latest data
    */
   async syncBySeqs(serverSeqs: SyncSeqs): Promise<{
     hosts: Host[];
@@ -93,7 +93,7 @@ class HostService {
     const groups = results[1].status === 'fulfilled' ? results[1].value : hostStorageService.getGroups();
     const proxies = results[2].status === 'fulfilled' ? results[2].value : hostStorageService.getProxies();
 
-    // 更新本地 seqs
+    // Update local seqs
     hostStorageService.saveSeqs(serverSeqs);
 
     return {
@@ -145,7 +145,7 @@ class HostService {
     // Cloud: create on server, cache credentials, then refresh
     const serverHost = await apiService.createHost(host);
     const result = { ...serverHost, password: host.password, sshKey: host.sshKey } as Host;
-    // 先将带凭证的 host 写入缓存，确保 refreshCache 时 applyCachedCredentials 能找到密码
+    // Write host with credentials to cache first, ensuring applyCachedCredentials can find password during refreshCache
     this.cacheHostCredentials(result);
     await this.refreshCache();
     logger.info(LOG_MODULE.HOST, 'host.add.cloud_ok', 'Host created on server', { host_id: result.id });
@@ -166,7 +166,7 @@ class HostService {
       password: updatedHost.password || cached?.password || serverHost.password,
       sshKey: updatedHost.sshKey || cached?.sshKey || serverHost.sshKey,
     } as Host;
-    // 先更新缓存中的凭证，确保 refreshCache 时不丢失
+    // Update credentials in cache first, ensuring they are not lost during refreshCache
     this.cacheHostCredentials(result);
     await this.refreshCache();
     return result;
@@ -248,7 +248,7 @@ class HostService {
     hostStorageService.deleteGroup(id);
   }
 
-  // ── 导入导出（仅对当前模式生效） ──
+  // ── Import/Export (only affects current mode) ──
 
   exportConfig(): string {
     return JSON.stringify(hostStorageService.exportData(), null, 2);
@@ -263,7 +263,7 @@ class HostService {
       hostStorageService.importData(data);
       return { success: true };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : '导入失败';
+      const msg = error instanceof Error ? error.message : 'Import failed';
       logger.error(LOG_MODULE.HOST, 'host.import.failed', 'Failed to import config', { error: 1, msg });
       return { success: false, error: msg };
     }
@@ -273,11 +273,11 @@ class HostService {
     hostStorageService.clear();
   }
 
-  // ── 内部工具 ──
+  // ── Internal Utilities ──
 
   /**
-   * 将单个 host 的凭证写入本地缓存（新增或更新）
-   * 确保后续 refreshCache / getHosts 时 applyCachedCredentials 能找到密码
+   * Write single host's credentials to local cache (add or update)
+   * Ensures applyCachedCredentials can find password during refreshCache / getHosts
    */
   private cacheHostCredentials(host: Host): void {
     const hosts = hostStorageService.getHosts();
@@ -291,8 +291,8 @@ class HostService {
   }
 
   /**
-   * 将本地缓存中的密码/私钥补充到服务器返回的 host 列表
-   * （服务器不返回明文凭证，需从本地缓存恢复）
+   * Merge passwords/privateKeys from local cache into server-returned host list
+   * (Server doesn't return plaintext credentials, need to restore from local cache)
    */
   private applyCachedCredentials(serverHosts: Host[], cachedHosts: Host[]): Host[] {
     const cacheById = new Map(cachedHosts.map(h => [h.id, h]));
@@ -308,7 +308,7 @@ class HostService {
   }
 
   /**
-   * 从服务器拉取最新数据并更新本地缓存
+   * Fetch latest data from server and update local cache
    */
   private async refreshCache(): Promise<void> {
     try {
@@ -316,7 +316,7 @@ class HostService {
       const cached = hostStorageService.getHosts();
       hostStorageService.saveHosts(this.applyCachedCredentials(serverHosts, cached));
     } catch {
-      // 缓存刷新失败不阻塞主流程
+      // Cache refresh failure does not block main flow
     }
   }
 }

@@ -1,8 +1,8 @@
 /**
- * Markdown 渲染器
+ * Markdown renderer
  *
- * 用于标准化渲染 AI 回复、广告等 Markdown 内容。
- * 支持代码块的复制和可选执行。
+ * Standardized rendering for AI responses, ads, and other Markdown content.
+ * Supports code block copy and optional execution.
  */
 
 import React from 'react';
@@ -12,7 +12,7 @@ import { StableCodeBlock, getCodeBlockKey } from './CodeBlock';
 
 interface MarkdownRendererProps {
   content: string;
-  /** 可执行的代码语言列表 */
+  /** List of executable code languages */
   executableCodeLangs?: string[];
   onExecuteCommand?: (command: string) => void;
 }
@@ -38,7 +38,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ c
         code: ({ node, inline, className, children, ...props }: any) => {
           const text = String(children ?? '').trim();
 
-          // 行内代码
+          // Inline code
           if (inline) {
             return (
               <code className="px-1 py-0.5 rounded bg-white/5 text-[11px] font-mono" {...props}>
@@ -49,7 +49,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ c
 
           const isSingleLineShort = !text.includes('\n') && text.length > 0 && text.length <= 40;
 
-          // 短单行块：紧凑标签样式
+          // Short single-line block: compact tag style
           if (isSingleLineShort) {
             return (
               <span className="inline-flex px-2 py-0.5 mx-0.5 rounded-md bg-[#020617] border border-white/10 text-[11px] font-mono align-middle">
@@ -58,7 +58,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({ c
             );
           }
 
-          // 普通多行代码块
+          // Regular multi-line code block
           return (
             <StableCodeBlock
               key={getCodeBlockKey(text)}

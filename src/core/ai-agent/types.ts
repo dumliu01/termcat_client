@@ -1,14 +1,14 @@
 /**
- * AI Agent 模块类型定义
+ * AI Agent Module Type Definitions
  *
- * 从现有代码提取的所有 AI 相关类型，独立于 React/UI
+ * All AI-related types extracted from existing code, independent of React/UI
  */
 
-// ==================== 基础枚举 ====================
+// ==================== Basic Enums ====================
 
-/** WebSocket 消息类型 */
+/** WebSocket message types */
 export enum AIMessageType {
-  // 客户端发送
+  // Client sends
   QUESTION = 'question',
   CONFIRM_EXECUTE = 'confirm_execute',
   CANCEL_EXECUTE = 'cancel_execute',
@@ -18,7 +18,7 @@ export enum AIMessageType {
   TOOL_PERMISSION_RESPONSE = 'tool_permission_response',
   USER_FEEDBACK_RESPONSE = 'user_feedback_response',
 
-  // 服务端发送
+  // Server sends
   ANSWER = 'answer',
   COMMAND = 'command',
   OPERATION_PLAN = 'operation_plan',
@@ -37,16 +37,16 @@ export enum AIMessageType {
   TOKEN_USAGE = 'token_usage',
 }
 
-/** 任务类型 */
+/** Task types */
 export enum TaskType {
   ANSWER = 'answer',
   COMMAND = 'command',
   OPERATION = 'operation',
 }
 
-// ==================== 消息接口 ====================
+// ==================== Message Interfaces ====================
 
-/** 选项接口 */
+/** Option interface */
 export interface ChoiceOption {
   value: string;
   label: string;
@@ -54,7 +54,7 @@ export interface ChoiceOption {
   recommended?: boolean;
 }
 
-/** 选择数据 */
+/** Choice data */
 export interface ChoiceData {
   issue: string;
   question: string;
@@ -64,7 +64,7 @@ export interface ChoiceData {
   context?: Record<string, any>;
 }
 
-/** WebSocket 消息接口 */
+/** WebSocket message interface */
 export interface AIMessage {
   type: AIMessageType;
   task_id?: string;
@@ -78,7 +78,7 @@ export interface AIMessage {
   warnings?: string[];
   context?: Record<string, any>;
   model?: string;
-  mode?: 'normal' | 'agent' | 'code' | 'codex';
+  mode?: 'normal' | 'agent' | 'code' | 'x-agent';
   host_id?: string;
   session_id?: string;
   is_complete?: boolean;
@@ -103,7 +103,7 @@ export interface AIMessage {
   summary?: string;
   retry_attempt?: number;
   files?: AttachedFile[];
-  // 服务端注入的统计数据（COMPLETE 消息）
+  // Server-injected statistics (COMPLETE message)
   stats?: {
     input_tokens?: number;
     output_tokens?: number;
@@ -111,23 +111,23 @@ export interface AIMessage {
     gems_remaining?: number;
     show_stats?: boolean;
   };
-  // 工具调用相关（Code 模式）
+  // Tool invocation related (Code mode)
   tool_name?: string;
   tool_input?: Record<string, any>;
   tool_use_id?: string;
   is_error?: boolean;
-  // 远程执行请求（Code 模式，来自 remote_terminal_proxy）
+  // Remote execution request (Code mode, from remote_terminal_proxy)
   execution_id?: string;
   tool_type?: string;
   exit_code?: number;
-  // 工具权限请求相关（Code 模式）
+  // Tool permission request related (Code mode)
   permission_id?: string;
   allowed?: boolean;
   reason?: string;
-  // 用户反馈相关（Code 模式）
+  // User feedback related (Code mode)
   action?: string;
   message?: string;
-  // 用户选择相关
+  // User choice related
   issue?: string;
   question?: string;
   options?: ChoiceOption[];
@@ -138,15 +138,15 @@ export interface AIMessage {
   cancelled?: boolean;
 }
 
-// ==================== 操作步骤 ====================
+// ==================== Operation Steps ====================
 
-/** 风险等级 */
+/** Risk levels */
 export type RiskLevel = 'low' | 'medium' | 'high';
 
-/** 步骤状态 */
+/** Step status */
 export type StepStatus = 'pending' | 'executing' | 'completed' | 'failed';
 
-/** 操作步骤 */
+/** Operation step */
 export interface OperationStep {
   index: number;
   description: string;
@@ -156,12 +156,12 @@ export interface OperationStep {
   status?: StepStatus;
 }
 
-// ==================== 任务状态 ====================
+// ==================== Task State ====================
 
-/** AI 任务类型 */
+/** AI task types */
 export type AITaskType = 'answer' | 'command' | 'operation' | 'step_detail' | 'user_choice' | 'tool_use';
 
-/** AI 任务状态值 */
+/** AI task status values */
 export type AITaskStatus =
   | 'running'
   | 'executing'
@@ -175,7 +175,7 @@ export type AITaskStatus =
   | 'completed'
   | 'error';
 
-/** Token 使用量 */
+/** Token usage */
 export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
@@ -185,7 +185,7 @@ export interface TokenUsage {
   showGems?: boolean;
 }
 
-/** AI 任务状态 */
+/** AI task state */
 export interface AITaskState {
   taskId: string;
   taskType: AITaskType;
@@ -202,51 +202,51 @@ export interface AITaskState {
   totalSteps?: number;
   tokenUsage?: TokenUsage;
   error?: string;
-  // 步骤详细信息
+  // Step detail information
   stepIndex?: number;
   stepDescription?: string;
   stepCommand?: string;
   stepRisk?: RiskLevel;
   stepOutput?: string;
   stepSuccess?: boolean;
-  // 工具调用相关（Code 模式）
+  // Tool invocation related (Code mode)
   toolName?: string;
   toolInput?: Record<string, any>;
   toolUseId?: string;
   toolOutput?: string;
   toolError?: boolean;
-  // 密码相关
+  // Password related
   passwordPrompt?: string;
-  // 用户选择相关
+  // User choice related
   choiceData?: ChoiceData;
   userChoice?: string;
   userCustomInput?: string;
 }
 
-// ==================== 附件 ====================
+// ==================== Attachments ====================
 
-/** 附件文件 */
+/** Attached file */
 export interface AttachedFile {
   id: string;
   name: string;
   size: number;
   type: string;
-  content: string; // Base64 编码
-  previewUrl?: string; // 图片附件缩略图 URL
+  content: string; // Base64 encoded
+  previewUrl?: string; // Thumbnail URL for image attachments
 }
 
-// ==================== Agent 配置与状态 ====================
+// ==================== Agent Configuration & State ====================
 
-/** AI Agent 运行模式 */
-export type AIAgentMode = 'normal' | 'agent' | 'code' | 'codex';
+/** AI Agent running mode */
+export type AIAgentMode = 'normal' | 'agent' | 'code' | 'x-agent';
 
-/** SSH 模式 */
+/** SSH mode */
 export type SshMode = 'associated' | 'independent';
 
-/** AI Agent 状态 */
+/** AI Agent status */
 export type AIAgentStatus = 'idle' | 'thinking' | 'generating' | 'waiting_user';
 
-/** AI Agent 配置 */
+/** AI Agent configuration */
 export interface AIAgentConfig {
   mode: AIAgentMode;
   model: string;
@@ -254,73 +254,73 @@ export interface AIAgentConfig {
   hostId?: string;
   language?: string;
   sshMode?: SshMode;
-  osType?: string;    // 远程服务器 OS 类型，如 "linux/ubuntu", "macos"
-  osVersion?: string; // 远程服务器 OS 版本，如 "22.04"
-  shell?: string;     // 远程服务器 shell 类型，如 "bash", "zsh"
+  osType?: string;    // Remote server OS type, e.g. "linux/ubuntu", "macos"
+  osVersion?: string; // Remote server OS version, e.g. "22.04"
+  shell?: string;     // Remote server shell type, e.g. "bash", "zsh"
 }
 
-// ==================== 命令执行 ====================
+// ==================== Command Execution ====================
 
-/** 命令执行结果 */
+/** Command execution result */
 export interface CommandResult {
   success: boolean;
   output: string;
   exitCode: number;
 }
 
-/** 命令建议 */
+/** Command suggestion */
 export interface AICmdSuggestion {
   command: string;
   explanation: string;
   risk: RiskLevel;
 }
 
-// ==================== 事件类型 ====================
+// ==================== Event Types ====================
 
-/** AIAgent 发出的事件映射 */
+/** AIAgent event mappings */
 export interface AIAgentEvents {
-  // 流式回复
+  // Streaming response
   'answer:chunk': (content: string, isComplete: boolean) => void;
   'answer:complete': (fullContent: string, tokenUsage?: TokenUsage) => void;
 
-  // 命令建议（normal 模式）
+  // Command suggestion (normal mode)
   'command:suggestion': (suggestion: AICmdSuggestion) => void;
 
-  // Agent 模式事件
+  // Agent mode events
   'plan': (plan: OperationStep[], description: string, taskId: string) => void;
   'step:update': (stepIndex: number, status: StepStatus) => void;
   'step:detail': (stepIndex: number, detail: StepDetailEvent) => void;
 
-  // 人机交互请求
+  // Human-computer interaction requests
   'execute:request': (stepIndex: number, command: string, risk: RiskLevel, description: string, taskId: string) => void;
   'choice:request': (stepIndex: number, data: ChoiceData, taskId: string) => void;
   'password:request': (stepIndex: number, command: string, taskId: string) => void;
   'interactive:prompt': (prompt: string) => void;
 
-  // 工具调用（Code 模式）
+  // Tool invocation (Code mode)
   'tool:use': (toolName: string, toolInput: Record<string, any>, toolUseId: string, taskId: string) => void;
   'tool:result': (toolUseId: string, output: string, isError: boolean) => void;
 
-  // 工具权限请求（Code 模式）
-  'tool:permission_request': (permissionId: string, toolName: string, toolInput: Record<string, any>, taskId: string, toolUseId: string, risk?: string, description?: string) => void;
+  // Tool permission request (Code mode)
+  'tool:permission_request': (permissionId: string, toolName: string, toolInput: Record<string, any>, taskId: string, toolUseId: string, risk?: string, description?: string, title?: string, allowPermanent?: boolean) => void;
 
-  // 用户反馈请求（Code 模式）
+  // User feedback request (Code mode)
   'feedback:request': (taskId: string) => void;
 
-  // 状态变更
+  // Status change
   'status:change': (status: AIAgentStatus) => void;
   'task:start': (taskId: string) => void;
   'task:complete': (summary: string) => void;
   'task:error': (error: string, code?: number) => void;
 
-  // Token 使用
+  // Token usage
   'token:usage': (usage: TokenUsage) => void;
 
-  // 运维任务检测（normal 模式提示切换 agent）
+  // Ops task detection (normal mode suggests switching to agent)
   'ops:detected': (keywords: string[]) => void;
 }
 
-/** 步骤详情事件数据 */
+/** Step detail event data */
 export interface StepDetailEvent {
   taskId: string;
   stepIndex: number;
@@ -334,7 +334,7 @@ export interface StepDetailEvent {
   autoExecute?: boolean;
 }
 
-// ==================== 回调类型 ====================
+// ==================== Callback Types ====================
 
-/** 消息回调 */
+/** Message callback */
 export type AIMessageCallback = (message: AIMessage) => void;

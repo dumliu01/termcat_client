@@ -1,5 +1,4 @@
 /**
- * 多语言配置索引文件
  * Internationalization Configuration Index
  */
 
@@ -20,7 +19,7 @@ const lazyLoaders: Record<Language, () => Promise<TranslationKeys>> = {
 };
 
 /**
- * 同步获取翻译（仅用于初始化默认语言）
+ * Get translation synchronously (only for initializing default language)
  */
 export function getTranslationSync(lang: Language): TranslationKeys {
   if (lang === 'zh') return zh;
@@ -29,7 +28,7 @@ export function getTranslationSync(lang: Language): TranslationKeys {
 }
 
 /**
- * 异步获取指定语言的翻译
+ * Get translation for specified language asynchronously
  */
 export async function getTranslationAsync(lang: Language): Promise<TranslationKeys> {
   const loader = lazyLoaders[lang] || lazyLoaders.zh;
@@ -42,7 +41,7 @@ export function getTranslation(lang: Language): TranslationKeys {
 }
 
 /**
- * 支持的语言列表
+ * Supported language list
  */
 export const supportedLanguages: { code: Language; name: string; nativeName: string }[] = [
   { code: 'zh', name: 'Chinese', nativeName: '中文' },
@@ -51,6 +50,6 @@ export const supportedLanguages: { code: Language; name: string; nativeName: str
 ];
 
 /**
- * 默认语言
+ * Default language
  */
 export const defaultLanguage: Language = 'zh';

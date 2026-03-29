@@ -1,12 +1,12 @@
 /**
- * msg-viewer 多语言映射
+ * msg-viewer i18n mapping
  *
- * msg-viewer 是宿主共享组件，通过 language prop 获取当前语言。
- * 所有用户可见文本集中在此文件，禁止在组件中硬编码。
+ * msg-viewer is a host shared component, gets current language via language prop.
+ * All user-visible text centralized in this file, hardcoding in components is prohibited.
  */
 
 const zh = {
-  // token 统计
+  // Token statistics
   statsInputTokens: '输入',
   statsOutputTokens: '输出',
   statsCostGems: '消耗',

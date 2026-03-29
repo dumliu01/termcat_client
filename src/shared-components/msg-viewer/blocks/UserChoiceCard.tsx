@@ -1,5 +1,5 @@
 /**
- * 用户选择提示卡片
+ * User choice prompt card
  */
 
 import React, { useState } from 'react';

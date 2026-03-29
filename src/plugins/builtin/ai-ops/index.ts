@@ -52,9 +52,9 @@ const AIOpsWrapper: React.FC<SidebarPanelProps> = ({
     sessionId: connectionId || undefined,
     hostId: host?.id,
     hostName: host?.name,
-    // 不能用 isActive 来决定 isVisible：父组件 TerminalView 的 React.memo
-    // 故意不比较 isActive（避免 canvas 闪烁），导致 isActive 变化时本组件不会重渲染。
-    // 若组合 isActive 进 isVisible，面板在非活跃 tab 会一直返回 null，切换过来后仍空白。
+    // Cannot use isActive to determine isVisible: parent component TerminalView's React.memo
+    // intentionally doesn't compare isActive (to avoid canvas flicker), causing this component not to re-render when isActive changes.
+    // If combining isActive into isVisible, panel in inactive tab will always return null, still blank after switching.
     isVisible,
     onClose,
     onExecute: handleExecute,

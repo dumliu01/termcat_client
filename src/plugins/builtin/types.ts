@@ -1,151 +1,161 @@
 /**
- * 内置插件类型定义
+ * Builtin Plugin Type Definitions
  *
- * 内置插件与外部插件的区别：
- * - 运行在 Renderer 进程中（直接访问 React 和 DOM）
- * - 可以注册 React 组件（而非 Webview HTML）
- * - 共享应用的样式体系（CSS 变量、Tailwind）
- * - 不需要权限声明（已是应用自身的一部分）
+ * Differences between builtin and external plugins:
+ * - Runs in Renderer process (direct access to React and DOM)
+ * - Can register React components (instead of Webview HTML)
+ * - Shares the application's style system (CSS variables, Tailwind)
+ * - Does not require permission declarations (already part of the application itself)
  */
 
 import type { Disposable } from '../types';
+import type { AIModeInfo, AIModelInfo } from '@/utils/types';
 import type { PanelRegistration, SectionDescriptor, TemplateData } from '../ui-contribution/types';
 
-/** 内置插件定义 */
+/** Builtin plugin definition */
 export interface BuiltinPlugin {
-  /** 插件 ID */
+  /** Plugin ID */
   id: string;
-  /** 显示名称（fallback） */
+  /** Display name (fallback) */
   displayName: string;
-  /** 描述（fallback） */
+  /** Description (fallback) */
   description: string;
-  /** 版本 */
+  /** Version */
   version: string;
-  /** 多语言显示名称 */
+  /** Localized display name */
   getLocalizedName?: (language: string) => string;
-  /** 多语言描述 */
+  /** Localized description */
   getLocalizedDescription?: (language: string) => string;
-  /** 激活函数 */
+  /** Activate function */
   activate(context: BuiltinPluginContext): void | Promise<void>;
-  /** 清理函数 */
+  /** Cleanup function */
   deactivate?(): void | Promise<void>;
 }
 
-/** 连接信息（由 TerminalView 推送给插件） */
+/** Connection info (pushed to plugin by TerminalView) */
 export interface ConnectionInfo {
   connectionId: string;
   hostname: string;
-  connectionType: 'ssh' | 'local';  // 连接类型
+  connectionType: 'ssh' | 'local';  // Connection type
   isVisible: boolean;
   isActive: boolean;
   language: string;
 }
 
-/** 连接变化回调 */
+/** Connection change callback */
 export type ConnectionChangeHandler = (info: ConnectionInfo | null) => void;
 
-/** 内置插件上下文 */
+/** Visibility change callback (lightweight, no connection rebuild) */
+export type VisibilityChangeHandler = (isVisible: boolean, isActive: boolean) => void;
+
+/** Builtin plugin context */
 export interface BuiltinPluginContext {
-  /** 插件 ID */
+  /** Plugin ID */
   pluginId: string;
-  /** 订阅列表 */
+  /** Subscription list */
   subscriptions: Disposable[];
-  /** 注册侧栏面板（React 组件） */
+  /** Register sidebar panel (React component) */
   registerSidebarPanel(panel: SidebarPanelRegistration): Disposable;
-  /** 注册底部面板（React 组件） */
+  /** Register bottom panel (React component) */
   registerBottomPanel(panel: BottomPanelRegistration): Disposable;
-  /** 注册工具栏按钮 */
+  /** Register toolbar toggle button */
   registerToolbarToggle(toggle: ToolbarToggleRegistration): Disposable;
-  /** 注册模板驱动面板 */
+  /** Register template-driven panel */
   registerPanel(options: PanelRegistration): Disposable;
-  /** 推送面板全量数据 */
+  /** Push full panel data */
   setPanelData(panelId: string, sections: SectionDescriptor[]): void;
-  /** 局部更新某个 section 的数据 */
+  /** Partially update section data */
   updateSection(panelId: string, sectionId: string, data: TemplateData): void;
-  /** 监听连接信息变化 */
+  /** Listen for connection info changes */
   onConnectionChange(handler: ConnectionChangeHandler): Disposable;
-  /** 发送事件给宿主（跨插件通信） */
+  /** Listen for visibility/activity changes (lightweight, monitor start/stop only) */
+  onVisibilityChange(handler: VisibilityChangeHandler): Disposable;
+  /** Send event to host (cross-plugin communication) */
   emitEvent(eventType: string, payload: unknown): void;
+  /** Register additional agent modes (plugin extension point) */
+  registerModes(modes: AIModeInfo[]): Disposable;
+  /** Register additional AI models (plugin extension point) */
+  registerModels(models: AIModelInfo[]): Disposable;
 }
 
-/** 侧栏面板注册 */
+/** Sidebar panel registration */
 export interface SidebarPanelRegistration {
-  /** 唯一 ID */
+  /** Unique ID */
   id: string;
-  /** 面板位置 */
+  /** Panel position */
   position: 'left' | 'right';
-  /** React 组件 */
+  /** React component */
   component: React.ComponentType<SidebarPanelProps>;
-  /** 默认宽度 */
+  /** Default width */
   defaultWidth?: number;
-  /** 是否默认显示 */
+  /** Visible by default */
   defaultVisible?: boolean;
-  /** localStorage key 前缀（用于持久化宽度/可见性） */
+  /** localStorage key prefix (for persisting width/visibility) */
   storageKeyPrefix?: string;
 }
 
-/** 侧栏面板组件接收的 Props */
+/** Props received by sidebar panel component */
 export interface SidebarPanelProps {
-  /** 当前终端会话 ID */
+  /** Current terminal session ID */
   sessionId: string;
-  /** SSH 连接 ID */
+  /** SSH connection ID */
   connectionId: string;
-  /** 连接类型 */
+  /** Connection type */
   connectionType?: 'ssh' | 'local';
-  /** 终端后端 ID（本地终端为 ptyId，SSH 为 connectionId） */
+  /** Terminal backend ID (ptyId for local, connectionId for SSH) */
   terminalId?: string;
-  /** 主机信息 */
+  /** Host info */
   host: unknown;
-  /** 面板宽度 */
+  /** Panel width */
   width: number;
-  /** 是否可见 */
+  /** Is visible */
   isVisible: boolean;
-  /** 当前 tab 是否活跃 */
+  /** Is current tab active */
   isActive: boolean;
-  /** 主题 */
+  /** Theme */
   theme: string;
-  /** 当前语言 */
+  /** Current language */
   language: string;
-  /** 关闭回调 */
+  /** Close callback */
   onClose: () => void;
 }
 
-/** 工具栏切换按钮注册 */
+/** Toolbar toggle button registration */
 export interface ToolbarToggleRegistration {
-  /** 关联的面板 ID */
+  /** Associated panel ID */
   panelId: string;
-  /** 按钮图标组件 */
+  /** Button icon component */
   icon: React.ComponentType<{ className?: string }>;
-  /** 按钮提示文字 */
+  /** Button tooltip text */
   tooltip: string;
-  /** 在工具栏中的排序优先级（越小越靠前） */
+  /** Sort priority in toolbar (smaller = more left) */
   priority?: number;
 }
 
-/** 底部面板注册 */
+/** Bottom panel registration */
 export interface BottomPanelRegistration {
-  /** 唯一 ID */
+  /** Unique ID */
   id: string;
-  /** 标签页标题（fallback，当 getLocalizedTitle 未提供时使用） */
+  /** Tab title (fallback, used when getLocalizedTitle is not provided) */
   title: string;
-  /** 多语言标题函数（插件自行本地化） */
+  /** Localization title function (plugin handles localization itself) */
   getLocalizedTitle?: (language: string) => string;
-  /** 标签页图标组件 */
+  /** Tab icon component */
   icon?: React.ComponentType<{ className?: string }>;
-  /** 排序优先级（越小越靠前） */
+  /** Sort priority (smaller = more left) */
   priority?: number;
-  /** React 组件 */
+  /** React component */
   component: React.ComponentType<BottomPanelProps>;
 }
 
-/** 底部面板组件接收的 Props */
+/** Props received by bottom panel component */
 export interface BottomPanelProps {
-  /** SSH 连接 ID */
+  /** SSH connection ID */
   connectionId: string | null;
-  /** 文件系统操作能力（来自 IHostConnection） */
+  /** File system operation capability (from IHostConnection) */
   fsHandler?: import('@/core/terminal/IFsHandler').IFsHandler;
-  /** 主题 */
+  /** Theme */
   theme: string;
-  /** 当前 tab 是否可见 */
+  /** Is current tab visible */
   isVisible: boolean;
 }

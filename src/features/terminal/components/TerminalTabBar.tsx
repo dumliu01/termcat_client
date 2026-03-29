@@ -1,7 +1,7 @@
 /**
- * 终端 Tab 栏组件
+ * Terminal Tab Bar component
  *
- * 包含 Tab 列表（拖拽排序、重命名）、"+" 主机选择弹窗、右键菜单。
+ * Contains Tab list (drag-and-drop reorder, rename), "+" host picker popup, context menu.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -18,17 +18,17 @@ interface TerminalTabBarProps {
   onDuplicateSession: (session: Session) => void;
   onReorderSessions: (sessions: Session[]) => void;
   onOpenHostConfig: (session: Session) => void;
-  // 拖拽
+  // Drag
   dragTabRef: React.MutableRefObject<{ sessionId: string; startIndex: number } | null>;
   dragOverTabId: string | null;
   setDragOverTabId: (id: string | null) => void;
-  // 重命名
+  // Rename
   renamingTabId: string | null;
   setRenamingTabId: (id: string | null) => void;
   renameValue: string;
   setRenameValue: (v: string) => void;
   onRenameSession: (sessionId: string, name: string | undefined) => void;
-  // 主机列表
+  // Host list
   hosts: Host[];
   groups: HostGroup[];
   isMinimalMode: boolean;
@@ -59,15 +59,15 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
 }) => {
   const { t } = useI18n();
 
-  // Tab 右键菜单
+  // Tab context menu
   const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
 
-  // Tab "+" 主机选择弹窗
+  // Tab "+" host picker popup
   const [hostPickerPos, setHostPickerPos] = useState<{ x: number; y: number } | null>(null);
   const [hostPickerExpandedGroup, setHostPickerExpandedGroup] = useState<string | null>(null);
   const hostPickerRef = useRef<HTMLDivElement>(null);
 
-  // 右键菜单：点击空白关闭
+  // Context menu: click on empty space to close
   useEffect(() => {
     if (!tabContextMenu) return;
     const handleClick = () => setTabContextMenu(null);
@@ -75,7 +75,7 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
     return () => window.removeEventListener('click', handleClick);
   }, [tabContextMenu]);
 
-  // 主机选择弹窗：点击外部关闭
+  // Host picker popup: click outside to close
   useEffect(() => {
     if (!hostPickerPos) return;
     const handleClick = (e: MouseEvent) => {
@@ -149,9 +149,9 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
                   borderLeft: isDragOver ? '2px solid var(--primary-color)' : '2px solid transparent',
                 }}
               >
-                {/* 活动指示条 */}
+                {/* Active indicator */}
                 {isActive && <div className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-[var(--primary-color)]" />}
-                {/* 右侧分割线 */}
+                {/* Right divider */}
                 {!isActive && <div className="absolute right-0 top-2 bottom-2 w-[1px] bg-[var(--border-color)] opacity-40" />}
 
                 {renamingTabId === session.id ? (
@@ -212,7 +212,7 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
         <div className="flex-1" />
       </div>
 
-      {/* Tab "+" 主机选择弹窗 */}
+      {/* Tab "+" host picker popup */}
       {hostPickerPos && (() => {
         const grouped = new Map<string, Host[]>();
         const ungrouped: Host[] = [];
@@ -231,8 +231,8 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
             className="fixed z-[9999] animate-in fade-in min-w-[200px] max-w-[280px]"
             style={{ left: hostPickerPos.x, top: hostPickerPos.y }}
           >
-            <div className="bg-[var(--bg-sidebar)] border border-[var(--border-color)] rounded-xl py-1.5 shadow-2xl backdrop-blur-2xl max-h-[360px] overflow-y-auto no-scrollbar">
-              {/* 本地终端 */}
+            <div className="bg-[var(--bg-sidebar)] border border-[var(--border-color)] rounded-xl py-1.5 shadow-2xl backdrop-blur-2xl max-h-[360px] overflow-y-auto no-scrollbar"            >
+              {/* Local Terminal */}
               {onLocalConnect && (
                 <button
                   onClick={() => { onLocalConnect(); setHostPickerPos(null); setHostPickerExpandedGroup(null); }}
@@ -298,11 +298,11 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
                 </>
               ) : null}
             </div>
-          </div>
-        );
-      })()}
+        </div>
+      );
+    })()}
 
-      {/* Tab 右键菜单 */}
+      {/* Tab context menu */}
       {tabContextMenu && (() => {
         const session = sessions.find(s => s.id === tabContextMenu.sessionId);
         if (!session) return null;

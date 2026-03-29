@@ -2,14 +2,14 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { authService } from '@/core/auth/authService';
 import { logger, LOG_MODULE } from '../logger/logger';
 
-// 统一 RPC 响应格式
+// Unified RPC response format
 interface ApiResponse<T = any> {
   code: number;
   message: string;
   data?: T;
 }
 
-// RPC 错误
+// RPC error
 class ApiError extends Error {
   code: number;
   constructor(code: number, message: string) {
@@ -94,8 +94,8 @@ class ApiService {
         });
 
         if (error.response?.status === 401 && authService.isAuthenticated()) {
-          // 仅当用户已登录（有 token）时才触发认证失败流程
-          // 游客模式无 token，401 是预期行为，不应踢到登录页
+          // Only trigger auth failure flow when user is already logged in (has token)
+          // Guest mode has no token, 401 is expected behavior, should not redirect to login
           logger.info(LOG_MODULE.AUTH, 'auth.session.expired', 'Session expired, clearing auth data');
           authService.logout();
           authService.notifyAuthFailed();
@@ -105,7 +105,7 @@ class ApiService {
     );
   }
 
-  // 统一 RPC 调用方法
+  // Unified RPC call method
   private async rpc<T = any>(action: string, params?: any): Promise<T> {
     const response = await this.api.post<ApiResponse<T>>(action, params || {});
     const body = response.data;
@@ -137,19 +137,19 @@ class ApiService {
       module: LOG_MODULE.HTTP,
     });
 
-    // 将后端数据转换为前端格式
-    // 注意：服务器出于安全考虑不会返回password和private_key
+    // Convert server data to frontend format
+    // Note: Server doesn't return password and private_key for security reasons
     const hosts = (data || []).map((host: any) => ({
       id: String(host.id),
       name: host.name,
       hostname: host.hostname,
       username: host.username,
       authType: host.auth_type === 'key' ? 'ssh_key' : 'password',
-      // 服务器不会返回敏感信息，这些字段会是undefined
-      password: undefined, // 服务器不返回密码
-      sshKey: undefined,   // 服务器不返回私钥
+      // Server doesn't return sensitive info, these fields will be undefined
+      password: undefined, // Server doesn't return password
+      sshKey: undefined,   // Server doesn't return private key
       port: host.port || 22,
-      os: 'linux' as const, // 默认linux，后端需要添加os字段
+      os: 'linux' as const, // Default linux, backend needs to add os field
       tags: host.tags ? (typeof host.tags === 'string' ? JSON.parse(host.tags) : host.tags) : [],
       notes: host.description,
       groupId: host.group_id ? String(host.group_id) : undefined,
@@ -164,7 +164,7 @@ class ApiService {
       })),
       connectionType: host.connection_type || 'direct',
       targetHost: host.target_host || undefined,
-      proxy: host.proxy, // 服务器返回的代理关联对象
+      proxy: host.proxy, // Proxy association object returned by server
       terminal: host.terminal_config
         ? (typeof host.terminal_config === 'string' ? JSON.parse(host.terminal_config) : host.terminal_config)
         : undefined,
@@ -178,7 +178,7 @@ class ApiService {
   }
 
   async createHost(host: any) {
-    // 将前端数据转换为后端格式
+    // Convert frontend data to backend format
     const payload = {
       name: host.name,
       hostname: host.hostname,
@@ -204,7 +204,7 @@ class ApiService {
     };
     try {
       const created = await this.rpc('/host/create', payload);
-      // 返回转换后的数据
+      // Return converted data
       return {
         id: String(created.id),
         name: created.name,
@@ -244,7 +244,7 @@ class ApiService {
   }
 
   async updateHost(id: string, host: any) {
-    // 将前端数据转换为后端格式
+    // Convert frontend data to backend format
     const payload = {
       id: parseInt(id),
       name: host.name,
@@ -276,7 +276,7 @@ class ApiService {
       host_id: id,
     });
 
-    // 返回转换后的数据
+    // Return converted data
     return {
       id: String(updated.id),
       name: updated.name,
@@ -420,12 +420,13 @@ class ApiService {
     return this.rpc('/payment/methods');
   }
 
-  async createPaymentOrder(type: string, amount: number, paymentMethod: string, tierId?: string) {
+  async createPaymentOrder(type: string, amount: number, paymentMethod: string, tierId?: string, machineId?: string, machineName?: string) {
     return this.rpc('/payment/create-order', {
       type,
       amount,
       payment_method: paymentMethod,
       ...(tierId ? { tier_id: tierId } : {}),
+      ...(machineId ? { machine_id: machineId, machine_name: machineName || '' } : {}),
     });
   }
 
@@ -441,10 +442,14 @@ class ApiService {
     return this.rpc('/payment/cancel-order', { order_no: orderNo });
   }
 
+  async mockPay(orderNo: string) {
+    return this.rpc('/payment/mock-pay', { order_no: orderNo });
+  }
+
   // ========== Group Management ==========
   async getGroups() {
     const data = await this.rpc<any[]>('/group/list');
-    // 转换为前端格式: 后端 id(number) → 前端 id(string)
+    // Convert to frontend format: backend id(number) → frontend id(string)
     return (data || []).map((g: any) => ({
       id: String(g.id),
       name: g.name,
@@ -490,7 +495,7 @@ class ApiService {
   // ========== Proxy Management ==========
   async getProxies() {
     const data = await this.rpc<any[]>('/proxy/list');
-    // 转换为前端格式
+    // Convert to frontend format
     return (data || []).map((p: any) => ({
       id: String(p.id),
       name: p.name,
@@ -595,12 +600,12 @@ class ApiService {
     return this.rpc('/ads/fetch-platform', { platform, ...params });
   }
 
-  /** script 模式广告拉取：返回 HTML 片段 + 页面 URL（桌面应用优先用 pageUrl） */
+  /** Script mode ad fetch: returns HTML snippet + page URL (desktop app prefers pageUrl) */
   async fetchScriptAds(platform: string, params: Record<string, any>): Promise<{ html: string; pageUrl?: string; width?: number; height?: number }> {
     return this.rpc(`/ads/script/${platform}`, params);
   }
 
-  /** 获取广告页面完整 URL（供 iframe src 使用） */
+  /** Get full ad page URL (for iframe src) */
   getAdPageFullUrl(pageUrl: string): string {
     return this.baseURL.replace(/\/api\/v1$/, '') + pageUrl;
   }
@@ -648,6 +653,31 @@ class ApiService {
 
   async getUserPluginList() {
     return this.rpc<any[]>('/plugin/user/list');
+  }
+
+  // ========== License ==========
+  async licenseGetFeatures(machineId: string) {
+    return this.rpc('/license/features', { machine_id: machineId });
+  }
+
+  async licenseActivate(machineId: string, machineName: string) {
+    return this.rpc('/license/activate', { machine_id: machineId, machine_name: machineName });
+  }
+
+  async licenseActivateKey(licenseKey: string, machineId: string, machineName: string) {
+    return this.rpc('/license/activate-key', { license_key: licenseKey, machine_id: machineId, machine_name: machineName });
+  }
+
+  async licenseDeactivate(machineId: string) {
+    return this.rpc('/license/deactivate', { machine_id: machineId });
+  }
+
+  async licenseGetMachines() {
+    return this.rpc('/license/machines', {});
+  }
+
+  async licenseVerify(machineId: string) {
+    return this.rpc('/license/verify', { machine_id: machineId });
   }
 
 }

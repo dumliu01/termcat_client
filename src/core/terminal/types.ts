@@ -1,5 +1,5 @@
 /**
- * 终端抽象层类型定义
+ * Terminal abstraction layer type definitions
  */
 
 export type TerminalBackendType = 'ssh' | 'local';

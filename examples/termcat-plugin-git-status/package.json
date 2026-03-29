@@ -1,10 +1,10 @@
 {
   "name": "termcat-plugin-git-status",
   "version": "1.0.0",
-  "description": "在终端标签上显示 Git 分支和状态",
+  "description": "Display Git branch and status on terminal tab",
   "termcat": {
     "displayName": "Git Status",
-    "description": "在终端标签上显示 Git 分支和状态",
+    "description": "Display Git branch and status on terminal tab",
     "entry": "dist/extension.js",
     "activationEvents": [
       "onSSHConnect"
@@ -18,12 +18,12 @@
       "commands": [
         {
           "id": "gitStatus.show",
-          "title": "显示 Git 状态",
+          "title": "Show Git Status",
           "icon": "git-branch"
         },
         {
           "id": "gitStatus.refresh",
-          "title": "刷新 Git 状态",
+          "title": "Refresh Git Status",
           "icon": "refresh"
         }
       ],
@@ -36,12 +36,12 @@
         "gitStatus.autoRefresh": {
           "type": "boolean",
           "default": true,
-          "description": "SSH 连接后自动获取 Git 分支"
+          "description": "Automatically fetch Git branch after SSH connection"
         },
         "gitStatus.refreshInterval": {
           "type": "number",
           "default": 30,
-          "description": "自动刷新间隔（秒）"
+          "description": "Auto refresh interval (seconds)"
         }
       },
       "i18n": {

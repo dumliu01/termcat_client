@@ -55,7 +55,7 @@ echo "===NETWORK_END===";
       metrics.cpu = Math.round(100 - parseFloat(cpuLine[4]));
     }
 
-    // 内存 - 支持 KiB、MiB 和 GiB 格式，处理缩写 totl=total
+    // Memory - supports KiB, MiB and GiB formats, handles abbreviation totl=total
     let memLine = section.match(/KiB Mem\s*:?\s*([\d,.]+)\s*tot[al]*,\s*([\d,.]+)\s*free,\s*([\d,.]+)\s*used/i);
     let isGiB = false;
     if (!memLine) {
@@ -91,7 +91,7 @@ echo "===NETWORK_END===";
       }
     }
 
-    // Swap - 支持 KiB、MiB、GiB 格式
+    // Swap - supports KiB, MiB, GiB formats
     let swapLine = section.match(/KiB Swp\s*:?\s*([\d,.]+)\s*tot[al]*,\s*([\d,.]+)\s*free,\s*([\d,.]+)\s*used/i);
     if (!swapLine) {
       swapLine = section.match(/MiB Swp\s*:?\s*([\d,.]+)\s*tot[al]*,\s*([\d,.]+)\s*free,\s*([\d,.]+)\s*used/i);
@@ -149,12 +149,12 @@ echo "===NETWORK_END===";
     if (!match) return;
     const lines = match[1].trim().split('\n');
 
-    // 跳过标题行
+    // Skip header line
     for (let i = 1; i < lines.length && i < 11; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      // ps aux 格式: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
+      // ps aux format: USER PID %CPU %MEM VSZ RSS TTY STAT START TIME COMMAND
       const parts = line.split(/\s+/);
       if (parts.length >= 11) {
         const memMB = (parseInt(parts[4]) / 1024).toFixed(1);
@@ -176,7 +176,7 @@ echo "===NETWORK_END===";
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      // Linux: Filesystem Size Used Avail Use% Mounted_on (6列)
+      // Linux: Filesystem Size Used Avail Use% Mounted_on (6 columns)
       const parts = line.split(/\s+/);
       if (parts.length >= 6) {
         metrics.disks.push({
@@ -194,7 +194,7 @@ echo "===NETWORK_END===";
     if (!match) return null;
     const parts = match[1].trim().split(/\s+/);
 
-    // /proc/net/dev 格式: eth0: rxBytes rxPackets ... txBytes txPackets ...
+    // /proc/net/dev format: eth0: rxBytes rxPackets ... txBytes txPackets ...
     if (parts.length >= 10 && parts[0].includes(':')) {
       return {
         interfaceName: parts[0].replace(':', ''),

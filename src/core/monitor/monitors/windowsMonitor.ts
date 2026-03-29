@@ -2,12 +2,12 @@ import { SystemMetrics } from '@/utils/types';
 import { IOSMonitor, NetworkSample } from './types';
 
 /**
- * Windows 监控器（预留）
- * TODO: 使用 PowerShell 命令实现 Windows 系统监控
+ * Windows Monitor (placeholder)
+ * TODO: Implement Windows system monitoring using PowerShell commands
  */
 export class WindowsMonitor implements IOSMonitor {
   buildCommand(): string {
-    // PowerShell 命令获取系统信息
+    // PowerShell command to get system info
     return `
 echo "===CPU_MEM_START===";
 powershell -Command "Get-CimInstance Win32_Processor | Select-Object -ExpandProperty LoadPercentage";
@@ -34,7 +34,7 @@ echo "===DISKS_END===";
     this.parseUptime(output, metrics);
     this.parseProcesses(output, metrics);
     this.parseDisks(output, metrics);
-    return null; // TODO: Windows 网络监控
+    return null; // TODO: Windows network monitoring
   }
 
   private parseCpuCores(output: string, metrics: SystemMetrics): void {
@@ -52,7 +52,7 @@ echo "===DISKS_END===";
     if (!match) return;
     const section = match[1];
 
-    // CPU: 直接是百分比数字
+    // CPU: directly a percentage number
     const cpuLine = section.match(/^(\d+)\s*$/m);
     if (cpuLine) {
       metrics.cpu = parseInt(cpuLine[1]);
@@ -93,7 +93,7 @@ echo "===DISKS_END===";
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      // 格式: PID MemMB CPU ProcessName
+      // Format: PID MemMB CPU ProcessName
       const parts = line.trim().split(/\s+/);
       if (parts.length >= 4) {
         const name = parts.slice(3).join(' ');
@@ -114,7 +114,7 @@ echo "===DISKS_END===";
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      // 格式: C: 100.0G 50.0G 50%
+      // Format: C: 100.0G 50.0G 50%
       const parts = line.trim().split(/\s+/);
       if (parts.length >= 4) {
         metrics.disks.push({

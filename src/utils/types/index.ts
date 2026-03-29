@@ -1,18 +1,31 @@
 export type OSType = 'linux' | 'windows' | 'mac';
-// 对齐 AITerm 的多主题枚举：极暗、常规深色、优雅灰、工业灰、浅色
+// Multi-theme enumeration aligned with AITerm: dark, regular, dim, urban, light
 export type ThemeType = 'dark' | 'regular' | 'dim' | 'urban' | 'light';
 export type TerminalThemeType = 'classic' | 'solarized' | 'monokai' | 'dracula' | 'matrix';
 export type TierType = 'Standard' | 'Pro' | 'Adv';
 
-// AI 模型类型（模型ID）
+// AI model type (model ID)
 export type AIModelType = string;
 
-// AI 模型信息（从服务端获取）
+// AI model information (from server)
 export interface AIModelInfo {
-  id: string;           // 模型 ID（如 glm-4-flash）
-  name: string;         // 显示名称（如 GLM-4 Flash）
-  provider: string;     // 提供商标识（如 zhipu）
-  provider_name: string; // 提供商名称（如 智谱AI）
+  id: string;           // Model ID (e.g. glm-4-flash)
+  name: string;         // Display name (e.g. GLM-4 Flash)
+  provider: string;     // Provider identifier (e.g. zhipu)
+  provider_name: string; // Provider name (e.g. 智谱AI)
+}
+
+/** AI operation mode info (from server + plugin injection) */
+export interface AIModeInfo {
+  id: string;                          // Mode identifier: ask, agent, code, x-agent, or plugin-defined
+  name: string;                        // Display name
+  icon?: string;                       // Icon identifier (lucide icon name)
+  allowedModels?: string[];            // Allowed model IDs, empty/undefined = no restriction
+  costPerQuestion?: number;            // Gems cost per question
+  source: 'server' | 'plugin';        // Origin
+  pluginData?: Record<string, any>;    // Plugin extension data (e.g. wsUrl, token)
+  locked?: boolean;                    // Whether mode is locked (not purchased)
+  price?: number;                      // Unlock price for display
 }
 
 export interface ModelConfig {
@@ -96,10 +109,10 @@ export interface Host {
     backspaceSeq: string;
     deleteSeq: string;
   };
-  connectionType?: 'direct' | 'jump' | 'local';  // 连接方式，默认 direct
-  targetHost?: string;                  // 跳板机模式下的目标主机地址
+  connectionType?: 'direct' | 'jump' | 'local';  // Connection type, default is direct
+  targetHost?: string;                  // Target host address in jump host mode
   proxyId?: string;
-  proxy?: Proxy;  // 完整的代理配置对象
+  proxy?: Proxy;  // Complete proxy configuration object
   tunnels?: Tunnel[];
   localConfig?: import('@/core/terminal/types').LocalTerminalConfig;
 }
@@ -117,7 +130,7 @@ export interface AICmdSuggestion {
   risk: 'low' | 'medium' | 'high';
 }
 
-// AI Agent 相关类型
+// AI Agent related types
 export type AITaskType = 'answer' | 'command' | 'operation' | 'step_detail' | 'user_choice' | 'tool_use';
 
 export interface AIOperationStep {
@@ -129,7 +142,7 @@ export interface AIOperationStep {
   status?: 'pending' | 'executing' | 'completed' | 'failed';
 }
 
-// 选择选项
+// Choice option
 export interface ChoiceOption {
   value: string;
   label: string;
@@ -137,7 +150,7 @@ export interface ChoiceOption {
   recommended?: boolean;
 }
 
-// 选择数据
+// Choice data
 export interface ChoiceData {
   issue: string;
   question: string;
@@ -151,12 +164,12 @@ export interface AITaskState {
   taskId: string;
   taskType: AITaskType;
   status: 'running' | 'executing' | 'waiting_confirm' | 'waiting_password' | 'waiting_user_confirm' | 'waiting_user_choice' | 'user_choice_submitted' | 'waiting_tool_permission' | 'waiting_feedback' | 'completed' | 'error';
-  content: string;  // 累积的回答内容
+  content: string;  // Accumulated response content
   command?: string;
   explanation?: string;
   risk?: 'low' | 'medium' | 'high';
   alternatives?: string[];
-  retryAttempt?: number;  // 重试次数（如果是重试消息）
+  retryAttempt?: number;  // Retry count (for retry messages)
   warnings?: string[];
   plan?: AIOperationStep[];
   currentStep?: number;
@@ -168,23 +181,25 @@ export interface AITaskState {
     costGems: number;
   };
   error?: string;
-  // 步骤详细信息字段（用于 step_detail 类型）
+  // Step detail fields (for step_detail type)
   stepIndex?: number;
   stepDescription?: string;
   stepCommand?: string;
   stepRisk?: 'low' | 'medium' | 'high';
   stepOutput?: string;
   stepSuccess?: boolean;
-  // 工具调用相关（Code 模式）
+  // Tool call related (Code mode)
   toolName?: string;
   toolInput?: Record<string, any>;
   toolUseId?: string;
   toolOutput?: string;
   toolError?: boolean;
   permissionId?: string;
-  // 密码输入相关
-  passwordPrompt?: string;  // 密码提示信息
-  // 用户选择相关（新增）
+  permissionTitle?: string;  // SDK title (e.g. "Claude wants to run: lsof")
+  allowPermanent?: boolean;  // Whether "Always allow" button should show (Code mode only)
+  // Password input related
+  passwordPrompt?: string;  // Password prompt message
+  // User choice related
   choiceData?: ChoiceData;
   userChoice?: string;
   userCustomInput?: string;
@@ -234,12 +249,12 @@ export interface SystemMetrics {
   ping: number;
   processes: ProcessInfo[];
   disks: { path: string; used: string; total: string; percent: number }[];
-  // 网络历史数据 - 上行(柱状)和下行(曲线)分开存储
-  netUpHistory: number[];   // 上传速度历史 (KB/s)
-  netDownHistory: number[]; // 下载速度历史 (KB/s)
+  // Network history data - upload (bar) and download (line) stored separately
+  netUpHistory: number[];   // Upload speed history (KB/s)
+  netDownHistory: number[]; // Download speed history (KB/s)
   pingHistory: number[];
   ethName: string;
-  // 保持向后兼容
+  // Backward compatibility
   mem?: number;
   swap?: number;
 }
@@ -248,18 +263,18 @@ export interface TransferItem {
   id: string;
   name: string;
   size: string;
-  sizeBytes?: number;        // 总字节数
+  sizeBytes?: number;        // Total bytes
   progress: number;
-  transferred?: number;       // 已传输字节数
+  transferred?: number;       // Transferred bytes
   speed: string;
   type: 'upload' | 'download';
   status: 'running' | 'completed' | 'failed' | 'paused' | 'queued';
   timestamp: string;
-  localPath?: string;        // 本地路径
-  remotePath?: string;       // 远程路径
-  error?: string;            // 错误信息
-  connectionId?: string;     // 连接ID
-  isDirectory?: boolean;     // 是否为目录
+  localPath?: string;        // Local path
+  remotePath?: string;       // Remote path
+  error?: string;            // Error message
+  connectionId?: string;     // Connection ID
+  isDirectory?: boolean;     // Whether it is a directory
 }
 
 export interface TransferProgress {

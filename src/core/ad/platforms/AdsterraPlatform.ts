@@ -1,15 +1,15 @@
 /**
- * Adsterra 广告平台（script 模式）
+ * Adsterra Ad Platform (script mode)
  *
- * Adsterra 不提供 S2S 结构化广告数据 API，Publisher API 仅支持统计报表。
- * 采用 Native Banner 广告代码，通过 iframe sandbox 渲染。
+ * Adsterra does not provide S2S structured ad data API, Publisher API only supports statistics reporting.
+ * Uses Native Banner ad code, rendered via iframe sandbox.
  *
- * 数据流：
- * 客户端 → POST /api/v1/ads/script/adsterra → termcat_server 返回 HTML 片段
+ * Data flow:
+ * Client → POST /api/v1/ads/script/adsterra → termcat_server returns HTML snippet
  * → AdContent { renderMode: 'script', scriptHtml: '...' }
- * → AdMessageBubble 创建 iframe sandbox 渲染
+ * → AdMessageBubble creates iframe sandbox for rendering
  *
- * 官网: https://www.adsterra.com/
+ * Website: https://www.adsterra.com/
  */
 
 import { IAdPlatform, AdPlatformConfig, AdRequestContext, AdContent, AdPlatformType } from '../types';
@@ -35,7 +35,7 @@ export class AdsterraPlatform implements IAdPlatform {
     if (!this.initialized) return [];
 
     try {
-      // 通过 TermCat Server 获取 Adsterra Native Banner HTML 片段
+      // Get Adsterra Native Banner HTML snippet via TermCat Server
       const response = await apiService.fetchScriptAds('adsterra', {
         slot_id: this.config.slotId,
         theme: 'dark',
@@ -68,7 +68,7 @@ export class AdsterraPlatform implements IAdPlatform {
     try {
       await apiService.reportAdImpression(adId, this.platformId);
     } catch {
-      // fire-and-forget: Adsterra 脚本自带展示追踪，TermCat 侧作为补充统计
+      // fire-and-forget: Adsterra scripts have built-in impression tracking, TermCat side for supplementary stats
     }
   }
 

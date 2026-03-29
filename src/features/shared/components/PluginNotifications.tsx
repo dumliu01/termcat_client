@@ -1,7 +1,7 @@
 /**
- * 插件通知组件
+ * Plugin notifications component
  *
- * 显示插件发送的通知消息，自动消失。
+ * Displays notification messages sent by plugins, auto-dismisses.
  */
 
 import React from 'react';

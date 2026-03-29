@@ -1,7 +1,7 @@
 /**
- * 通用面板渲染器
+ * Generic panel renderer
  *
- * 将 SectionDescriptor[] 映射为模板组件并渲染。
+ * Maps SectionDescriptor[] to template components and renders them.
  */
 
 import React, { useState, useCallback } from 'react';
@@ -11,12 +11,12 @@ import { panelEventBus } from './panel-data-store';
 import type { SectionDescriptor } from './types';
 import { usePanelSections } from '@/features/terminal/hooks/usePanelData';
 
-/** 面板渲染器 Props */
+/** Panel renderer Props */
 interface PanelRendererProps {
   panelId: string;
 }
 
-/** 面板渲染器 — 从 PanelDataStore 获取 sections 并渲染 */
+/** Panel renderer - gets sections from PanelDataStore and renders */
 export const PanelRenderer: React.FC<PanelRendererProps> = ({ panelId }) => {
   const sections = usePanelSections(panelId);
 
@@ -54,7 +54,7 @@ export const PanelRenderer: React.FC<PanelRendererProps> = ({ panelId }) => {
   );
 };
 
-/** 可折叠区域包装 */
+/** Collapsible section wrapper */
 const CollapsibleSection: React.FC<{
   defaultCollapsed?: boolean;
   children: React.ReactNode;
@@ -74,7 +74,7 @@ const CollapsibleSection: React.FC<{
   );
 };
 
-/** 分割线 */
+/** Divider */
 const DividerSection: React.FC = () => (
   <div className="border-t mx-4 my-2" style={{ borderColor: 'var(--border-color)' }} />
 );

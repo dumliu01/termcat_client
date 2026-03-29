@@ -9,7 +9,7 @@ interface MonitoringSidebarProps {
   sidebarWidth: number;
   isVisible: boolean;
   onCloseSidebar: () => void;
-  // 保持向后兼容，但不使用这些参数
+  // Keep for backward compatibility, but these parameters are not used
   metricsHeight?: number;
   headerBg?: string;
   subHeaderBg?: string;
@@ -29,7 +29,7 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState(200);
 
-  // 监听图表容器宽度变化 - 依赖 isVisible，面板重新显示时重新观察新 DOM 元素
+  // Watch for chart container width changes - depends on isVisible, re-observe new DOM elements when panel is re-shown
   useEffect(() => {
     if (!isVisible || !chartContainerRef.current) return;
 
@@ -44,7 +44,7 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
     return () => resizeObserver.disconnect();
   }, [isVisible]);
 
-  // 计算网络图表的Y轴最大值和刻度
+  // Calculate network chart Y-axis max value and tick marks
   const networkChartData = useMemo(() => {
     const upData = metrics.netUpHistory || [];
     const downData = metrics.netDownHistory || [];
@@ -54,12 +54,12 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
       return { maxValue: 100, labels: [100, 66, 33, 0] };
     }
 
-    // 找到当前窗口内的最大值
+    // Find max value in current window
     const maxVal = Math.max(...allData);
-    // 如果只有一个数据点，给它一些空间
+    // If only one data point, give it some space
     const paddedMax = maxVal > 0 ? Math.max(maxVal * 1.2, 10) : 10;
 
-    // 生成Y轴刻度 (4个刻度)
+    // Generate Y-axis tick marks (4 ticks)
     const labels = [
       Math.round(paddedMax),
       Math.round(paddedMax * 0.66),
@@ -240,16 +240,16 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
           </div>
         </div>
 
-        {/* Network Chart - 固定100个时间点，最新数据在最右边，从右向左填充 */}
+        {/* Network Chart - fixed 100 time points, newest data on the right, fills from right to left */}
         <div className="relative h-20 -ml-2">
-          {/* Y轴标签 - 动态刻度 */}
+          {/* Y-axis labels - dynamic tick marks */}
           <div className="absolute left-0 top-0 text-[9px] font-mono text-[var(--text-dim)] opacity-40 flex flex-col justify-between h-full pointer-events-none z-10">
             <span>{networkChartData.labels[0]}K</span>
             <span>{networkChartData.labels[1]}K</span>
             <span>{networkChartData.labels[2]}K</span>
           </div>
 
-          {/* 图表区域 - 使用 ref 获取实际宽度 */}
+          {/* Chart area - use ref to get actual width */}
           <div
             ref={chartContainerRef}
             className="h-full ml-8 relative border-b border-dotted overflow-hidden"
@@ -259,23 +259,23 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
               const upData = metrics.netUpHistory || [];
               const downData = metrics.netDownHistory || [];
               const chartHeight = 80;
-              const maxPoints = 100; // 最多显示100个时间点
+              const maxPoints = 100; // Max 100 time points to display
 
-              // 取最后 maxPoints 个数据
+              // Take last maxPoints data
               const recentUpData = upData.slice(-maxPoints);
               const recentDownData = downData.slice(-maxPoints);
               const dataCount = recentDownData.length;
 
               if (dataCount === 0) return null;
 
-              // 每个时间点的宽度 = 总宽度 / maxPoints（固定100格）
+              // Width per time point = total width / maxPoints (fixed 100 grid)
               const itemWidth = chartWidth / maxPoints;
               const barWidth = Math.max(1, itemWidth * 0.5);
 
-              // 数据从右侧开始：第一个数据点的x偏移 = (maxPoints - dataCount) * itemWidth
+              // Data starts from right: first data point x offset = (maxPoints - dataCount) * itemWidth
               const offsetX = (maxPoints - dataCount) * itemWidth;
 
-              // 归一化下载数据用于曲线
+              // Normalize download data for curve
               const normalizedDownData = recentDownData.map(v => Math.min(v, networkChartData.maxValue));
 
               return (
@@ -286,7 +286,7 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
                   viewBox={`0 0 ${chartWidth} ${chartHeight}`}
                   preserveAspectRatio="none"
                 >
-                  {/* 上传柱子（橙色） */}
+                  {/* Upload bars (orange) */}
                   {recentUpData.map((upVal, i) => {
                     if (upVal <= 0) return null;
                     const x = offsetX + (i + 0.5) * itemWidth - barWidth / 2;
@@ -303,7 +303,7 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
                     );
                   })}
 
-                  {/* 下载折线（绿色） */}
+                  {/* Download line (green) */}
                   {normalizedDownData.length >= 2 && (
                     <polyline
                       points={normalizedDownData.map((val, i) => {
@@ -319,7 +319,7 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
                     />
                   )}
 
-                  {/* 底部绿色时间刻度点 */}
+                  {/* Green time tick dots at bottom */}
                   {recentDownData.map((_, i) => {
                     const cx = offsetX + (i + 0.5) * itemWidth;
                     return (
@@ -338,7 +338,7 @@ export const MonitoringSidebar: React.FC<MonitoringSidebarProps> = React.memo(({
           </div>
         </div>
 
-        {/* Ping Section - 本机到 host 延迟 */}
+        {/* Ping Section - Latency from local to host */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[12px] font-mono font-bold text-cyan-500">{typeof metrics.ping === 'number' ? metrics.ping : '--'}ms</span>

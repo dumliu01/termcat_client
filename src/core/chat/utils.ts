@@ -1,10 +1,10 @@
 /**
- * 会话记录工具函数
+ * Conversation Record Utility Functions
  */
 
 import { AIOpsMessage } from '@/features/terminal/types';
 
-/** 序列化单条消息，剥离 base64 附件内容 */
+/** Serialize single message, strip base64 attachment content */
 export function serializeMsg(msg: AIOpsMessage): any {
   const result: any = {
     id: msg.id,
@@ -21,7 +21,7 @@ export function serializeMsg(msg: AIOpsMessage): any {
     result.taskState = msg.taskState;
   }
 
-  // 附件只保留元信息，不持久化 base64 内容
+  // Attachments only keep metadata, do not persist base64 content
   if (msg.files && msg.files.length > 0) {
     result.files = msg.files.map(f => ({
       id: f.id,

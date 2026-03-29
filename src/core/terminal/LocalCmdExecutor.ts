@@ -1,7 +1,7 @@
 /**
- * 本地命令执行器
+ * Local command executor
  *
- * 通过 localExec IPC 在 Main 进程执行本地 Shell 命令。
+ * Executes local shell commands via localExec IPC in Main process.
  */
 
 import type { ICmdExecutor, CmdResult } from './ICmdExecutor';

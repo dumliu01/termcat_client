@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Sidebar } from '@/features/shared/components/Sidebar';
 import { Dashboard } from '@/features/dashboard/components/Dashboard';
 import { TerminalView } from '@/features/terminal/components/TerminalView';
@@ -18,6 +18,7 @@ import { hostService, StorageMode } from '@/core/host/hostService';
 import { authService } from '@/core/auth/authService';
 import { apiService } from '@/base/http/api';
 import { commerceService } from '@/core/commerce/commerceService';
+import { licenseService } from '@/core/license/licenseService';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 import { useI18n } from '@/base/i18n/I18nContext';
 import { VERSION_NUMBER, versionToNumber } from '@/utils/version';
@@ -39,18 +40,18 @@ const App: React.FC = () => {
 
   // Payment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentType, setPaymentType] = useState<'bones' | 'gems' | 'vip_month' | 'vip_year'>('bones');
+  const [paymentType, setPaymentType] = useState<'bones' | 'gems' | 'vip_month' | 'vip_year' | 'agent_pack'>('bones');
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [paymentTierId, setPaymentTierId] = useState<string | undefined>();
 
-  // 版本更新弹窗
+  // Version update modal
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateVersionInfo | null>(null);
 
-  // Tab 右键 → 主机配置弹窗
+  // Tab right-click → Host config modal
   const [hostConfigSession, setHostConfigSession] = useState<Session | null>(null);
 
-  // 连接前编辑（用户名为空的 host 需要先配置）
+  // Pre-connection editing (hosts with empty username need config first)
   const [pendingConnectHost, setPendingConnectHost] = useState<Host | null>(null);
   const [editingPendingHost, setEditingPendingHost] = useState<Host | null>(null);
 
@@ -69,7 +70,7 @@ const App: React.FC = () => {
     setActiveView,
   });
 
-  // 包装 handleConnect：用户名为空时弹出配置窗口
+  // Wrapper handleConnect: show config window when username is empty
   const handleConnect = useCallback((host: Host) => {
     if (!host.username) {
       setPendingConnectHost(host);
@@ -78,27 +79,111 @@ const App: React.FC = () => {
     sessionManager.handleConnect(host);
   }, [sessionManager.handleConnect]);
 
-  // 复制 Tab：委托 sessionManager 处理，上层不关心 local / ssh 差异
+  // Duplicate Tab: delegate to sessionManager, parent doesn't care about local/ssh distinction
   const handleDuplicateSession = useCallback(
     (session: Session) => sessionManager.duplicateSession(session),
     [sessionManager.duplicateSession],
   );
 
-  const handleOpenPayment = useCallback((type: 'bones' | 'gems' | 'vip_month' | 'vip_year', amount: number, tierId?: string) => {
+  const handleOpenPayment = useCallback((type: 'bones' | 'gems' | 'vip_month' | 'vip_year' | 'agent_pack', amount: number, tierId?: string) => {
     setPaymentType(type);
     setPaymentAmount(amount);
     setPaymentTierId(tierId);
     setShowPaymentModal(true);
   }, []);
 
-  // 重命名 session
+  // Rename session
   const handleRenameSession = useCallback((sessionId: string, name: string | undefined) => {
     sessionManager.setActiveSessions(prev => prev.map(s =>
       s.id === sessionId ? { ...s, customName: name } : s
     ));
   }, [sessionManager.setActiveSessions]);
 
-  // --- 激活内置插件 + 注册外部插件面板 IPC 桥接 ---
+  // --- Local agent plugin: register modes/models via plugin extension point ---
+  const localAgentDisposableRef = useRef<{ modeDisposable?: { dispose: () => void }; modelDisposable?: { dispose: () => void } } | null>(null);
+
+  useEffect(() => {
+    const registerLocalAgent = (data: { wsUrl: string; models?: any[]; modes?: any[] }) => {
+      // Clean up previous registration
+      localAgentDisposableRef.current?.modeDisposable?.dispose();
+      localAgentDisposableRef.current?.modelDisposable?.dispose();
+
+      const modelList = data.models || [];
+
+      // Register modes from plugin data — plugin declares its own modes
+      console.log('[App] registerLocalAgent: modes=', data.modes, 'wsUrl=', data.wsUrl);
+      const pluginModes = (data.modes || [{ id: 'local-agent', name: 'Local Agent', icon: 'cpu' }])
+        .map((m: any) => ({
+          id: m.id,
+          name: m.name,
+          icon: m.icon || 'cpu',
+          allowedModels: m.allowedModels || modelList.map((ml: any) => ml.id || ml),
+          source: 'plugin' as const,
+          pluginData: { wsUrl: data.wsUrl, token: 'local', ...m.pluginData, errorTranslations: (data as any).errorTranslations },
+        }));
+      const modeDisposable = builtinPluginManager.registerExternalModes('local-agent', pluginModes);
+
+      // Register models
+      const modelDisposable = modelList.length > 0
+        ? builtinPluginManager.registerExternalModels('local-agent', modelList.map((m: any) => ({
+            id: m.id || m,
+            name: m.name || m.id || m,
+            provider: 'local',
+            provider_name: '本地',
+          })))
+        : { dispose: () => {} };
+
+      localAgentDisposableRef.current = { modeDisposable, modelDisposable };
+    };
+
+    // Check if local agent already running (retry: plugin subprocess may still be starting)
+    const pollLocalAgent = (attempt = 0) => {
+      window.electron?.plugin?.getLocalAgentStatus?.().then((data: any) => {
+        if (data?.wsUrl) {
+          console.log('[App] getLocalAgentStatus returned (attempt', attempt, '):', JSON.stringify(data).slice(0, 200));
+          registerLocalAgent(data);
+        } else if (attempt < 5) {
+          setTimeout(() => pollLocalAgent(attempt + 1), 2000);
+        }
+      }).catch(() => {});
+    };
+    pollLocalAgent();
+
+    // Listen for start/stop events
+    const unsubStarted = window.electron?.plugin?.onLocalAgentStarted?.((data) => {
+      console.log('[App] onLocalAgentStarted event:', data);
+      registerLocalAgent(data);
+    });
+    const unsubStopped = window.electron?.plugin?.onLocalAgentStopped?.(() => {
+      localAgentDisposableRef.current?.modeDisposable?.dispose();
+      localAgentDisposableRef.current?.modelDisposable?.dispose();
+      localAgentDisposableRef.current = null;
+    });
+
+    // Also listen for plugin state changes (covers plugin disable/uninstall from settings UI)
+    const unsubStateChanged = window.electron?.plugin?.onStateChanged?.((data: any) => {
+      if (data?.info?.state === 'deactivated' && localAgentDisposableRef.current) {
+        // Check if local agent is no longer running after any plugin deactivation
+        window.electron?.plugin?.getLocalAgentStatus?.().then((status: any) => {
+          if (!status?.wsUrl) {
+            localAgentDisposableRef.current?.modeDisposable?.dispose();
+            localAgentDisposableRef.current?.modelDisposable?.dispose();
+            localAgentDisposableRef.current = null;
+          }
+        }).catch(() => {});
+      }
+    });
+
+    return () => {
+      unsubStarted?.();
+      unsubStopped?.();
+      unsubStateChanged?.();
+      localAgentDisposableRef.current?.modeDisposable?.dispose();
+      localAgentDisposableRef.current?.modelDisposable?.dispose();
+    };
+  }, []);
+
+  // --- Activate builtin plugins + register external plugin panel IPC bridge ---
   useEffect(() => {
     activateBuiltinPlugins();
 
@@ -144,7 +229,7 @@ const App: React.FC = () => {
     return () => cleanups.forEach(fn => fn());
   }, []);
 
-  // --- 监听菜单导航事件 ---
+  // --- Listen to menu navigation events ---
   useEffect(() => {
     const electron = (window as any).electron;
     if (!electron?.onNavigate) return;
@@ -158,7 +243,7 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // --- 监听 AI 面板打开会员中心事件 ---
+  // --- Listen to AI panel open membership center event ---
   useEffect(() => {
     const disposable = builtinPluginManager.on(AI_OPS_EVENTS.OPEN_MEMBERSHIP, () => {
       setSettingsInitialTab('membership');
@@ -167,22 +252,30 @@ const App: React.FC = () => {
     return () => disposable.dispose();
   }, []);
 
-  // --- 初始化数据 ---
+  // --- Listen to open payment modal event ---
+  useEffect(() => {
+    const disposable = builtinPluginManager.on(AI_OPS_EVENTS.OPEN_PAYMENT, (data: any) => {
+      handleOpenPayment(data?.type || 'gems', data?.amount || 69, data?.tierId);
+    });
+    return () => disposable.dispose();
+  }, [handleOpenPayment]);
+
+  // --- Initialize data ---
   useEffect(() => {
     const initializeData = async () => {
       try {
         let savedUser = authService.getUser();
         let serverSeqs: import('@/core/commerce/types').SyncSeqs | null = null;
 
-        // 如果有缓存的用户信息，先验证 token 有效性
+        // If cached user info exists, validate token first
         if (savedUser) {
           try {
             const profileResp = await apiService.getUserProfile() as any;
-            // getUserProfile 现在返回 { user, seqs }
+            // getUserProfile now returns { user, seqs }
             const profile = profileResp?.user ?? profileResp;
             serverSeqs = profileResp?.seqs ?? null;
 
-            // token 有效，用服务端最新数据更新本地缓存
+            // Token valid, update local cache with server's latest data
             savedUser = {
               ...savedUser,
               gems: profile?.gems ?? savedUser.gems ?? 10,
@@ -191,7 +284,7 @@ const App: React.FC = () => {
             };
             if (!savedUser.tier) savedUser.tier = 'Standard';
             authService.setUser(savedUser);
-            // 启动自动续期（含增量同步回调）
+            // Start auto-refresh (with incremental sync callback)
             authService.startAutoRefresh(
               () => apiService.refreshToken(),
               undefined,
@@ -207,8 +300,10 @@ const App: React.FC = () => {
             logger.info(LOG_MODULE.APP, 'app.init.token_valid', 'Cached token validated, auto-login success', {
               user_id: savedUser.id,
             });
+            // Refresh license from server (non-blocking)
+            licenseService.checkLicense(true).catch(() => {});
           } catch (err) {
-            // token 失效，清除缓存并弹出登录页
+            // Token invalid, clear cache and redirect to login
             logger.info(LOG_MODULE.APP, 'app.init.token_invalid', 'Cached token invalid, redirecting to login', {
               user_id: savedUser.id,
               error: err instanceof Error ? err.message : 'Unknown error',
@@ -234,7 +329,7 @@ const App: React.FC = () => {
         }
         hostService.setMode(savedUser ? savedMode : StorageMode.LOCAL);
 
-        // 已登录用户 + Cloud 模式：使用 seq 增量同步
+        // Logged-in user + Cloud mode: use seq incremental sync
         if (savedUser && !isLocalMode && serverSeqs) {
           const [syncResult, _modelsResult, versionResult] = await Promise.allSettled([
             hostService.syncBySeqs(serverSeqs),
@@ -254,7 +349,7 @@ const App: React.FC = () => {
               hosts_count: syncResult.value.hosts.length,
             });
           } else {
-            // seq 同步失败，fallback 到全量加载本地缓存
+            // Seq sync failed, fallback to full load from local cache
             logger.warn(LOG_MODULE.APP, 'app.init.seq_sync_failed', 'Seq sync failed, loading from cache', {
               error: syncResult.reason instanceof Error ? syncResult.reason.message : 'Unknown error',
             });
@@ -263,12 +358,12 @@ const App: React.FC = () => {
             if (groups.length > 0) hostManager.setGroups(groups);
           }
 
-          // 商业化配置 seq 同步
+          // Commerce config seq sync
           commerceService.handleLoginSeqs(serverSeqs);
 
           handleVersionResult(versionResult);
         } else {
-          // 游客模式 / 本地模式 / 无 seqs：走原有全量加载逻辑
+          // Guest mode / local mode / no seqs: use original full load logic
           const [hostResult, _modelsResult, _proxiesResult, versionResult] = await Promise.allSettled([
             (async () => {
               const hosts = await hostService.getHosts();
@@ -325,7 +420,7 @@ const App: React.FC = () => {
       }
     };
 
-    // 版本检查（提取为复用函数）
+    // Version check (extracted as reusable function)
     const this_fetchVersionCheck = async (): Promise<UpdateVersionInfo | null> => {
       const VERSION_CHECK_CACHE_KEY = 'termcat_version_check_cache';
       const CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -396,7 +491,8 @@ const App: React.FC = () => {
     user: userAuth.user,
     availableModels: userAuth.availableModels,
     availableModes: userAuth.availableModes,
-  }), [userAuth.user, userAuth.availableModels, userAuth.availableModes]);
+    availableModeInfos: userAuth.availableModeInfos,
+  }), [userAuth.user, userAuth.availableModels, userAuth.availableModes, userAuth.availableModeInfos]);
 
   const activeSession = sessionManager.activeSessions.find(s => s.id === sessionManager.currentSessionId);
 
@@ -468,7 +564,7 @@ const App: React.FC = () => {
         )}
 
         <div className="flex-1 relative overflow-hidden" style={{ isolation: 'isolate' }}>
-          {/* 所有终端 tab 始终保持挂载和渲染，仅通过 z-index 控制层叠顺序，避免切换时重绘闪烁 */}
+          {/* All terminal tabs remain mounted and rendered, z-index controls stacking order to avoid redraw flicker during switch */}
           {sessionManager.activeSessions.map((session) => {
             const isActive = sessionManager.currentSessionId === session.id;
             return (
@@ -598,7 +694,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* 主机配置弹窗（从 Tab 右键菜单触发） */}
+      {/* Host config modal (triggered from Tab context menu) */}
       {hostConfigSession && (
         <React.Suspense fallback={null}>
         <HostConfigModal
@@ -620,7 +716,7 @@ const App: React.FC = () => {
         </React.Suspense>
       )}
 
-      {/* 连接前提示弹窗：用户名为空的 host 需要先配置 */}
+      {/* Pre-connection prompt: hosts with empty username need config first */}
       {pendingConnectHost && !editingPendingHost && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-300">
           <div className="w-full max-w-sm bg-[var(--bg-card)] rounded-[2rem] border border-[var(--border-color)] p-8 shadow-2xl animate-in zoom-in-95">
@@ -649,7 +745,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* 连接前编辑弹窗：配置 host 后自动连接 */}
+      {/* Pre-connection edit modal: auto-connect after config */}
       {editingPendingHost && (
         <React.Suspense fallback={null}>
         <HostConfigModal
@@ -676,7 +772,7 @@ const App: React.FC = () => {
         <React.Suspense fallback={null}>
         <PaymentModalNew
           show={showPaymentModal}
-          type={paymentType === 'bones' ? 'gems' : paymentType}
+          type={paymentType === 'bones' ? 'gems' : paymentType as 'gems' | 'vip_month' | 'vip_year' | 'agent_pack'}
           amount={paymentAmount}
           tierId={paymentTierId}
           onClose={() => setShowPaymentModal(false)}
@@ -685,7 +781,7 @@ const App: React.FC = () => {
         </React.Suspense>
       )}
 
-      {/* 版本更新弹窗 */}
+      {/* Version update modal */}
       {showUpdateModal && updateInfo && (
         <React.Suspense fallback={null}>
         <UpdateModal
@@ -699,7 +795,7 @@ const App: React.FC = () => {
         </React.Suspense>
       )}
 
-      {/* 首次登录云端同步提示 */}
+      {/* First login cloud sync prompt */}
       {userAuth.showCloudSyncPrompt && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xl animate-in fade-in duration-300">
           <div className="w-full max-w-sm bg-[var(--bg-card)] rounded-[2rem] border border-[var(--border-color)] p-8 shadow-2xl animate-in zoom-in-95">

@@ -1,5 +1,5 @@
 /**
- * 命令建议卡片
+ * Command suggestion card
  */
 
 import React from 'react';

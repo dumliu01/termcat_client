@@ -11,6 +11,7 @@ export const zh = {
   connectionConnecting: '连接中',
   connectionConnected: '已连接',
   connectionDisconnected: '已断开',
+  disconnectSession: '断开',
 
   // 头部操作
   newConversation: '新建会话',

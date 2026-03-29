@@ -85,9 +85,9 @@ body {
 }
 
 /*
- * 非活跃终端 tab 的面板跳过渲染，减少合成器负载。
- * content-visibility: hidden 让浏览器跳过子树的布局和绘制，
- * 面板容器因有显式尺寸（width/height）仍保留占位。
+ * Skip rendering panels for inactive terminal tabs to reduce compositor load.
+ * content-visibility: hidden makes the browser skip layout and painting of subtrees,
+ * while panel containers retain their placeholder due to explicit dimensions.
  */
 [data-tab-inactive] :is(.tv-bottom-panel, .tv-side-panel) {
   content-visibility: hidden;

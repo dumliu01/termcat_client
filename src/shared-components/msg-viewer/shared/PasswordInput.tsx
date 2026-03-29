@@ -1,7 +1,7 @@
 /**
- * 密码输入行组件
+ * Password input row component
  *
- * 嵌入在 StepDetailCard 中，支持"本轮对话不再提示"功能。
+ * Embedded in StepDetailCard, supports "don't prompt in this conversation" feature.
  */
 
 import React, { useState } from 'react';

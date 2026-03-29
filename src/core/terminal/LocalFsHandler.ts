@@ -1,8 +1,8 @@
 /**
- * 本地文件系统操作
+ * Local file system operations
  *
- * 通过 Main 进程 IPC（localFs.*）操作本地文件系统。
- * 实现 IFsHandler 接口，由 LocalHostConnection 持有。
+ * Operates local file system through Main process IPC (localFs.*).
+ * Implements IFsHandler interface, held by LocalHostConnection.
  */
 
 import type { IFsHandler, DirectoryNode } from './IFsHandler';
@@ -11,7 +11,7 @@ import { FileItem } from '@/utils/types';
 export class LocalFsHandler implements IFsHandler {
   private connectionId: string | null = null;
 
-  /** 设置关联的本地终端 pty ID，用于获取终端当前目录 */
+  /** Set associated local terminal pty ID, used for getting terminal current directory */
   setConnectionId(id: string): void {
     this.connectionId = id;
   }
@@ -36,7 +36,7 @@ export class LocalFsHandler implements IFsHandler {
     await window.electron.localFs.write(filePath, content);
   }
 
-  // sudo 写入在本地模式不支持
+  // Sudo write is not supported in local mode
 
   async rename(dirPath: string, oldName: string, newName: string): Promise<void> {
     await window.electron.localFs.rename(dirPath, oldName, newName);

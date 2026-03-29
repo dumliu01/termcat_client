@@ -1,8 +1,8 @@
 /**
- * 本地文件系统操作提供者（Main 进程）
+ * Local File System Operations Provider (Main Process)
  *
- * 封装 Node.js fs API，通过 IPC 提供给 Renderer 进程。
- * 应用层服务，不属于 core 传输层。
+ * Wraps Node.js fs API, provided to Renderer process via IPC.
+ * Application-layer service, not part of core transport layer.
  */
 
 import * as fs from 'fs';
@@ -41,7 +41,7 @@ export class LocalFsProvider {
         const stats = await fs.promises.lstat(fullPath);
         items.push(this.statsToFileItem(entry.name, stats));
       } catch {
-        // 无权限访问，跳过
+        // Permission denied, skip
       }
     }
 
@@ -118,8 +118,8 @@ export class LocalFsProvider {
   }
 
   /**
-   * 复制文件（本地 → 本地）
-   * 返回一个伪 transferId 以保持与 SSH 传输接口一致
+   * Copy file (local → local)
+   * Returns a pseudo transferId to maintain consistency with SSH transfer interface
    */
   async copyFile(srcPath: string, destPath: string): Promise<string> {
     await fs.promises.copyFile(srcPath, destPath);
@@ -128,7 +128,7 @@ export class LocalFsProvider {
   }
 
   /**
-   * 递归复制目录（本地 → 本地）
+   * Recursively copy directory (local → local)
    */
   async copyDirectory(srcPath: string, destPath: string): Promise<string> {
     await this.copyDirRecursive(srcPath, destPath);
@@ -161,10 +161,10 @@ export class LocalFsProvider {
     const isLink = stats.isSymbolicLink();
     const isExec = !isDir && (stats.mode & 0o111) !== 0;
 
-    let type = '文件';
-    if (isDir) type = '文件夹';
-    else if (isLink) type = '链接';
-    else if (isExec) type = '可执行文件';
+    let type = 'File';
+    if (isDir) type = 'Directory';
+    else if (isLink) type = 'Link';
+    else if (isExec) type = 'Executable';
 
     return {
       name,

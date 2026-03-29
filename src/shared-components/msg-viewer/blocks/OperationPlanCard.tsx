@@ -1,5 +1,5 @@
 /**
- * 操作计划卡片
+ * Operation plan card
  */
 
 import React from 'react';

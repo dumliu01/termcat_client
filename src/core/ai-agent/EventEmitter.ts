@@ -1,8 +1,8 @@
 /**
- * 轻量级 EventEmitter 实现
+ * Lightweight EventEmitter Implementation
  *
- * 替代 Node.js 'events' 模块，可在浏览器（Vite）和 Node.js 环境中运行。
- * API 与 Node.js EventEmitter 兼容（仅实现所需子集）。
+ * Alternative to Node.js 'events' module, runs in both browser (Vite) and Node.js environments.
+ * API compatible with Node.js EventEmitter (only implements required subset).
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

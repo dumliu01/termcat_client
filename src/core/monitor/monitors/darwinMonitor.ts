@@ -112,7 +112,7 @@ echo "===SWAP_END===";
       metrics.uptime = days > 0 ? `${days}d ${hours}h` : `${hours}:${minutes.toString().padStart(2, '0')}`;
     }
 
-    // macOS: "load averages:" (带 s)
+    // macOS: "load averages:" (with s)
     const loadMatch = line.match(/load averages?:\s*([\d.]+),?\s*([\d.]+),?\s*([\d.]+)/);
     if (loadMatch) {
       metrics.load = `${loadMatch[1]}, ${loadMatch[2]}, ${loadMatch[3]}`;
@@ -128,8 +128,8 @@ echo "===SWAP_END===";
       const line = lines[i].trim();
       if (!line) continue;
 
-      // ps -eo pid,%cpu,%mem,rss,comm 格式: PID %CPU %MEM RSS COMMAND
-      // RSS 单位是 KB
+      // ps -eo pid,%cpu,%mem,rss,comm format: PID %CPU %MEM RSS COMMAND
+      // RSS unit is KB
       const parts = line.split(/\s+/);
       if (parts.length >= 5) {
         const memMB = (parseInt(parts[3]) / 1024).toFixed(1);
@@ -151,7 +151,7 @@ echo "===SWAP_END===";
 
     for (const line of lines) {
       if (!line.trim()) continue;
-      // macOS: Filesystem Size Used Avail Capacity iused ifree %iused Mounted_on (9列)
+      // macOS: Filesystem Size Used Avail Capacity iused ifree %iused Mounted_on (9 columns)
       const parts = line.split(/\s+/);
       if (parts.length >= 9 && parts[7].includes('%')) {
         metrics.disks.push({
@@ -169,7 +169,7 @@ echo "===SWAP_END===";
     if (!match) return null;
     const parts = match[1].trim().split(/\s+/);
 
-    // netstat -ib 格式: en0 1500 <Link#N> MAC Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll
+    // netstat -ib format: en0 1500 <Link#N> MAC Ipkts Ierrs Ibytes Opkts Oerrs Obytes Coll
     if (parts.length >= 10) {
       return {
         interfaceName: parts[0],

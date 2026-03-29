@@ -1,7 +1,7 @@
 import { SystemMetrics } from '@/utils/types';
 
 /**
- * 网络采样原始数据，由各 OS Monitor 解析输出，交给 SystemMonitorService 做速率计算
+ * Raw network sample data, parsed by each OS Monitor, passed to SystemMonitorService for speed calculation
  */
 export interface NetworkSample {
   interfaceName: string;
@@ -10,16 +10,16 @@ export interface NetworkSample {
 }
 
 /**
- * OS 监控器接口
- * 每个平台实现自己的命令构建和输出解析逻辑
+ * OS Monitor interface
+ * Each platform implements its own command building and output parsing logic
  */
 export interface IOSMonitor {
-  /** 构建一次性采集所有指标的 shell 命令 */
+  /** Build shell command to collect all metrics at once */
   buildCommand(): string;
 
   /**
-   * 解析命令输出，填充 metrics 对象
-   * 网络部分只返回原始字节数（NetworkSample），速率计算由 SystemMonitorService 统一处理
+   * Parse command output, populate metrics object
+   * Network part only returns raw bytes (NetworkSample), speed calculation is handled by SystemMonitorService
    */
   parseMetrics(output: string, metrics: SystemMetrics): NetworkSample | null;
 }

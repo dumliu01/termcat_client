@@ -1,21 +1,22 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Check, ShieldCheck, Smartphone, Building2, BadgeCheck, Loader2, Wallet, CreditCard as CardIcon, AlertCircle } from 'lucide-react';
+import { X, Check, ShieldCheck, Smartphone, Building2, BadgeCheck, Loader2, Wallet, CreditCard as CardIcon, AlertCircle, FlaskConical } from 'lucide-react';
 import { paymentService, PaymentMethod, PaymentOrder } from '@/core/commerce/paymentService';
 import { commerceService } from '@/core/commerce/commerceService';
+import { licenseService } from '@/core/license/licenseService';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 import { useI18n, useTranslation } from '@/base/i18n/I18nContext';
 
 interface PaymentModalProps {
   show: boolean;
-  type: 'gems' | 'vip_month' | 'vip_year';
+  type: 'gems' | 'vip_month' | 'vip_year' | 'agent_pack';
   amount: number;
   tierId?: string;
   onClose: () => void;
-  onPaymentSuccess: (type: 'gems' | 'vip_month' | 'vip_year', order: PaymentOrder) => void;
+  onPaymentSuccess: (type: 'gems' | 'vip_month' | 'vip_year' | 'agent_pack', order: PaymentOrder) => void;
 }
 
-// 支付方式图标映射
+// Payment method icon mapping
 const getPaymentIcon = (provider: string) => {
   switch (provider) {
     case 'wechat':
@@ -29,7 +30,7 @@ const getPaymentIcon = (provider: string) => {
   }
 };
 
-// 支付方式颜色映射
+// Payment method color mapping
 const getPaymentColor = (provider: string) => {
   switch (provider) {
     case 'wechat':
@@ -43,14 +44,14 @@ const getPaymentColor = (provider: string) => {
   }
 };
 
-// 获取支付方式显示名称
+// Get payment method display name
 const getPaymentLabel = (method: PaymentMethod, language: 'zh' | 'en') => {
-  // 如果有自定义名称，直接使用
+  // Use custom name if available
   if (method.name) {
     return method.name;
   }
 
-  // 使用翻译键
+  // Use translation keys
   const providerNames: Record<string, string> = {
     'wechat': language === 'zh' ? '微信支付' : 'WeChat Pay',
     'alipay': language === 'zh' ? '支付宝' : 'Alipay',
@@ -66,7 +67,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
   const { language } = useI18n();
   const t = useTranslation();
   const [step, setStep] = useState<'selection' | 'method' | 'processing' | 'success' | 'error'>(
-    type === 'gems' ? 'selection' : 'method'
+    (type === 'gems' && !initialAmount) ? 'selection' : 'method'
   );
   const [amount, setAmount] = useState(initialAmount);
   const [selectedPayMethod, setSelectedPayMethod] = useState<string>('');
@@ -80,8 +81,8 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
 
   useEffect(() => {
     if (show) {
-      // 重置状态，避免关闭后再打开残留旧数据
-      setStep(type === 'gems' ? 'selection' : 'method');
+      // Reset state to avoid stale data when reopening
+      setStep((type === 'gems' && !initialAmount) ? 'selection' : 'method');
       setAmount(initialAmount);
       setError('');
       setSelectedPayMethod('');
@@ -100,7 +101,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
       });
       setPaymentMethods(methods);
 
-      // 如果只有一个支付方式，自动选中
+      // Auto-select if only one payment method
       if (methods.length === 1) {
         setSelectedPayMethod(methods[0].code);
       }
@@ -126,16 +127,36 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
     setError('');
     setStep('processing');
 
+    // For agent_pack, include machine_id so server can auto-activate this device
+    let machineId: string | undefined;
+    let machineName: string | undefined;
+    if (type === 'agent_pack') {
+      machineId = await licenseService.getMachineId();
+      machineName = await licenseService.getDeviceName();
+    }
+
     try {
-      // 创建订单
-      const response = await paymentService.createOrder(type, amount, selectedPayMethod, tierId);
+      if (selectedPayMethod === 'mock_pay') {
+        // Mock payment: create order with any method, then mock-pay it directly
+        const response = await paymentService.createOrder(type, amount, 'mock_pay', tierId, machineId, machineName);
+        setOrderNo(response.order_no);
+        await paymentService.mockPay(response.order_no);
+        const paidOrder = await paymentService.getOrder(response.order_no);
+        setCompletedOrder(paidOrder);
+        setStep('success');
+        onPaymentSuccess(type, paidOrder);
+        return;
+      }
+
+      // Create order
+      const response = await paymentService.createOrder(type, amount, selectedPayMethod, tierId, machineId, machineName);
       setOrderNo(response.order_no);
 
-      // 打开支付窗口
+      // Open payment window
       const window = paymentService.openPaymentWindow(response.payment_url);
       setPaymentWindow(window);
 
-      // 开始轮询订单状态
+      // Start polling order status
       const paidOrder = await paymentService.pollOrderStatus(
         response.order_no,
         (order) => {
@@ -144,29 +165,36 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
             status: order.status,
           });
         },
-        60, // 最多轮询60次
-        2000 // 每2秒轮询一次
+        60, // Poll up to 60 times
+        2000 // Poll every 2 seconds
       );
 
-      // 支付成功
+      // Payment success
       setCompletedOrder(paidOrder);
       setStep('success');
       onPaymentSuccess(type, paidOrder);
 
-      // 关闭支付窗口
+      // Close payment window
       if (window && !window.closed) {
         window.close();
       }
     } catch (err: any) {
+      // Map server error codes to i18n messages
+      const errorCode = err?.code;
+      const LICENSE_ALREADY_OWNED = 2305;
+      const errorMsg = errorCode === LICENSE_ALREADY_OWNED
+        ? (t.payment as any).licenseAlreadyOwned || err.message
+        : err.message || t.payment.paymentFailedRetry;
+
       logger.error(LOG_MODULE.PAYMENT, 'payment.order.failed', 'Payment failed', {
         module: LOG_MODULE.PAYMENT,
         error: 1,
-        msg: err.message || t.payment.paymentFailedRetry,
+        msg: errorMsg,
       });
-      setError(err.message || t.payment.paymentFailedRetry);
+      setError(errorMsg);
       setStep('error');
 
-      // 关闭支付窗口
+      // Close payment window
       if (paymentWindow && !paymentWindow.closed) {
         paymentWindow.close();
       }
@@ -176,12 +204,12 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
   };
 
   const handleClose = () => {
-    // 关闭支付窗口
+    // Close payment window
     if (paymentWindow && !paymentWindow.closed) {
       paymentWindow.close();
     }
 
-    // 如果有订单号且订单未完成，取消订单
+    // Cancel order if order number exists and order is incomplete
     if (orderNo && step === 'processing') {
       paymentService.cancelOrder(orderNo).catch((e) => {
         logger.warn(LOG_MODULE.PAYMENT, 'payment.order.cancel_failed', 'Failed to cancel order', {
@@ -196,7 +224,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
 
   if (!show) return null;
 
-  // 从商业化配置获取积分包
+  // Get gem packages from commerce config
   const gemPackages = commerceService.getConfig()?.gem_packages ?? [];
   const bonePackages = gemPackages.map(pkg => ({
     amount: pkg.price,
@@ -207,7 +235,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 backdrop-blur-xl animate-in fade-in duration-300 p-4">
-      <div className="w-full max-w-lg bg-[var(--bg-card)] rounded-[2.5rem] border border-[var(--border-color)] overflow-hidden shadow-2xl animate-in zoom-in-95">
+      <div className="w-full max-w-lg bg-[var(--bg-card)] rounded-[2.5rem] border border-[var(--border-color)] overflow-hidden shadow-2xl animate-in zoom-in-95" data-testid="payment-modal">
         {/* Header */}
         <div className="p-8 border-b border-[var(--border-color)] flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -288,6 +316,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
                         key={method.code}
                         onClick={() => setSelectedPayMethod(method.code)}
                         className={`w-full flex items-center justify-between p-5 rounded-2xl border transition-all ${selectedPayMethod === method.code ? 'border-indigo-500 bg-indigo-500/10' : 'border-[var(--border-color)] bg-black/5 hover:bg-black/10'}`}
+                        data-testid={`pay-method-${method.code}`}
                       >
                         <div className="flex items-center gap-4">
                           <Icon className={`w-5 h-5 ${color}`} />
@@ -306,6 +335,26 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
                       </button>
                     );
                   })}
+
+                  {/* Mock payment option (dev/test only) */}
+                  {commerceService.getConfig()?.mock_pay_enabled && (
+                    <button
+                      onClick={() => setSelectedPayMethod('mock_pay')}
+                      className={`w-full flex items-center justify-between p-5 rounded-2xl border transition-all ${selectedPayMethod === 'mock_pay' ? 'border-amber-500 bg-amber-500/10' : 'border-dashed border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10'}`}
+                      data-testid="pay-method-mock_pay"
+                    >
+                      <div className="flex items-center gap-4">
+                        <FlaskConical className="w-5 h-5 text-amber-500" />
+                        <div className="text-left">
+                          <span className="text-sm font-black text-amber-500 block">{language === 'zh' ? '测试支付' : 'Mock Payment'}</span>
+                          <span className="text-[10px] text-amber-500/60">{language === 'zh' ? '跳过真实支付，直接完成订单 (仅测试)' : 'Skip real payment, complete order directly (test only)'}</span>
+                        </div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${selectedPayMethod === 'mock_pay' ? 'border-amber-500 bg-amber-500' : 'border-amber-500/30'}`}>
+                        {selectedPayMethod === 'mock_pay' && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -314,6 +363,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
                   disabled={!selectedPayMethod || loading || paymentMethods.length === 0}
                   onClick={handlePayment}
                   className="w-full py-4 bg-indigo-600 text-white text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-indigo-600/30 hover:bg-indigo-500 disabled:opacity-50 active:scale-95 transition-all"
+                  data-testid="payment-confirm-btn"
                 >
                 {t.payment.confirmAndPay} ¥{amount}
                 </button>
@@ -330,7 +380,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
           )}
 
           {step === 'success' && (
-            <div className="py-12 flex flex-col items-center justify-center text-center animate-in zoom-in-90">
+            <div className="py-12 flex flex-col items-center justify-center text-center animate-in zoom-in-90" data-testid="payment-success">
               <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500 mb-6 shadow-2xl shadow-emerald-500/20">
                 <BadgeCheck className="w-10 h-10" />
               </div>
@@ -343,6 +393,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
               <button
                 onClick={handleClose}
                 className="w-full py-4 bg-[var(--bg-main)] border border-[var(--border-color)] text-[var(--text-main)] text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-black/5 transition-all"
+                data-testid="payment-close-btn"
               >
                 {language === 'zh' ? t.payment.returnToSystem : 'Return to Fleet'}
               </button>

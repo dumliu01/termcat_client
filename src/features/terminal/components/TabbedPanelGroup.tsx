@@ -1,8 +1,8 @@
 /**
- * TabbedPanelGroup — 同一位置多面板 Tab 切换容器
+ * TabbedPanelGroup — Multi-panel Tab switch container at the same position
  *
- * 当同一个 slot（左/右/底部）有多个面板时，用 Tab 切换显示。
- * 只有一个面板时不显示 Tab 栏。
+ * When there are multiple panels in the same slot (left/right/bottom), use Tab to switch display.
+ * Tab bar is not shown when there's only one panel.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -30,7 +30,7 @@ export const TabbedPanelGroup: React.FC<TabbedPanelGroupProps> = ({
     defaultActiveTab || tabs[0]?.id || ''
   );
 
-  // 当 tabs 列表变化时，确保 activeTabId 仍然有效
+  // When tabs list changes, ensure activeTabId is still valid
   useEffect(() => {
     if (tabs.length > 0 && !tabs.find(t => t.id === activeTabId)) {
       setActiveTabId(tabs[0].id);
@@ -39,7 +39,7 @@ export const TabbedPanelGroup: React.FC<TabbedPanelGroupProps> = ({
 
   if (tabs.length === 0) return null;
 
-  // 只有一个 tab 时不显示 tab 栏
+  // Don't show tab bar when there's only one tab
   if (tabs.length === 1) {
     return <>{tabs[0].content}</>;
   }
@@ -56,7 +56,7 @@ export const TabbedPanelGroup: React.FC<TabbedPanelGroupProps> = ({
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
-      {/* Tab 栏 */}
+      {/* Tab bar */}
       <div
         className="flex items-center shrink-0 border-b overflow-x-auto no-scrollbar"
         style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
@@ -80,7 +80,7 @@ export const TabbedPanelGroup: React.FC<TabbedPanelGroupProps> = ({
         })}
       </div>
 
-      {/* Tab 内容 */}
+      {/* Tab content */}
       <div className="flex-1 overflow-hidden">
         {tabs.map(tab => (
           <div

@@ -1,8 +1,8 @@
 /**
- * 内置插件：系统监控侧栏（模板驱动版）
+ * Builtin plugin: System Monitor Sidebar (Template-driven version)
  *
- * 使用 UI 贡献点系统，通过 setPanelData 推送 JSON 数据，
- * 由 PanelRenderer 统一渲染。不再使用自定义 React 组件。
+ * Uses UI contribution point system, pushes JSON data via setPanelData,
+ * rendered by PanelRenderer. No longer uses custom React components.
  */
 
 import { Activity } from 'lucide-react';
@@ -25,7 +25,7 @@ export const monitoringSidebarPlugin: BuiltinPlugin = {
   getLocalizedDescription: (lang) => getLocale(lang).description,
 
   activate(context) {
-    // 注册模板驱动面板
+    // Register template-driven panel
     context.registerPanel({
       id: 'monitoring',
       title: locales.en.panelTitle,
@@ -36,7 +36,7 @@ export const monitoringSidebarPlugin: BuiltinPlugin = {
       priority: 10,
     });
 
-    // 注册工具栏切换按钮
+    // Register toolbar toggle button
     context.subscriptions.push(
       context.registerToolbarToggle({
         panelId: 'monitoring',
@@ -48,6 +48,10 @@ export const monitoringSidebarPlugin: BuiltinPlugin = {
 
     let monitor: SystemMonitorService | null = null;
     let currentInfo: ConnectionInfo | null = null;
+    // Track latest visibility state independently, so async monitor creation
+    // can use the current state instead of stale values from onConnectionChange
+    let latestIsVisible = false;
+    let latestIsActive = false;
 
     function buildSections(metrics: SystemMetrics, info: ConnectionInfo): SectionDescriptor[] {
       const t = getLocale(info.language);
@@ -186,27 +190,51 @@ export const monitoringSidebarPlugin: BuiltinPlugin = {
       ];
     }
 
-    // 监听连接变化
+    // Per-connection metrics cache: show cached data instantly on tab switch
+    const metricsCache = new Map<string, any[]>();
+
+    // Listen for connection changes
     context.onConnectionChange((info) => {
       currentInfo = info;
 
-      // 清理旧的监控
+      // Clean up old monitor
       if (monitor) {
         monitor.stop();
         monitor = null;
       }
 
-      if (!info) return;
+      if (!info) {
+        context.setPanelData('monitoring', []);
+        latestIsVisible = false;
+        latestIsActive = false;
+        return;
+      }
+
+      // Show cached data immediately (no blank flash), or clear if no cache
+      const cached = metricsCache.get(info.connectionId);
+      if (cached) {
+        context.setPanelData('monitoring', cached);
+      } else {
+        context.setPanelData('monitoring', []);
+      }
+
+      // Capture initial visibility from connection info
+      latestIsVisible = info.isVisible;
+      latestIsActive = info.isActive;
+
+      const infoConnectionId = info.connectionId;
 
       const startMonitor = (osType: string, cmdExecutor: ICmdExecutor, isLocal: boolean) => {
-        // 可能在异步回调前连接已变化
-        if (currentInfo !== info) return;
+        // Connection may have changed before async callback
+        if (currentInfo?.connectionId !== infoConnectionId) return;
 
         monitor = new SystemMonitorService(
           cmdExecutor,
           (metrics) => {
-            if (currentInfo === info) {
-              context.setPanelData('monitoring', buildSections(metrics, info));
+            if (currentInfo?.connectionId === infoConnectionId) {
+              const sections = buildSections(metrics, currentInfo!);
+              metricsCache.set(infoConnectionId, sections);
+              context.setPanelData('monitoring', sections);
             }
           },
           info.hostname,
@@ -214,22 +242,36 @@ export const monitoringSidebarPlugin: BuiltinPlugin = {
           isLocal,
         );
 
-        if (info.isVisible && info.isActive) {
+        // Use latest visibility state (may have changed during async wait)
+        if (latestIsVisible && latestIsActive) {
           monitor.start(3000);
         }
       };
 
       if (info.connectionType === 'local') {
-        // 本地终端：通过 IPC 获取平台信息，创建 LocalCmdExecutor
+        // Local terminal: get platform info via IPC, create LocalCmdExecutor
         window.electron.getPlatform().then((platform: string) => {
           const osType = platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux';
           startMonitor(osType, new LocalCmdExecutor(), true);
         });
       } else {
-        // SSH 连接：获取远程 OS 信息，创建 SSHCmdExecutor
+        // SSH connection: get remote OS info, create SSHCmdExecutor
         window.electron.sshGetOSInfo(info.connectionId).then((osInfo: any) => {
           startMonitor(osInfo?.osType || '', new SSHCmdExecutor(info.connectionId), false);
         });
+      }
+    });
+
+    // Listen for visibility changes (lightweight: just start/stop monitor, no rebuild)
+    context.onVisibilityChange((isVisible, isActive) => {
+      latestIsVisible = isVisible;
+      latestIsActive = isActive;
+      if (!monitor) return;
+      const shouldRun = isVisible && isActive;
+      if (shouldRun) {
+        if (!monitor.isRunning) monitor.start(3000);
+      } else {
+        if (monitor.isRunning) monitor.stop();
       }
     });
 

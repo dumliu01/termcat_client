@@ -82,26 +82,26 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Left: Window controls / Traffic lights spacer + Navigation (minimal mode) */}
       <div className="flex items-center gap-4 no-drag">
         {isWindows ? (
-          /* Windows: 自定义红绿灯按钮 */
+          /* Windows: custom traffic light buttons */
           <div className="flex items-center gap-1.5 ml-2 shrink-0">
             <button
               onClick={() => window.electron.windowClose()}
               className="w-3 h-3 rounded-full bg-[#ff5f57] hover:bg-[#ff5f57]/80 flex items-center justify-center group transition-colors"
-              title="关闭"
+              title="close"
             >
               <X className="w-2 h-2 text-[#4a0002] opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
             </button>
             <button
               onClick={() => window.electron.windowMinimize()}
               className="w-3 h-3 rounded-full bg-[#febc2e] hover:bg-[#febc2e]/80 flex items-center justify-center group transition-colors"
-              title="最小化"
+              title="minimize"
             >
               <Minus className="w-2 h-2 text-[#985712] opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
             </button>
             <button
               onClick={() => window.electron.windowMaximize()}
               className="w-3 h-3 rounded-full bg-[#28c840] hover:bg-[#28c840]/80 flex items-center justify-center group transition-colors"
-              title="最大化"
+              title="maximize"
             >
               <Square className="w-1.5 h-1.5 text-[#0b6518] opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
             </button>
@@ -198,16 +198,13 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => setActiveView?.('settings')}
                   className={`w-7 h-7 rounded-lg overflow-hidden border transition-all flex flex-col items-center justify-center shadow-lg ${
                     user
-                      ? (user.tier !== 'Standard' ? 'border-amber-500/40 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)]' : 'border-indigo-500/20 bg-indigo-500/5')
+                      ? 'border-indigo-500/20 bg-indigo-500/5'
                       : 'bg-black/5 border-[var(--border-color)] text-[var(--text-dim)] hover:text-[var(--primary-color)] hover:border-[var(--primary-color)]/30'
                   } hover:border-[var(--primary-color)] group`}
+                  data-testid="header-user-btn"
                 >
                   {user ? (
-                    user.tier !== 'Standard' ? (
-                      <Crown className="w-3 h-3 text-amber-500" />
-                    ) : (
-                      <UserIcon className="w-3 h-3 text-slate-400" />
-                    )
+                    <UserIcon className="w-3 h-3 text-slate-400" />
                   ) : (
                     <UserCircle className="w-4 h-4" />
                   )}
@@ -217,14 +214,10 @@ export const Header: React.FC<HeaderProps> = ({
               {(close) => (
                 <>
                   <div className="px-3 py-3 border-b border-[var(--border-color)] mb-2 text-center">
-                    <p className="text-[10px] font-black text-[var(--text-dim)] uppercase tracking-[0.2em] truncate">
+                    <p className="text-[10px] font-black text-[var(--text-dim)] uppercase tracking-[0.2em] truncate" data-testid="header-user-name">
                       {user ? user.name : t.sidebar.anonymous}
                     </p>
-                    {user && (
-                      <p className={`text-[8px] font-black uppercase tracking-widest mt-1 ${user.tier !== 'Standard' ? 'text-amber-500' : 'text-slate-500'}`}>
-                        {user.tier !== 'Standard' ? t.sidebar.vipMember : t.sidebar.freeMember}
-                      </p>
-                    )}
+                    {/* v2: tier badge hidden */}
                   </div>
                   {user ? (
                     <button
