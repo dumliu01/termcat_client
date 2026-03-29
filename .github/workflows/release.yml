@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      package_prefix:
+        description: 'Package name prefix (e.g. TermCat-Community, TermCat-Pro)'
+        required: true
+        default: 'TermCat-Community'
 
 permissions:
   contents: write
@@ -16,19 +22,19 @@ jobs:
         include:
           - os: macos-latest
             arch: x64
-            build_cmd: npm run build:mac
+            build_cmd: npm run build:mac -- --publish never
           - os: macos-latest
             arch: arm64
-            build_cmd: npm run build:mac-arm64
+            build_cmd: npm run build:mac-arm64 -- --publish never
           - os: macos-latest
             arch: universal
-            build_cmd: npm run build:mac-universal
+            build_cmd: npm run build:mac-universal -- --publish never
           - os: ubuntu-latest
             arch: x64
-            build_cmd: npm run build:linux
+            build_cmd: npm run build:linux -- --publish never
           - os: windows-latest
             arch: x64
-            build_cmd: npm run build:win
+            build_cmd: npm run build:win -- --publish never
 
     runs-on: ${{ matrix.os }}
 
@@ -64,6 +70,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Rename artifacts
+        shell: bash
+        env:
+          PREFIX: ${{ inputs.package_prefix || 'TermCat-Community' }}
+        run: |
+          cd release
+          for f in *.dmg *.zip *.exe *.msi *.AppImage *.deb *.tar.xz; do
+            [ -e "$f" ] || continue
+            # Strip original TermCat/termcat prefix (with separator - _ or space)
+            suffix="${f#TermCat[- _]}"
+            suffix="${suffix#termcat[- _]}"
+            mv "$f" "${PREFIX}-${suffix}"
+          done
+          ls -la
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -94,6 +115,15 @@ jobs:
 
       - name: List artifacts
         run: find artifacts -type f | head -50
+
+      - name: Clean up existing release assets
+        run: |
+          gh release view "${{ github.ref_name }}" --json assets -q '.assets[].name' 2>/dev/null | while read -r name; do
+            [ -n "$name" ] && gh release delete-asset "${{ github.ref_name }}" "$name" --yes
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
