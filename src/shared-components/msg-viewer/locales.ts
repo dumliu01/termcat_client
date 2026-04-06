@@ -22,7 +22,15 @@ const en: typeof zh = {
   statsGemsUnit: 'gems',
 };
 
-const locales: Record<string, typeof zh> = { zh, en };
+const es: typeof zh = {
+  statsInputTokens: 'Entrada',
+  statsOutputTokens: 'Salida',
+  statsCostGems: 'Costo',
+  statsTokenUnit: 'tokens',
+  statsGemsUnit: 'gemas',
+};
+
+const locales: Record<string, typeof zh> = { zh, en, es };
 
 export function getMsgViewerLocale(language: string): typeof zh {
   return locales[language] ?? zh;

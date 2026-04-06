@@ -21,9 +21,11 @@ export class SSHTerminalBackend implements ITerminalBackend {
   private _id: string = '';
   private _isConnected: boolean = false;
   private _dataCallbacks: TerminalDataCallback[] = [];
+  private _rawDataCallbacks: TerminalDataCallback[] = [];
   private _closeCallbacks: TerminalCloseCallback[] = [];
   private _cleanupFns: (() => void)[] = [];
   private _encoding?: string;
+  private _muted = false;
 
   get id(): string { return this._id; }
   get isConnected(): boolean { return this._isConnected; }
@@ -45,8 +47,20 @@ export class SSHTerminalBackend implements ITerminalBackend {
     // Register data listener (must be before createShell to avoid missing MOTD)
     const unsubData = window.electron.onShellData((connId, data) => {
       if (connId === this.connectionId) {
-        for (const cb of this._dataCallbacks) {
+        // Snapshot muted state BEFORE raw callbacks fire.
+        // Raw callbacks (executor) may unmute during processing — capturing
+        // the state here prevents the same data chunk from reaching display.
+        const wasMuted = this._muted;
+
+        // Raw callbacks always fire (used by NestedSSHDetector / TerminalCmdExecutor)
+        for (const cb of this._rawDataCallbacks) {
           cb(data);
+        }
+        // Public callbacks are suppressed when muted (hides executor output from xterm display)
+        if (!wasMuted) {
+          for (const cb of this._dataCallbacks) {
+            cb(data);
+          }
         }
       }
     });
@@ -107,6 +121,23 @@ export class SSHTerminalBackend implements ITerminalBackend {
 
   onData(callback: TerminalDataCallback): void {
     this._dataCallbacks.push(callback);
+  }
+
+  /**
+   * Register a raw data callback that fires even when muted.
+   * Used by NestedSSHDetector and TerminalCmdExecutor to always receive data.
+   */
+  onRawData(callback: TerminalDataCallback): void {
+    this._rawDataCallbacks.push(callback);
+  }
+
+  /**
+   * Mute/unmute public data callbacks.
+   * When muted, only raw callbacks fire (executor/detector still work).
+   * XTermTerminal's display callback is suppressed.
+   */
+  setMuted(muted: boolean): void {
+    this._muted = muted;
   }
 
   onClose(callback: TerminalCloseCallback): void {

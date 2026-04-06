@@ -34,6 +34,7 @@ interface TerminalViewProps {
   onMinimalPanelStatesChange?: (states: MinimalPanelStates) => void;
   initialDirectory?: string;
   onConnectionReady?: (connectionId: string) => void;
+  onEffectiveHostnameChange?: (hostname: string | null) => void;
 }
 
 
@@ -44,11 +45,12 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   terminalTheme = 'classic',
   terminalFontSize = 14,
   isActive = true,
-  defaultFocusTarget = 'input',
+  defaultFocusTarget = 'terminal',
   minimalPanelStates,
   onMinimalPanelStatesChange,
   initialDirectory: initialDirectoryProp,
   onConnectionReady,
+  onEffectiveHostnameChange,
 }) => {
   const { language } = useI18n();
   const t = useTranslation();
@@ -87,6 +89,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   const [terminalId, setTerminalId] = useState<string>(''); // Terminal backend ID (ptyId for local, connectionId for SSH)
   const connectionIdRef = useRef<string | null>(null); // Use ref to store connectionId, avoid dependency cycle
   const connectionRef = useRef<IHostConnection | null>(null);
+  const [effectiveHostname, setEffectiveHostname] = useState<string | null>(null);
 
 
 
@@ -97,6 +100,9 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const commandInputRef = useRef<CommandInputAreaRef>(null);
+
+  // Track per-tab focus override: remembers last user-chosen focus target
+  const userFocusOverrideRef = useRef<'input' | 'terminal' | null>(null);
 
   // Get built-in plugin toolbar buttons and bottom panels
   const toolbarToggles = useBuiltinToolbarToggles();
@@ -119,6 +125,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
         isVisible: showSidebar,
         isActive,
         language,
+        effectiveHostname: effectiveHostname ?? undefined,
       } : null
     );
   }, [connectionId, host.connectionType, host.hostname, language]);
@@ -135,10 +142,45 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
         isVisible: showSidebar,
         isActive,
         language,
+        effectiveHostname: effectiveHostname ?? undefined,
       });
     }
     builtinPluginManager.updateVisibility(showSidebar, isActive, connectionRef.current?.id);
   }, [showSidebar, isActive]);
+
+  // Reset nested SSH state when connection changes
+  useEffect(() => {
+    setEffectiveHostname(null);
+  }, [connectionId]);
+
+  // Subscribe to nested SSH host changes for transparent proxy
+  useEffect(() => {
+    const connection = connectionRef.current;
+    if (!connection?.onHostChanged) return;
+
+    const unsub = connection.onHostChanged((hostname: string) => {
+      const isOriginal = hostname === host.hostname;
+      const newEffective = isOriginal ? null : hostname;
+      setEffectiveHostname(newEffective);
+      onEffectiveHostnameChange?.(newEffective);
+      // Delay plugin notification: target shell needs a few seconds to fully
+      // initialize after SSH login. Immediate commands would fail.
+      setTimeout(() => {
+        builtinPluginManager.setConnectionInfo({
+          connectionId: connection.id,
+          connectionType: connection.type,
+          hostname: connection.type === 'local' ? 'localhost' : host.hostname,
+          isVisible: showSidebar,
+          isActive,
+          language,
+          effectiveHostname: isOriginal ? undefined : hostname,
+          monitorCmdExecutor: connection.monitorCmdExecutor ?? undefined,
+        });
+      }, 3000);
+    });
+
+    return unsub;
+  }, [connectionId]);
 
   // Sidebar hide method
   const hideSidebar = useCallback(() => {
@@ -165,11 +207,12 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   const headerBg = theme === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.03)';
   const subHeaderBg = theme === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.02)';
 
-  // Auto-focus on tab switch based on user settings
+  // Auto-focus on tab switch: use per-tab override if user has switched focus, otherwise use default
   useEffect(() => {
     if (!isActive) return;
+    const target = userFocusOverrideRef.current ?? defaultFocusTarget;
     setTimeout(() => {
-      if (defaultFocusTarget === 'input') {
+      if (target === 'input') {
         commandInputRef.current?.focus();
       } else {
         const xtermTextarea = terminalContainerRef.current?.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement | null;
@@ -679,6 +722,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
               }}
               onReconnect={handleReconnect}
               onTerminalFocusGained={() => {
+                userFocusOverrideRef.current = 'terminal';
                 commandInputRef.current?.setInputMode('terminal');
               }}
               isActive={isActive}
@@ -704,6 +748,8 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
               connectionId={connectionId}
               connectionType={host.connectionType === 'local' ? 'local' : 'ssh'}
               initialDirectory={initialDirectory}
+              onInputFocusGained={() => { userFocusOverrideRef.current = 'input'; }}
+              defaultFocusTarget={defaultFocusTarget}
             />
           </div>
         ) : (

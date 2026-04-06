@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Copy, Settings, XCircle, ChevronRight, Server, Pencil, Monitor } from 'lucide-react';
+import { X, Plus, Copy, Settings, XCircle, ChevronRight, Server, Pencil, Monitor, ExternalLink } from 'lucide-react';
 import { Host, Session, HostGroup } from '@/utils/types';
 import { useI18n } from '@/base/i18n/I18nContext';
 
@@ -33,6 +33,8 @@ interface TerminalTabBarProps {
   groups: HostGroup[];
   isMinimalMode: boolean;
   onLocalConnect?: () => void;
+  /** Effective hostname for active session (nested SSH) */
+  effectiveHostname?: string | null;
 }
 
 export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
@@ -56,6 +58,7 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
   groups,
   isMinimalMode,
   onLocalConnect,
+  effectiveHostname,
 }) => {
   const { t } = useI18n();
 
@@ -177,7 +180,11 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
                   />
                 ) : (
                   <span className={`truncate text-[11px] leading-none ${isActive ? 'font-semibold text-[var(--text-main)]' : 'font-medium text-[var(--text-dim)]'}`}>
-                    {session.customName || session.host.name}
+                    {session.customName || (
+                      session.id === currentSessionId && effectiveHostname
+                        ? `${session.host.name} → ${effectiveHostname}`
+                        : session.host.name
+                    )}
                   </span>
                 )}
                 <button
@@ -322,6 +329,20 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
               >
                 <Copy className="w-3.5 h-3.5 text-[var(--text-dim)]" />
                 {t.terminal.duplicateTab}
+              </button>
+              <button
+                onClick={() => {
+                  if (session.host.connectionType === 'local') {
+                    (window as any).electron.windowCreate({ localTerminal: true });
+                  } else {
+                    (window as any).electron.windowCreate({ hostToConnect: session.host });
+                  }
+                  setTabContextMenu(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-[var(--text-dim)]" />
+                {t.dashboard.openInNewWindow}
               </button>
               <button
                 onClick={() => {

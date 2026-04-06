@@ -164,6 +164,8 @@ class ApiService {
       })),
       connectionType: host.connection_type || 'direct',
       targetHost: host.target_host || undefined,
+      targetUsername: host.target_username || undefined,
+      targetPort: host.target_port || undefined,
       proxy: host.proxy, // Proxy association object returned by server
       terminal: host.terminal_config
         ? (typeof host.terminal_config === 'string' ? JSON.parse(host.terminal_config) : host.terminal_config)
@@ -194,6 +196,8 @@ class ApiService {
       proxy_id: host.proxyId ? parseInt(host.proxyId) : undefined,
       connection_type: host.connectionType || 'direct',
       target_host: host.connectionType === 'jump' ? host.targetHost : '',
+      target_username: host.connectionType === 'jump' ? host.targetUsername : '',
+      target_port: host.connectionType === 'jump' ? (host.targetPort || 22) : 0,
       tunnels: (host.tunnels || []).map((t: any) => ({
         name: t.name,
         type: t.type,
@@ -229,6 +233,8 @@ class ApiService {
         })),
         connectionType: created.connection_type || 'direct',
         targetHost: created.target_host || undefined,
+        targetUsername: created.target_username || undefined,
+        targetPort: created.target_port || undefined,
         proxy: created.proxy,
         terminal: created.terminal_config
           ? (typeof created.terminal_config === 'string' ? JSON.parse(created.terminal_config) : created.terminal_config)
@@ -260,6 +266,8 @@ class ApiService {
       proxy_id: host.proxyId ? parseInt(host.proxyId) : undefined,
       connection_type: host.connectionType || 'direct',
       target_host: host.connectionType === 'jump' ? host.targetHost : '',
+      target_username: host.connectionType === 'jump' ? host.targetUsername : '',
+      target_port: host.connectionType === 'jump' ? (host.targetPort || 22) : 0,
       tunnels: (host.tunnels || []).map((t: any) => ({
         name: t.name,
         type: t.type,
@@ -299,6 +307,10 @@ class ApiService {
         targetAddress: t.target_address,
         targetPort: t.target_port,
       })),
+      connectionType: updated.connection_type || 'direct',
+      targetHost: updated.target_host || undefined,
+      targetUsername: updated.target_username || undefined,
+      targetPort: updated.target_port || undefined,
       proxy: updated.proxy,
       terminal: updated.terminal_config
         ? (typeof updated.terminal_config === 'string' ? JSON.parse(updated.terminal_config) : updated.terminal_config)

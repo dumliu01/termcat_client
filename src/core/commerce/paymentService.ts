@@ -41,10 +41,13 @@ class PaymentService {
   /**
    * Get available payment methods
    */
-  async getAvailablePaymentMethods(): Promise<PaymentMethod[]> {
+  async getAvailablePaymentMethods(): Promise<{ methods: PaymentMethod[]; mockPayEnabled: boolean }> {
     try {
       const response = await apiService.getAvailablePaymentMethods();
-      return response.methods || [];
+      return {
+        methods: response.methods || [],
+        mockPayEnabled: response.mock_pay_enabled === true,
+      };
     } catch (error) {
       logger.error(LOG_MODULE.HTTP, 'payment.methods.failed', 'Failed to get available payment methods', {
         module: LOG_MODULE.PAYMENT,

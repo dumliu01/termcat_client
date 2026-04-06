@@ -1,9 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, globalShortcut, powerMonitor, Notification, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, globalShortcut, powerMonitor, Notification } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { createHash } from 'crypto';
-import { fileURLToPath } from 'url';
 import { sshService } from '../core/ssh/ssh-manager';
 import { fileTransferService } from '../core/transfer/file-transfer-handler';
 import { tunnelService, TunnelConfig } from '../core/tunnel/tunnel-manager';
@@ -13,6 +12,7 @@ import { getPluginManager } from '../plugins/plugin-manager';
 import { logFileWriter } from '../base/logger/log-file-writer';
 import { localPtyService } from '../core/pty/local-pty-manager';
 import { localFsProvider } from './services/local-fs-provider';
+import { windowManager } from './window-manager';
 
 // In Dev mode, use a separate userData directory to avoid conflicts with the release version
 const isDev = !app.isPackaged;
@@ -50,14 +50,15 @@ function handleAuthCallback(url: string) {
     if (parsed.host === 'auth') {
       const token = parsed.searchParams.get('token');
       const user = parsed.searchParams.get('user');
-      if (token && user && mainWindow && !mainWindow.isDestroyed()) {
+      const targetWindow = windowManager.getFocusedWindow() || windowManager.getFirstWindow();
+      if (token && user && targetWindow && !targetWindow.isDestroyed()) {
         logger.info(LOG_MODULE.AUTH, 'auth.protocol.callback', 'Received auth callback via termcat:// protocol', {
           has_token: true,
         });
-        mainWindow.webContents.send('auth-callback', { token, user });
+        targetWindow.webContents.send('auth-callback', { token, user });
         // Ensure window is focused
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus();
+        if (targetWindow.isMinimized()) targetWindow.restore();
+        targetWindow.focus();
       }
     }
   } catch (err) {
@@ -86,10 +87,11 @@ if (!gotTheLock) {
     if (url) {
       handleAuthCallback(url);
     }
-    // Focus main window
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+    // Focus existing window
+    const win = windowManager.getFocusedWindow() || windowManager.getFirstWindow();
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
     }
   });
 }
@@ -104,64 +106,6 @@ ipcMain.on('terminal-focus-gained', (event, connectionId) => {
 // Initialize SSH Service
 // Main process starting
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-let mainWindow: BrowserWindow | null = null;
-
-function createWindow() {
-  const isWin = process.platform === 'win32';
-
-  mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 800,
-    minHeight: 500,
-    webPreferences: {
-      preload: path.join(__dirname, '../preload/preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-    // macOS: hiddenInset preserves native traffic lights; Windows: remove native title bar
-    titleBarStyle: isWin ? undefined : 'hiddenInset',
-    frame: !isWin,
-    backgroundColor: '#020617',
-  });
-
-  // Hide menu bar on Windows (keep it in dev mode for easier access to View → Toggle Developer Tools)
-  if (isWin && !process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.setMenuBarVisibility(false);
-  }
-
-  // Set webContents for SSH service
-  sshService.setWebContents(mainWindow.webContents);
-
-  const enableDevTools = process.argv.includes('--devtools');
-
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
-
-    // Dev mode: register F12 / Ctrl+Shift+I to toggle DevTools
-    const toggleDevTools = () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.toggleDevTools();
-      }
-    };
-    globalShortcut.register('F12', toggleDevTools);
-    globalShortcut.register('CommandOrControl+Shift+I', toggleDevTools);
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-    if (enableDevTools) {
-      mainWindow.webContents.openDevTools();
-    }
-  }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-}
-
 app.whenReady().then(async () => {
   // Release version uses simplified menu, Dev version keeps default menu for easier debugging
   if (app.isPackaged && process.platform === 'darwin') {
@@ -172,7 +116,8 @@ app.whenReady().then(async () => {
           {
             label: 'About TermCat',
             click: () => {
-              mainWindow?.webContents.send('navigate-to', 'settings', 'help');
+              const win = windowManager.getFocusedWindow() || windowManager.getFirstWindow();
+              win?.webContents.send('navigate-to', 'settings', 'help');
             },
           },
           { type: 'separator' },
@@ -180,7 +125,8 @@ app.whenReady().then(async () => {
             label: 'Settings...',
             accelerator: 'Cmd+,',
             click: () => {
-              mainWindow?.webContents.send('navigate-to', 'settings');
+              const win = windowManager.getFocusedWindow() || windowManager.getFirstWindow();
+              win?.webContents.send('navigate-to', 'settings');
             },
           },
           { type: 'separator' },
@@ -206,6 +152,15 @@ app.whenReady().then(async () => {
       {
         label: '窗口',
         submenu: [
+          {
+            label: '新建窗口',
+            accelerator: 'CmdOrCtrl+N',
+            click: () => {
+              const win = windowManager.createWindow();
+              getPluginManager().registerWindow(win);
+            },
+          },
+          { type: 'separator' },
           { role: 'minimize' },
           { role: 'zoom' },
           { type: 'separator' },
@@ -217,89 +172,118 @@ app.whenReady().then(async () => {
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
 
+  // Dock right-click menu (macOS)
+  if (process.platform === 'darwin') {
+    const dockMenu = Menu.buildFromTemplate([
+      {
+        label: '新窗口',
+        click: () => {
+          const win = windowManager.createWindow();
+          getPluginManager().registerWindow(win);
+        },
+      },
+    ]);
+    app.dock.setMenu(dockMenu);
+  }
+
   chatHistoryService.registerHandlers();
-  createWindow();
+  const firstWindow = windowManager.createWindow();
+
+  // Dev mode: register F12 / Ctrl+Shift+I to toggle DevTools
+  if (process.env.VITE_DEV_SERVER_URL) {
+    firstWindow.webContents.openDevTools();
+
+    const toggleDevTools = () => {
+      const focused = BrowserWindow.getFocusedWindow();
+      if (focused && !focused.isDestroyed()) {
+        focused.webContents.toggleDevTools();
+      }
+    };
+    globalShortcut.register('F12', toggleDevTools);
+    globalShortcut.register('CommandOrControl+Shift+I', toggleDevTools);
+  } else if (process.argv.includes('--devtools')) {
+    firstWindow.webContents.openDevTools();
+  }
 
   // Initialize plugin system
   try {
     const pluginManager = getPluginManager();
-    if (mainWindow) {
-      pluginManager.setMainWindow(mainWindow);
-    }
+    pluginManager.registerWindow(firstWindow);
     await pluginManager.initialize();
   } catch (err) {
     console.error('[Main] Plugin system initialization failed:', err);
   }
 
+  // Pre-warm a local PTY so first terminal open is instant
+  localPtyService.prewarm();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-      // Update plugin manager's window reference after window reconstruction,
-      // otherwise sendToRenderer will silently lose messages
-      if (mainWindow) {
-        getPluginManager().setMainWindow(mainWindow);
-      }
+      const win = windowManager.createWindow();
+      getPluginManager().registerWindow(win);
     }
   });
 
   // Power monitor: detect system sleep/wake to handle stale connections
   powerMonitor.on('resume', () => {
     logger.info(LOG_MODULE.MAIN, 'power.resumed', 'System resumed from sleep');
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('system-resumed');
-    }
+    windowManager.broadcast('system-resumed');
   });
 
   powerMonitor.on('unlock-screen', () => {
     logger.info(LOG_MODULE.MAIN, 'power.screen_unlocked', 'Screen unlocked');
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('system-resumed');
-    }
+    windowManager.broadcast('system-resumed');
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
 });
 
 // Shutdown plugin system and log service when application exits
 app.on('before-quit', async () => {
-  localPtyService.destroyAll();
+  await windowManager.closeAll();
   const pluginManager = getPluginManager();
   await pluginManager.shutdown();
   logFileWriter.shutdown();
 });
 
 // Window control IPC handlers (Windows frameless window)
-ipcMain.on('window:minimize', () => {
-  mainWindow?.minimize();
+ipcMain.on('window:minimize', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.minimize();
 });
-ipcMain.on('window:maximize', () => {
-  if (mainWindow?.isMaximized()) {
-    mainWindow.unmaximize();
+ipcMain.on('window:maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win?.isMaximized()) {
+    win.unmaximize();
   } else {
-    mainWindow?.maximize();
+    win?.maximize();
   }
 });
-ipcMain.on('window:close', () => {
-  mainWindow?.close();
+ipcMain.on('window:close', (event) => {
+  BrowserWindow.fromWebContents(event.sender)?.close();
+});
+
+// New window IPC handler
+ipcMain.handle('window:create', (_event, options?: { hostToConnect?: any; localTerminal?: boolean }) => {
+  const win = windowManager.createWindow(options);
+  getPluginManager().registerWindow(win);
 });
 
 // ── Desktop Notification IPC ──
-ipcMain.handle('notification:show', (_event, options: { title: string; body: string }) => {
+ipcMain.handle('notification:show', (event, options: { title: string; body: string }) => {
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
   // Only show notification when window is not focused
-  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
+  if (senderWindow && !senderWindow.isDestroyed() && !senderWindow.isFocused()) {
     const notification = new Notification({
       title: options.title,
       body: options.body,
     });
     notification.on('click', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.show();
-        mainWindow.focus();
+      if (senderWindow && !senderWindow.isDestroyed()) {
+        if (senderWindow.isMinimized()) senderWindow.restore();
+        senderWindow.show();
+        senderWindow.focus();
       }
     });
     notification.show();
@@ -367,8 +351,9 @@ ipcMain.handle('ssh-connect-test', () => {
 ipcMain.handle('ssh-connect', async (event, config) => {
   try {
     const connectionId = await sshService.connect(config);
+    windowManager.registerConnection(event.sender.id, connectionId);
 
-    // 触发插件 SSH 连接事件
+    // Trigger plugin SSH connection event
     const pluginManager = getPluginManager();
     const connInfo = {
       sessionId: connectionId,
@@ -410,6 +395,8 @@ ipcMain.handle('ssh-execute', async (event, connectionId, command, options?: { u
 
 ipcMain.handle('ssh-disconnect', async (event, connectionId) => {
   try {
+    windowManager.unregisterConnection(event.sender.id, connectionId);
+
     // Trigger plugin SSH disconnect event
     const pluginManager = getPluginManager();
     const connInfo = { sessionId: connectionId, hostId: connectionId, host: '', port: 22, username: '', connectedAt: 0 };
@@ -432,6 +419,7 @@ ipcMain.handle('ssh-create-shell', async (event, connectionId, encoding?: string
   try {
     const webContents = event.sender;
     const shellId = await sshService.createShell(connectionId, webContents, encoding);
+    windowManager.registerShell(event.sender.id, shellId);
 
     // Trigger plugin terminal open event
     const pluginManager = getPluginManager();
@@ -457,6 +445,7 @@ ipcMain.handle('ssh-create-shell', async (event, connectionId, encoding?: string
 
 ipcMain.handle('ssh-close-shell', (_event, shellId: string) => {
   if (!sshService) return { success: false };
+  windowManager.unregisterShell(_event.sender.id, shellId);
   const success = sshService.closeShell(shellId);
   return { success };
 });
@@ -553,10 +542,12 @@ ipcMain.handle('local-pty-create', async (event, options) => {
     ...options,
     webContents: event.sender,
   });
+  windowManager.registerPty(event.sender.id, ptyId);
   return { ptyId };
 });
 
 ipcMain.handle('local-pty-destroy', async (_event, ptyId: string) => {
+  windowManager.unregisterPty(_event.sender.id, ptyId);
   localPtyService.destroy(ptyId);
   return { success: true };
 });
@@ -689,7 +680,8 @@ ipcMain.handle('file-download-dir', async (event, connectionId, remotePath, loca
 // File dialog handler
 ipcMain.handle('show-save-dialog', async (event, options) => {
   try {
-    return await dialog.showSaveDialog(mainWindow!, options);
+    const parentWindow = BrowserWindow.fromWebContents(event.sender)!;
+    return await dialog.showSaveDialog(parentWindow, options);
   } catch (error: any) {
     logger.error(LOG_MODULE.SSH, 'dialog.save.failed', 'Save dialog failed', {
       module: LOG_MODULE.MAIN,
@@ -702,7 +694,8 @@ ipcMain.handle('show-save-dialog', async (event, options) => {
 
 ipcMain.handle('show-open-dialog', async (event, options) => {
   try {
-    return await dialog.showOpenDialog(mainWindow!, options);
+    const parentWindow = BrowserWindow.fromWebContents(event.sender)!;
+    return await dialog.showOpenDialog(parentWindow, options);
   } catch (error: any) {
     logger.error(LOG_MODULE.SSH, 'dialog.open.failed', 'Open dialog failed', {
       module: LOG_MODULE.MAIN,
@@ -735,6 +728,8 @@ ipcMain.handle('tunnel-start', async (event, connectionId: string, config: Tunne
       default:
         throw new Error(`Unknown tunnel type: ${config.type}`);
     }
+
+    windowManager.registerTunnelConnection(event.sender.id, connectionId);
 
     return status;
   } catch (error: any) {
@@ -792,7 +787,8 @@ ipcMain.handle('tunnel-get-statuses', (event, connectionId: string) => {
 
 // Forward tunnel status updates to renderer process
 tunnelService.onStatusUpdate((connectionId, status) => {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('tunnel-status-update', connectionId, status);
+  const ctx = windowManager.findByConnectionId(connectionId);
+  if (ctx && !ctx.window.isDestroyed()) {
+    ctx.window.webContents.send('tunnel-status-update', connectionId, status);
   }
 });

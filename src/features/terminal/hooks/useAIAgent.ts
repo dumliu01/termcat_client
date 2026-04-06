@@ -186,9 +186,26 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   const modeInfoRef = useRef(modeInfo);
   modeInfoRef.current = modeInfo;
   const setMode = useCallback((m: string) => {
+    const prev = modeRef.current;
     _setMode(m);
     modeRef.current = m;
     localStorage.setItem(STORAGE_KEY_MODE, m);
+    // Close existing WS connection on mode switch so next request creates a fresh one
+    if (prev !== m) {
+      codeFeedbackWaitingRef.current = false;
+      setHasCodeSession(false);
+      const conn = taskConnectionRef.current;
+      if (conn) {
+        conn.disconnect();
+        taskConnectionRef.current = null;
+      }
+      agentRef.current?.destroy();
+      agentRef.current = null;
+      if (executorRef.current) {
+        executorRef.current.cleanup().catch(() => {});
+        executorRef.current = null;
+      }
+    }
   }, []);
 
   const STORAGE_KEY_SSH_MODE = 'termcat_ai_ssh_mode';

@@ -38,7 +38,7 @@ export class PluginManager {
   private pluginDataDir: string;
   private configPath: string;
   private pluginConfig: PluginConfigFile;
-  private mainWindow: BrowserWindow | null = null;
+  private windows: Map<number, BrowserWindow> = new Map(); // key = webContents.id
   /** 缓存外部插件的面板注册（Renderer reload 后可重放） */
   private panelRegistrations = new Map<string, { pluginId: string; options: any }>();
   /** 缓存外部插件的面板数据（Renderer reload 后可重放） */
@@ -58,11 +58,21 @@ export class PluginManager {
     this.mainBridge = this.createMainBridge();
   }
 
-  /** 设置主窗口引用（用于 IPC 事件推送） */
-  setMainWindow(win: BrowserWindow): void {
-    this.mainWindow = win;
-    // 补发在 mainWindow 就绪前暂存的事件
-    this.flushPendingMessages();
+  /** Register a window for IPC event delivery */
+  registerWindow(win: BrowserWindow): void {
+    const webContentsId = win.webContents.id;
+    this.windows.set(webContentsId, win);
+    // Flush pending messages to the new window
+    this.flushPendingMessagesToWindow(win);
+
+    // Clean up when window closes — capture id before window is destroyed
+    win.on('closed', () => {
+      this.windows.delete(webContentsId);
+    });
+  }
+
+  unregisterWindow(webContentsId: number): void {
+    this.windows.delete(webContentsId);
   }
 
   /** 获取注册表（供外部集成使用） */
@@ -94,12 +104,12 @@ export class PluginManager {
     this.registry.addEventListener('*', 'local-agent:started', (data: unknown) => {
       console.log('[PluginManager] Forwarding local-agent:started to renderer');
       this.lastLocalAgentData = data;  // 缓存完整数据，供 getLocalAgentStatus 回退查询
-      this.sendToRenderer('local-agent:started', data);
+      this.broadcastToRenderer('local-agent:started', data);
     });
     this.registry.addEventListener('*', 'local-agent:stopped', (data: unknown) => {
       console.log('[PluginManager] Forwarding local-agent:stopped to renderer');
       this.lastLocalAgentData = null;
-      this.sendToRenderer('local-agent:stopped', data);
+      this.broadcastToRenderer('local-agent:stopped', data);
     });
 
     // 4. 激活 onStartup 插件
@@ -564,7 +574,7 @@ export class PluginManager {
       }
 
       // 6. 通知 Renderer
-      this.sendToRenderer(PLUGIN_IPC_CHANNELS.PLUGIN_STATE_CHANGED, {
+      this.broadcastToRenderer(PLUGIN_IPC_CHANNELS.PLUGIN_STATE_CHANGED, {
         pluginId: pluginName,
         event: 'installed',
       });
@@ -600,7 +610,7 @@ export class PluginManager {
       }
 
       // 4. 通知 Renderer
-      this.sendToRenderer(PLUGIN_IPC_CHANNELS.PLUGIN_STATE_CHANGED, {
+      this.broadcastToRenderer(PLUGIN_IPC_CHANNELS.PLUGIN_STATE_CHANGED, {
         pluginId,
         event: 'uninstalled',
       });
@@ -776,30 +786,30 @@ export class PluginManager {
           case 'getActiveHost':
             return manager.getActiveHostInfo();
           case 'showNotification':
-            manager.sendToRenderer(PLUGIN_IPC_CHANNELS.NOTIFICATION, args[0]);
+            manager.broadcastToRenderer(PLUGIN_IPC_CHANNELS.NOTIFICATION, args[0]);
             return;
           case 'showInputBox':
-            return manager.sendToRenderer('plugin:ui:inputbox', { pluginId: args[0], options: args[1] });
+            return manager.broadcastToRenderer('plugin:ui:inputbox', { pluginId: args[0], options: args[1] });
           case 'showQuickPick':
-            return manager.sendToRenderer('plugin:ui:quickpick', { pluginId: args[0], items: args[1] });
+            return manager.broadcastToRenderer('plugin:ui:quickpick', { pluginId: args[0], items: args[1] });
           case 'showConfirm':
-            return manager.sendToRenderer('plugin:ui:confirm', { pluginId: args[0], message: args[1], options: args[2] });
+            return manager.broadcastToRenderer('plugin:ui:confirm', { pluginId: args[0], message: args[1], options: args[2] });
           // UI 贡献点面板操作 —— 转发到 Renderer 进程的 panelDataStore（同时缓存，支持 reload 重放）
           case 'panelRegister':
             manager.panelRegistrations.set((args[1] as any).id, { pluginId: args[0] as string, options: args[1] });
-            manager.sendToRenderer('plugin:panel:register', { pluginId: args[0], options: args[1] });
+            manager.broadcastToRenderer('plugin:panel:register', { pluginId: args[0], options: args[1] });
             return;
           case 'panelUnregister':
             manager.panelRegistrations.delete(args[0] as string);
             manager.panelDataCache.delete(args[0] as string);
-            manager.sendToRenderer('plugin:panel:unregister', { panelId: args[0] });
+            manager.broadcastToRenderer('plugin:panel:unregister', { panelId: args[0] });
             return;
           case 'panelSetData':
             manager.panelDataCache.set(args[0] as string, args[1] as any[]);
-            manager.sendToRenderer('plugin:panel:setData', { panelId: args[0], sections: args[1] });
+            manager.broadcastToRenderer('plugin:panel:setData', { panelId: args[0], sections: args[1] });
             return;
           case 'panelUpdateSection':
-            manager.sendToRenderer('plugin:panel:updateSection', { panelId: args[0], sectionId: args[1], data: args[2] });
+            manager.broadcastToRenderer('plugin:panel:updateSection', { panelId: args[0], sectionId: args[1], data: args[2] });
             return;
           default:
             throw new Error(`Unknown bridge method: ${method}`);
@@ -807,7 +817,7 @@ export class PluginManager {
       },
 
       send(channel: string, data: unknown): void {
-        manager.sendToRenderer(channel, data);
+        manager.broadcastToRenderer(channel, data);
       },
 
       getPluginDataPath(pluginId: string): string {
@@ -853,7 +863,7 @@ export class PluginManager {
   }
 
   private async writeToTerminal(sessionId: string, data: string): Promise<void> {
-    this.sendToRenderer('plugin:terminal:write', { sessionId, data });
+    this.broadcastToRenderer('plugin:terminal:write', { sessionId, data });
   }
 
   private async executeInTerminal(sessionId: string, command: string): Promise<CommandResult> {
@@ -863,7 +873,7 @@ export class PluginManager {
       ipcMain.once(channel, (_event, result: CommandResult) => {
         resolve(result);
       });
-      this.sendToRenderer('plugin:terminal:exec', { sessionId, command, responseChannel: channel });
+      this.broadcastToRenderer('plugin:terminal:exec', { sessionId, command, responseChannel: channel });
     });
   }
 
@@ -881,7 +891,7 @@ export class PluginManager {
       ipcMain.once(channel, (_event, result: CommandResult) => {
         resolve(result);
       });
-      this.sendToRenderer('plugin:ssh:exec', { sessionId, command, responseChannel: channel });
+      this.broadcastToRenderer('plugin:ssh:exec', { sessionId, command, responseChannel: channel });
     });
   }
 
@@ -891,7 +901,7 @@ export class PluginManager {
       ipcMain.once(channel, (_event, result: PluginFileItem[]) => {
         resolve(result);
       });
-      this.sendToRenderer('plugin:file:list', { sessionId, path: dirPath, responseChannel: channel });
+      this.broadcastToRenderer('plugin:file:list', { sessionId, path: dirPath, responseChannel: channel });
     });
   }
 
@@ -901,7 +911,7 @@ export class PluginManager {
       ipcMain.once(channel, (_event, result: string) => {
         resolve(result);
       });
-      this.sendToRenderer('plugin:file:read', { sessionId, path: remotePath, responseChannel: channel });
+      this.broadcastToRenderer('plugin:file:read', { sessionId, path: remotePath, responseChannel: channel });
     });
   }
 
@@ -911,7 +921,7 @@ export class PluginManager {
       ipcMain.once(channel, (_event) => {
         resolve();
       });
-      this.sendToRenderer('plugin:file:write', { sessionId, path: remotePath, content, responseChannel: channel });
+      this.broadcastToRenderer('plugin:file:write', { sessionId, path: remotePath, content, responseChannel: channel });
     });
   }
 
@@ -921,7 +931,7 @@ export class PluginManager {
       ipcMain.once(channel, (_event, result: unknown[]) => {
         resolve(result);
       });
-      this.sendToRenderer('plugin:host:list', { responseChannel: channel });
+      this.broadcastToRenderer('plugin:host:list', { responseChannel: channel });
     });
   }
 
@@ -931,37 +941,47 @@ export class PluginManager {
       ipcMain.once(channel, (_event, result: unknown) => {
         resolve(result);
       });
-      this.sendToRenderer('plugin:host:active', { responseChannel: channel });
+      this.broadcastToRenderer('plugin:host:active', { responseChannel: channel });
     });
   }
 
   // ==================== 工具方法 ====================
 
-  /** 待发送的事件队列（mainWindow 未就绪时暂存） */
+  /** Pending event queue (buffered until a window is registered) */
   private pendingRendererMessages: Array<{ channel: string; data: unknown }> = [];
   /** 缓存最近一次 local-agent:started 的完整数据（含 modes），供 getLocalAgentStatus 查询 */
   private lastLocalAgentData: unknown = null;
 
-  private sendToRenderer(channel: string, data: unknown): void {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(channel, data);
-    } else {
-      // mainWindow 未就绪时暂存，等 setMainWindow 后补发
+  private broadcastToRenderer(channel: string, data: unknown): void {
+    if (this.windows.size === 0) {
       this.pendingRendererMessages.push({ channel, data });
+      return;
+    }
+    for (const win of this.windows.values()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send(channel, data);
+      }
     }
   }
 
-  private flushPendingMessages(): void {
-    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+  private sendToWindow(webContentsId: number, channel: string, data: unknown): void {
+    const win = this.windows.get(webContentsId);
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(channel, data);
+    }
+  }
+
+  private flushPendingMessagesToWindow(win: BrowserWindow): void {
+    if (win.isDestroyed()) return;
     for (const { channel, data } of this.pendingRendererMessages) {
-      this.mainWindow.webContents.send(channel, data);
+      win.webContents.send(channel, data);
     }
     this.pendingRendererMessages = [];
   }
 
   private notifyStateChange(pluginId: string): void {
     const info = this.getPluginInfo(pluginId);
-    this.sendToRenderer(PLUGIN_IPC_CHANNELS.PLUGIN_STATE_CHANGED, { pluginId, info });
+    this.broadcastToRenderer(PLUGIN_IPC_CHANNELS.PLUGIN_STATE_CHANGED, { pluginId, info });
   }
 
   private createPluginLogger(pluginId: string): PluginLogger {

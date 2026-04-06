@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Host, OSType, Proxy, HostGroup } from '@/utils/types';
 import { Plus, Server, Trash2, Power, Search, Monitor, Laptop, Globe, Shield, Terminal, Pencil, FileCode, HardDrive, Network, Settings2, CheckSquare, Square, X, Folder, Layers, MoreHorizontal, ChevronRight, Hash, Move, ExternalLink } from 'lucide-react';
 import { HostConfigModal } from './HostConfigModal';
@@ -41,6 +41,15 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
   const [searchQuery, setSearchQuery] = useState('');
   const [dragHostId, setDragHostId] = useState<string | null>(null);
   const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ host: Host; x: number; y: number } | null>(null);
+  const [localContextMenu, setLocalContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu && !localContextMenu) return;
+    const handleClick = () => { setContextMenu(null); setLocalContextMenu(null); };
+    window.addEventListener('click', handleClick);
+    return () => window.removeEventListener('click', handleClick);
+  }, [contextMenu, localContextMenu]);
 
   const handleDragStart = (e: React.DragEvent, hostId: string) => {
     setDragHostId(hostId);
@@ -231,7 +240,12 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-24">
           {/* Local Terminal Card — Fixed first position, cannot be deleted */}
           {onLocalConnect && (
-            <div className="group relative border border-emerald-500/30 bg-[var(--bg-card)] rounded-[1.25rem] p-5 transition-all hover:border-emerald-500/60 hover:-translate-y-1 shadow-lg hover:shadow-2xl">
+            <div
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setLocalContextMenu({ x: e.clientX, y: e.clientY });
+              }}
+              className="group relative border border-emerald-500/30 bg-[var(--bg-card)] rounded-[1.25rem] p-5 transition-all hover:border-emerald-500/60 hover:-translate-y-1 shadow-lg hover:shadow-2xl">
               <div className="flex items-start gap-4 mb-5">
                 <div className="w-10 h-10 shrink-0 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 group-hover:bg-emerald-600 group-hover:text-white transition-all duration-300">
                   <Terminal className="w-5 h-5" />
@@ -267,6 +281,10 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                 draggable
                 onDragStart={(e) => handleDragStart(e, host.id)}
                 onDragEnd={handleDragEnd}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ host, x: e.clientX, y: e.clientY });
+                }}
                 className={`group relative border border-[var(--border-color)] bg-[var(--bg-card)] rounded-[1.25rem] p-5 transition-all hover:border-indigo-500/40 hover:-translate-y-1 shadow-lg hover:shadow-2xl cursor-grab active:cursor-grabbing ${dragHostId === host.id ? 'opacity-50' : ''}`}
               >
 
@@ -337,6 +355,61 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
           onUpdateProxy={onUpdateProxy}
           onDeleteProxy={onDeleteProxy}
         />
+      )}
+
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[180px] py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] shadow-2xl backdrop-blur-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={() => setContextMenu(null)}
+        >
+          <button
+            className="w-full px-4 py-2 text-left text-xs hover:bg-white/5 text-[var(--text-primary)]"
+            onClick={() => onConnect(contextMenu.host)}
+          >
+            {t.dashboard.launch}
+          </button>
+          <button
+            className="w-full px-4 py-2 text-left text-xs hover:bg-white/5 text-[var(--text-primary)]"
+            onClick={() => (window as any).electron.windowCreate({ hostToConnect: contextMenu.host })}
+          >
+            {t.dashboard.openInNewWindow}
+          </button>
+          <div className="my-1 border-t border-[var(--border-color)]" />
+          <button
+            className="w-full px-4 py-2 text-left text-xs hover:bg-white/5 text-[var(--text-primary)]"
+            onClick={() => { setEditingHost(contextMenu.host); setShowAddModal(true); }}
+          >
+            {t.common.edit}
+          </button>
+          <button
+            className="w-full px-4 py-2 text-left text-xs hover:bg-white/5 text-rose-400"
+            onClick={() => onDelete(contextMenu.host.id)}
+          >
+            {t.common.delete}
+          </button>
+        </div>
+      )}
+
+      {localContextMenu && (
+        <div
+          className="fixed z-50 min-w-[180px] py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] shadow-2xl backdrop-blur-xl"
+          style={{ left: localContextMenu.x, top: localContextMenu.y }}
+          onClick={() => setLocalContextMenu(null)}
+        >
+          <button
+            className="w-full px-4 py-2 text-left text-xs hover:bg-white/5 text-[var(--text-primary)]"
+            onClick={() => onLocalConnect?.()}
+          >
+            {t.dashboard.launch}
+          </button>
+          <button
+            className="w-full px-4 py-2 text-left text-xs hover:bg-white/5 text-[var(--text-primary)]"
+            onClick={() => (window as any).electron.windowCreate({ localTerminal: true })}
+          >
+            {t.dashboard.openInNewWindow}
+          </button>
+        </div>
       )}
 
       {showGroupModal && (

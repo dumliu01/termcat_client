@@ -54,6 +54,9 @@ export function useAdManager({
   isPanelVisible,
   sessionId,
 }: UseAdManagerOptions): UseAdManagerReturn {
+  // Ad system disabled
+  const AD_DISABLED = true;
+
   // 从模块级变量恢复（组件重挂载时不丢失）
   const [adMessages, setAdMessages] = useState<AdMessage[]>(_persistedAdMessages);
   const [adEnabled, setAdEnabled] = useState(() => {
@@ -242,12 +245,12 @@ export function useAdManager({
   }, [canDisableAd]);
 
   return {
-    adMessages,
-    shouldShowAd,
-    canDisableAd,
-    adEnabled,
+    adMessages: AD_DISABLED ? [] : adMessages,
+    shouldShowAd: AD_DISABLED ? false : shouldShowAd,
+    canDisableAd: AD_DISABLED ? false : canDisableAd,
+    adEnabled: AD_DISABLED ? false : adEnabled,
     toggleAd,
-    guestCannotClose,
-    guestCannotUseAI,
+    guestCannotClose: AD_DISABLED ? false : guestCannotClose,
+    guestCannotUseAI: AD_DISABLED ? false : guestCannotUseAI,
   };
 }

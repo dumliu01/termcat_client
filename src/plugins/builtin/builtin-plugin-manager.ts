@@ -248,7 +248,8 @@ class BuiltinPluginManager {
       : prev.connectionId !== info.connectionId
         || prev.connectionType !== info.connectionType
         || prev.hostname !== info.hostname
-        || prev.language !== info.language;
+        || prev.language !== info.language
+        || prev.effectiveHostname !== info.effectiveHostname;
 
     if (connectionChanged) {
       for (const handler of this.connectionHandlers) {

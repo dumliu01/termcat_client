@@ -55,6 +55,9 @@ const App: React.FC = () => {
   const [pendingConnectHost, setPendingConnectHost] = useState<Host | null>(null);
   const [editingPendingHost, setEditingPendingHost] = useState<Host | null>(null);
 
+  // Effective hostname for nested SSH (tracked per session)
+  const [effectiveHostnameMap, setEffectiveHostnameMap] = useState<Record<string, string | null>>({});
+
   // --- Hooks ---
   const settings = useAppSettings();
   const sessionManager = useSessionManager(setActiveView);
@@ -78,6 +81,24 @@ const App: React.FC = () => {
     }
     sessionManager.handleConnect(host);
   }, [sessionManager.handleConnect]);
+
+  // Auto-connect: handle new windows opened with a specific host
+  useEffect(() => {
+    const cleanup = (window as any).electron.onAutoConnect((hostConfig: Host) => {
+      setActiveView('terminal');
+      handleConnect(hostConfig);
+    });
+    return cleanup;
+  }, [handleConnect]);
+
+  // Auto-connect local terminal: handle new windows opened for local terminal
+  useEffect(() => {
+    const cleanup = (window as any).electron.onAutoConnectLocal(() => {
+      setActiveView('terminal');
+      sessionManager.handleLocalConnect();
+    });
+    return cleanup;
+  }, [sessionManager.handleLocalConnect]);
 
   // Duplicate Tab: delegate to sessionManager, parent doesn't care about local/ssh distinction
   const handleDuplicateSession = useCallback(
@@ -560,6 +581,7 @@ const App: React.FC = () => {
             groups={hostManager.groups}
             isMinimalMode={settings.isMinimalMode}
             onLocalConnect={() => sessionManager.handleLocalConnect()}
+            effectiveHostname={sessionManager.currentSessionId ? effectiveHostnameMap[sessionManager.currentSessionId] : null}
           />
         )}
 
@@ -605,6 +627,9 @@ const App: React.FC = () => {
                     sessionManager.setActiveSessions(prev => prev.map(s =>
                       s.id === session.id ? { ...s, connectionId: connId } : s
                     ));
+                  }}
+                  onEffectiveHostnameChange={(hostname) => {
+                    setEffectiveHostnameMap(prev => ({ ...prev, [session.id]: hostname }));
                   }}
                 />
               </div>

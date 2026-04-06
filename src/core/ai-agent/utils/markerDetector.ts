@@ -40,8 +40,11 @@ export function buildCommandWithMarkers(command: string, shell?: string): string
     // PowerShell doesn't support bracket paste mode, keep old marker solution
     return `${command}; $ec = if($LASTEXITCODE -ne $null){ $LASTEXITCODE } else { if($?){0}else{1} }; echo "<<<EXIT_CODE:$ec>>>"; echo "<<<CMD_END>>>"\r\n`;
   }
-  // Unix (bash/zsh): send original command directly, don't append anything
-  return `${command}\n`;
+  // Unix (bash/zsh): append explicit bracket paste mode signal as completion fallback.
+  // Shells with bracket paste mode enabled already send [?2004h] on prompt — the
+  // executor will match on whichever arrives first. On shells without bracket paste
+  // mode (e.g., nested SSH via passthrough), the printf provides the signal.
+  return `${command}; printf '\\033[?2004h'\n`;
 }
 
 // ==================== Legacy API Compatibility ====================

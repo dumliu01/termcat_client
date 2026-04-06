@@ -132,8 +132,8 @@ class SSHService {
         // Build SSH config based on auth type
         const sshConfig: any = {
           host: host.connectionType === 'jump' ? host.targetHost : host.hostname,
-          port: host.connectionType === 'jump' ? 22 : (Number(host.port) || 22),
-          username: host.username
+          port: host.connectionType === 'jump' ? (Number(host.targetPort) || 22) : (Number(host.port) || 22),
+          username: host.connectionType === 'jump' ? (host.targetUsername || '') : host.username
         };
 
         // Jump host configuration
@@ -142,12 +142,13 @@ class SSHService {
             host: host.hostname,
             port: Number(host.port) || 22,
             username: host.username,
-            // Auth credentials shared with target host
           };
           log.info('ssh.jump.configured', 'Jump host configuration detected', {
             host_id: host.id,
             jump_host: host.hostname,
+            jump_user: host.username,
             target_host: host.targetHost,
+            target_user: sshConfig.username,
             target_port: sshConfig.port,
           });
         }

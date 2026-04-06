@@ -146,6 +146,23 @@ contextBridge.exposeInMainWorld('electron', {
     return () => ipcRenderer.removeListener('auth-callback', listener);
   },
 
+  // Window management
+  windowCreate: (options?: { hostToConnect?: any; localTerminal?: boolean }) => ipcRenderer.invoke('window:create', options),
+
+  // Auto-connect listener (for windows opened with a host)
+  onAutoConnect: (callback: (hostConfig: any) => void) => {
+    const handler = (_event: any, hostConfig: any) => callback(hostConfig);
+    ipcRenderer.on('auto-connect', handler);
+    return () => ipcRenderer.removeListener('auto-connect', handler);
+  },
+
+  // Auto-connect local terminal listener
+  onAutoConnectLocal: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('auto-connect-local', handler);
+    return () => ipcRenderer.removeListener('auto-connect-local', handler);
+  },
+
   // Listen for menu navigation event
   onNavigate: (callback: (view: string, tab?: string) => void) => {
     const listener = (_event: any, view: string, tab?: string) => callback(view, tab);
@@ -445,6 +462,11 @@ declare global {
 
       // Tunnel event listeners
       onTunnelStatusUpdate: (callback: (connectionId: string, status: TunnelStatus) => void) => () => void;
+
+      // Window management
+      windowCreate: (options?: { hostToConnect?: any; localTerminal?: boolean }) => Promise<void>;
+      onAutoConnect: (callback: (hostConfig: any) => void) => () => void;
+      onAutoConnectLocal: (callback: () => void) => () => void;
 
       // Auth callback (termcat:// protocol)
       onAuthCallback: (callback: (data: { token: string; user: string }) => void) => () => void;

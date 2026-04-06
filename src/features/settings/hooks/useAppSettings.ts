@@ -18,7 +18,7 @@ export function useAppSettings() {
   });
   const [defaultFocusTarget, setDefaultFocusTarget] = useState<'input' | 'terminal'>(() => {
     const saved = localStorage.getItem('termcat_default_focus_target');
-    return saved === 'terminal' ? 'terminal' : 'input';
+    return saved === 'input' ? 'input' : 'terminal';
   });
 
   // Panel states (AI panel visible by default)

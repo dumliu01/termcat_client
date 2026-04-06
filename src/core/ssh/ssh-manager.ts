@@ -57,7 +57,6 @@ export interface SSHConnection {
 export class SSHService {
   private connections: Map<string, SSHConnection> = new Map();
   private configs: Map<string, SSHConfig> = new Map();
-  private webContents: any;  // Reserved for backward compatibility
   // Semaphore for limiting concurrent operations, preventing SSH channel exhaustion
   private activeOperations: Map<string, number> = new Map();
   private readonly MAX_CONCURRENT_OPERATIONS = 5;
@@ -108,11 +107,6 @@ export class SSHService {
         resolve(false);
       });
     });
-  }
-
-  // Set webContents for sending events to renderer (reserved for backward compatibility)
-  setWebContents(webContents: any) {
-    this.webContents = webContents;
   }
 
   // Semaphore: check if operation can be executed
@@ -370,7 +364,7 @@ export class SSHService {
             currentDirectory: '',
             encoding: 'UTF-8',
             banner: jumpBanner,
-            shellPassthroughCmd: `ssh -tt -o StrictHostKeyChecking=no ${config.host}\n`,
+            shellPassthroughCmd: `ssh -tt -o StrictHostKeyChecking=no -p ${config.port}${config.username ? ` ${config.username}@${config.host}` : ` ${config.host}`}\n`,
           });
 
           this.configs.set(connectionId, config);
@@ -938,11 +932,12 @@ export class SSHService {
   }
 
   /**
-   * Close an extra shell channel (e.g., AI ops independent shell).
-   * Only closes extra shells (shellId contains '__ai_shell'), not the terminal main shell.
+   * Close an extra shell channel (e.g., AI ops independent shell, monitor shell).
+   * Only closes extra shells, not the terminal main shell.
    */
   closeShell(shellId: string): boolean {
-    const baseConnectionId = shellId.replace('__ai_shell', '');
+    const extraMatch = shellId.match(/^(.+?)(__ai_shell|__monitor)(.*)$/);
+    const baseConnectionId = extraMatch ? extraMatch[1] : shellId;
     const connection = this.connections.get(baseConnectionId);
     if (!connection) return false;
 
@@ -962,9 +957,10 @@ export class SSHService {
   // shellId is optional: if passed a different shellId than connectionId (e.g., 'ssh-xxx__ai_shell'),
   // creates an additional independent shell channel, without affecting terminal main shell
   async createShell(connectionId: string, webContents: any, encoding?: string): Promise<string> {
-    // Support derived shellId (e.g., 'ssh-xxx__ai_shell'), extract baseConnectionId from it
-    const isExtraShell = connectionId.includes('__ai_shell');
-    const baseConnectionId = isExtraShell ? connectionId.replace('__ai_shell', '') : connectionId;
+    // Support derived shellId (e.g., 'ssh-xxx__ai_shell', 'ssh-xxx__monitor'), extract baseConnectionId from it
+    const extraShellMatch = connectionId.match(/^(.+?)(__ai_shell|__monitor)(.*)$/);
+    const isExtraShell = !!extraShellMatch;
+    const baseConnectionId = isExtraShell ? extraShellMatch![1] : connectionId;
     const shellId = connectionId; // ID used to identify this shell
 
     const connection = this.connections.get(baseConnectionId);
@@ -1315,10 +1311,11 @@ export class SSHService {
   }
 
   // Write data to shell
-  // Supports derived shellId (e.g., 'ssh-xxx__ai_shell') for writing to additional independent shell
+  // Supports derived shellId (e.g., 'ssh-xxx__ai_shell', 'ssh-xxx__monitor') for writing to additional independent shell
   writeToShell(connectionId: string, data: string): boolean {
-    const isExtraShell = connectionId.includes('__ai_shell');
-    const baseConnectionId = isExtraShell ? connectionId.replace('__ai_shell', '') : connectionId;
+    const extraShellMatch = connectionId.match(/^(.+?)(__ai_shell|__monitor)(.*)$/);
+    const isExtraShell = !!extraShellMatch;
+    const baseConnectionId = isExtraShell ? extraShellMatch![1] : connectionId;
 
     const connection = this.connections.get(baseConnectionId);
     if (!connection) return false;

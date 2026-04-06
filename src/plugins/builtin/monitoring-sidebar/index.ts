@@ -73,7 +73,7 @@ export const monitoringSidebarPlugin: BuiltinPlugin = {
           template: 'key-value',
           data: {
             pairs: [
-              { key: 'HOST', value: info.hostname },
+              { key: 'HOST', value: info.effectiveHostname || info.hostname },
             ],
             layout: 'horizontal',
           },
@@ -155,7 +155,7 @@ export const monitoringSidebarPlugin: BuiltinPlugin = {
           data: {
             pairs: [
               { key: 'PING', value: (typeof metrics.ping === 'number' ? metrics.ping : '--') + 'ms', color: 'info' },
-              { key: '', value: t.local + ' → ' + info.hostname },
+              { key: '', value: t.local + ' → ' + (info.effectiveHostname || info.hostname) },
             ],
             layout: 'horizontal',
           },
@@ -248,14 +248,28 @@ export const monitoringSidebarPlugin: BuiltinPlugin = {
         }
       };
 
-      if (info.connectionType === 'local') {
-        // Local terminal: get platform info via IPC, create LocalCmdExecutor
+      if (info.monitorCmdExecutor) {
+        // SSH jump detected (local or remote): use independent private shell executor
+        // (doesn't interfere with user terminal, lazy-initialized on first use).
+        // This check comes FIRST — regardless of connectionType (local or ssh).
+        const executor = info.monitorCmdExecutor;
+        executor.execute('uname -s 2>/dev/null').then((result) => {
+          if (currentInfo?.connectionId !== infoConnectionId) return;
+          const uname = (result.output || '').trim().toLowerCase();
+          const osType = uname === 'darwin' ? 'macos' : 'linux';
+          startMonitor(osType, executor, false);
+        }).catch(() => {
+          if (currentInfo?.connectionId !== infoConnectionId) return;
+          startMonitor('linux', executor, false);
+        });
+      } else if (info.connectionType === 'local') {
+        // Local terminal (no SSH jump): monitor locally
         window.electron.getPlatform().then((platform: string) => {
           const osType = platform === 'darwin' ? 'macos' : platform === 'win32' ? 'windows' : 'linux';
           startMonitor(osType, new LocalCmdExecutor(), true);
         });
       } else {
-        // SSH connection: get remote OS info, create SSHCmdExecutor
+        // Normal SSH (no jump): use SSHCmdExecutor via exec channel
         window.electron.sshGetOSInfo(info.connectionId).then((osInfo: any) => {
           startMonitor(osInfo?.osType || '', new SSHCmdExecutor(info.connectionId), false);
         });

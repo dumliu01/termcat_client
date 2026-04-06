@@ -531,7 +531,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
         onRemoveAttachment={ai.removeAttachment}
         onCompositionStart={() => setIsComposing(true)}
         onCompositionEnd={() => setIsComposing(false)}
-        onModeChange={(m: string) => ai.setMode(m as any)}
+        onModeChange={(m: string) => { setCurrentMode(m); ai.setMode(m as any); }}
         onModelChange={ai.setSelectedModel}
         sshMode={ai.sshMode}
         onSshModeChange={ai.setSshMode}

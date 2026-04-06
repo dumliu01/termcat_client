@@ -614,7 +614,7 @@ log.warn('xterm.dimensions_error', 'Caught xterm dimensions error, suppressing',
       if (terminalConfig?.deleteSeq === 'ASCII' && data === '\x1b[3~') {
         translatedData = '\x7f'; // ASCII Delete
       }
-      log.info('shell.sending', 'Sending data to terminal backend', { backend_type: backend.type, backend_id: backend.id, data_length: translatedData.length, is_active: isActiveRef.current });
+      log.debug('shell.sending', 'Sending data to terminal backend', { backend_type: backend.type, backend_id: backend.id, data_length: translatedData.length, is_active: isActiveRef.current });
       backend.write(translatedData);
     });
 

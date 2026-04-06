@@ -40,6 +40,10 @@ export interface ConnectionInfo {
   isVisible: boolean;
   isActive: boolean;
   language: string;
+  /** Effective hostname when inside nested SSH (follows jumps transparently) */
+  effectiveHostname?: string;
+  /** Independent command executor for monitoring (private shell, doesn't interfere with terminal) */
+  monitorCmdExecutor?: import('@/core/terminal/ICmdExecutor').ICmdExecutor;
 }
 
 /** Connection change callback */

@@ -21,9 +21,11 @@ export class LocalTerminalBackend implements ITerminalBackend {
   private _id: string = '';
   private _isConnected: boolean = false;
   private _dataCallbacks: TerminalDataCallback[] = [];
+  private _rawDataCallbacks: TerminalDataCallback[] = [];
   private _closeCallbacks: TerminalCloseCallback[] = [];
   private _cleanupFns: (() => void)[] = [];
   private _localOptions: Partial<LocalConnectOptions>;
+  private _muted = false;
 
   get id(): string { return this._id; }
   get isConnected(): boolean { return this._isConnected; }
@@ -44,8 +46,10 @@ export class LocalTerminalBackend implements ITerminalBackend {
 
     const unsubData = window.electron.localTerminal.onData((ptyId, data) => {
       if (ptyId === this._id) {
-        for (const cb of this._dataCallbacks) {
-          cb(data);
+        const wasMuted = this._muted;
+        for (const cb of this._rawDataCallbacks) { cb(data); }
+        if (!wasMuted) {
+          for (const cb of this._dataCallbacks) { cb(data); }
         }
       }
     });
@@ -117,8 +121,10 @@ export class LocalTerminalBackend implements ITerminalBackend {
     if (window.electron?.localTerminal) {
       const unsubData = window.electron.localTerminal.onData((ptyId, data) => {
         if (ptyId === this._id) {
-          for (const cb of this._dataCallbacks) {
-            cb(data);
+          const wasMuted = this._muted;
+          for (const cb of this._rawDataCallbacks) { cb(data); }
+          if (!wasMuted) {
+            for (const cb of this._dataCallbacks) { cb(data); }
           }
         }
       });
@@ -144,6 +150,16 @@ export class LocalTerminalBackend implements ITerminalBackend {
     this._dataCallbacks.push(callback);
   }
 
+  /** Register a raw data callback that fires even when muted */
+  onRawData(callback: TerminalDataCallback): void {
+    this._rawDataCallbacks.push(callback);
+  }
+
+  /** Mute/unmute terminal display output (raw data callbacks still fire) */
+  setMuted(muted: boolean): void {
+    this._muted = muted;
+  }
+
   onClose(callback: TerminalCloseCallback): void {
     this._closeCallbacks.push(callback);
   }
@@ -154,6 +170,7 @@ export class LocalTerminalBackend implements ITerminalBackend {
     }
     this._cleanupFns = [];
     this._dataCallbacks = [];
+    this._rawDataCallbacks = [];
     this._closeCallbacks = [];
     if (this._isConnected) {
       this.disconnect();

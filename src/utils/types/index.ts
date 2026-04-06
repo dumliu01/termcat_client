@@ -111,6 +111,8 @@ export interface Host {
   };
   connectionType?: 'direct' | 'jump' | 'local';  // Connection type, default is direct
   targetHost?: string;                  // Target host address in jump host mode
+  targetUsername?: string;              // Target host username in jump host mode
+  targetPort?: number;                  // Target host port in jump host mode
   proxyId?: string;
   proxy?: Proxy;  // Complete proxy configuration object
   tunnels?: Tunnel[];

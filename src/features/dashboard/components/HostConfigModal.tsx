@@ -151,6 +151,8 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
       proxyId: formData.proxyId,
       connectionType: formData.connectionType || 'direct',
       targetHost: isJump ? formData.targetHost : undefined,
+      targetUsername: isJump ? formData.targetUsername : undefined,
+      targetPort: isJump ? (formData.targetPort || 22) : undefined,
       // Tunnels are saved with host, new tunnel id passed empty (assigned by backend)
       tunnels: (formData.tunnels || []).map(t => ({
         ...t,
@@ -238,15 +240,26 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
               </div>
             </div>
             {formData.connectionType === 'jump' && (
-              <div className="w-full md:flex-1 space-y-2 animate-in fade-in duration-300">
-                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.targetHost}</label>
-                <input
-                  value={formData.targetHost || ''}
-                  onChange={e => setFormData({...formData, targetHost: e.target.value})}
-                  className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
-                  placeholder="10.0.0.1"
-                />
-              </div>
+              <>
+                <div className="w-full md:flex-1 space-y-2 animate-in fade-in duration-300">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.targetHost}</label>
+                  <input
+                    value={formData.targetHost || ''}
+                    onChange={e => setFormData({...formData, targetHost: e.target.value})}
+                    className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
+                    placeholder="10.0.0.1"
+                  />
+                </div>
+                <div className="w-full md:w-32 space-y-2 animate-in fade-in duration-300">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.targetPort}</label>
+                  <input
+                    type="number"
+                    value={formData.targetPort || 22}
+                    onChange={e => setFormData({...formData, targetPort: parseInt(e.target.value) || 22})}
+                    className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
+                  />
+                </div>
+              </>
             )}
           </div>
           {formData.connectionType !== 'local' && (
@@ -302,15 +315,38 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
                 <option value="ssh_key">{t.hostConfig.ssh.privateKey}</option>
               </select>
             </div>
-            <div className="w-full md:flex-1 space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.username}</label>
-              <input
-                value={formData.username}
-                onChange={e => setFormData({...formData, username: e.target.value})}
-                className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
-                placeholder="root"
-              />
-            </div>
+            {formData.connectionType === 'jump' ? (
+              <>
+                <div className="w-full md:flex-1 space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.jumpUsername}</label>
+                  <input
+                    value={formData.username}
+                    onChange={e => setFormData({...formData, username: e.target.value})}
+                    className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
+                    placeholder="root"
+                  />
+                </div>
+                <div className="w-full md:flex-1 space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.targetUsername}</label>
+                  <input
+                    value={formData.targetUsername || ''}
+                    onChange={e => setFormData({...formData, targetUsername: e.target.value})}
+                    className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
+                    placeholder="root"
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="w-full md:flex-1 space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.username}</label>
+                <input
+                  value={formData.username}
+                  onChange={e => setFormData({...formData, username: e.target.value})}
+                  className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
+                  placeholder="root"
+                />
+              </div>
+            )}
           </div>
           {formData.authType === 'password' ? (
             <div className="space-y-2 animate-in fade-in duration-300">

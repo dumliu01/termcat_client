@@ -196,8 +196,8 @@ export const PluginSettingsForm: React.FC<{
         <div key={groupName || '__ungrouped'}>
           {/* Group header (skip for ungrouped) */}
           {groupName && (
-            <div className="flex items-center gap-2 mb-3 mt-2 pt-3 border-t border-[var(--border-color)]">
-              <span className="text-[10px] font-black uppercase tracking-[0.15em] text-indigo-400">
+            <div className="mt-4 mb-4 px-4 py-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+              <span className="text-xs font-black uppercase tracking-[0.15em] text-indigo-400">
                 {groupName}
               </span>
             </div>

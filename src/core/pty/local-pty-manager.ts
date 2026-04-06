@@ -30,6 +30,41 @@ interface PtyInstance {
 export class LocalPtyService {
   private instances = new Map<string, PtyInstance>();
 
+  // Warm PTY pool: pre-spawned shell ready for instant use
+  private warmPool: Array<{ process: pty.IPty; shell: string; cwd: string; createdAt: number; bufferedData: string[] }> = [];
+  private warmPoolSize = 1;
+
+  /**
+   * Pre-spawn a shell process so it's ready when user opens a terminal.
+   * Call this after app startup (e.g., after window is ready).
+   */
+  prewarm(): void {
+    if (this.warmPool.length >= this.warmPoolSize) return;
+    const defaultShell = this.getDefaultShell();
+    const shell = defaultShell.path;
+    const args = defaultShell.args || [];
+    const cwd = os.homedir();
+
+    log.info('pty.prewarm.start', 'Pre-warming PTY pool', { shell, cwd });
+
+    try {
+      const cleanEnv = this.buildCleanEnv();
+      const p = pty.spawn(shell, args, {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 24,
+        cwd,
+        env: cleanEnv,
+      });
+      const bufferedData: string[] = [];
+      p.onData((data) => { bufferedData.push(data); });
+      this.warmPool.push({ process: p, shell, cwd, createdAt: Date.now(), bufferedData });
+      log.info('pty.prewarm.done', 'PTY pre-warmed successfully');
+    } catch (err) {
+      log.warn('pty.prewarm.failed', 'Failed to pre-warm PTY', { error: String(err) });
+    }
+  }
+
   async detectShells(): Promise<ShellInfo[]> {
     if (process.platform === 'win32') {
       return this.detectWindowsShells();
@@ -65,25 +100,51 @@ export class LocalPtyService {
 
     log.info('pty.creating', 'Creating local PTY', { pty_id: ptyId, shell, cwd });
 
-    const ptyProcess = pty.spawn(shell, args, {
-      name: 'xterm-256color',
-      cols: options.cols,
-      rows: options.rows,
-      cwd,
-      env: {
-        ...process.env,
-        // Ensure UTF-8 locale (macOS GUI app may not inherit shell's LANG)
-        LANG: process.env.LANG || 'en_US.UTF-8',
-        LC_CTYPE: process.env.LC_CTYPE || 'UTF-8',
-        ...options.env,
-      } as Record<string, string>,
-    });
+    const cleanEnv = this.buildCleanEnv(options.env);
+
+    // Try to claim a pre-warmed PTY (shell must match, cwd can differ — we'll cd)
+    let ptyProcess: pty.IPty;
+    let bufferedData: string[] = [];
+    const warmIdx = this.warmPool.findIndex(w => w.shell === shell);
+    if (warmIdx >= 0) {
+      const warm = this.warmPool.splice(warmIdx, 1)[0];
+      ptyProcess = warm.process;
+      bufferedData = warm.bufferedData;
+      ptyProcess.resize(options.cols, options.rows);
+      // cd to target directory and clear screen if cwd differs
+      if (warm.cwd !== cwd) {
+        ptyProcess.write(`cd ${cwd.replace(/(["$`\\!])/g, '\\$1')} && clear\n`);
+      }
+      log.info('pty.warm_claimed', 'Using pre-warmed PTY', {
+        pty_id: ptyId, warm_age_ms: Date.now() - warm.createdAt,
+        cwd_changed: warm.cwd !== cwd,
+      });
+      // Replenish the pool in background
+      setTimeout(() => this.prewarm(), 500);
+    } else {
+      ptyProcess = pty.spawn(shell, args, {
+        name: 'xterm-256color',
+        cols: options.cols,
+        rows: options.rows,
+        cwd,
+        env: cleanEnv,
+      });
+    }
 
     ptyProcess.onData((data) => {
       if (!options.webContents.isDestroyed()) {
         options.webContents.send('local-pty-data', ptyId, data);
       }
     });
+
+    // Flush pre-warmed buffered data to renderer
+    if (bufferedData.length > 0) {
+      for (const chunk of bufferedData) {
+        if (!options.webContents.isDestroyed()) {
+          options.webContents.send('local-pty-data', ptyId, chunk);
+        }
+      }
+    }
 
     ptyProcess.onExit(({ exitCode, signal }) => {
       log.info('pty.exited', 'Local PTY exited', { pty_id: ptyId, exit_code: exitCode, signal });
@@ -247,6 +308,24 @@ export class LocalPtyService {
     } catch {
       return null;
     }
+  }
+
+  private buildCleanEnv(extra?: Record<string, string>): Record<string, string> {
+    const cleanEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v === undefined) continue;
+      // Skip Electron/Chromium internal vars that are useless in child shell
+      if (k.startsWith('ELECTRON_') || k.startsWith('CHROME_') ||
+          k === 'ORIGINAL_XDG_CURRENT_DESKTOP' || k === 'GDK_BACKEND' ||
+          k === 'NODE_ENV' || k === 'VITE_DEV_SERVER_URL') continue;
+      cleanEnv[k] = v;
+    }
+    cleanEnv.LANG = cleanEnv.LANG || 'en_US.UTF-8';
+    cleanEnv.LC_CTYPE = cleanEnv.LC_CTYPE || 'UTF-8';
+    cleanEnv.TERM = 'xterm-256color';
+    cleanEnv.TERM_PROGRAM = 'TermCat';
+    if (extra) Object.assign(cleanEnv, extra);
+    return cleanEnv;
   }
 
   private async detectUnixShells(): Promise<ShellInfo[]> {

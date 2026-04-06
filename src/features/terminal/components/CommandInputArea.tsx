@@ -27,6 +27,8 @@ interface CommandInputAreaProps {
   connectionId?: string; // SSH connection ID, used to get current directory file list
   connectionType?: 'local' | 'ssh'; // Connection type
   initialDirectory?: string; // Initial directory (home directory)
+  onInputFocusGained?: () => void;
+  defaultFocusTarget?: 'input' | 'terminal';
 }
 
 export interface CommandInputAreaRef {
@@ -53,7 +55,9 @@ export const CommandInputArea = forwardRef<CommandInputAreaRef, CommandInputArea
   theme,
   connectionId,
   connectionType = 'ssh',
-  initialDirectory = ''
+  initialDirectory = '',
+  onInputFocusGained,
+  defaultFocusTarget = 'terminal',
 }, ref) => {
   const isLocal = connectionType === 'local';
   const [historySearchQuery, setHistorySearchQuery] = useState('');
@@ -86,7 +90,7 @@ export const CommandInputArea = forwardRef<CommandInputAreaRef, CommandInputArea
   const [historyAutoCompleteText, setHistoryAutoCompleteText] = useState('');
 
   // Input mode state: 'terminal' = terminal direct input mode, 'input' = input field input mode
-  const [inputMode, setInputMode] = useState<'terminal' | 'input'>('input');
+  const [inputMode, setInputMode] = useState<'terminal' | 'input'>(defaultFocusTarget);
   // Double Ctrl press detection - use ref to avoid closure issues
   const lastCtrlPressTimeRef = useRef<number>(0);
   const [ctrlKeyHeld, setCtrlKeyHeld] = useState(false);
@@ -403,6 +407,7 @@ logger.debug(LOG_MODULE.TERMINAL, 'terminal.prompt.detected', 'Prompt detected',
   // Update inputMode state when input box gets focus
   const handleInputFocus = () => {
     setInputMode('input');
+    onInputFocusGained?.();
   };
 
   // Filter history commands - use dedicated search query instead of input box value

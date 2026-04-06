@@ -72,6 +72,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
   const [amount, setAmount] = useState(initialAmount);
   const [selectedPayMethod, setSelectedPayMethod] = useState<string>('');
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [mockPayEnabled, setMockPayEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMethods, setLoadingMethods] = useState(false);
   const [error, setError] = useState<string>('');
@@ -94,12 +95,14 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
   const loadPaymentMethods = async () => {
     setLoadingMethods(true);
     try {
-      const methods = await paymentService.getAvailablePaymentMethods();
+      const { methods, mockPayEnabled: mockEnabled } = await paymentService.getAvailablePaymentMethods();
       logger.debug(LOG_MODULE.PAYMENT, 'payment.modal.methods_loaded', 'Loaded payment methods', {
         module: LOG_MODULE.PAYMENT,
         methods_count: methods.length,
+        mock_pay_enabled: mockEnabled,
       });
       setPaymentMethods(methods);
+      setMockPayEnabled(mockEnabled);
 
       // Auto-select if only one payment method
       if (methods.length === 1) {
@@ -337,7 +340,7 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
                   })}
 
                   {/* Mock payment option (dev/test only) */}
-                  {commerceService.getConfig()?.mock_pay_enabled && (
+                  {mockPayEnabled && (
                     <button
                       onClick={() => setSelectedPayMethod('mock_pay')}
                       className={`w-full flex items-center justify-between p-5 rounded-2xl border transition-all ${selectedPayMethod === 'mock_pay' ? 'border-amber-500 bg-amber-500/10' : 'border-dashed border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10'}`}
