@@ -28,7 +28,7 @@ export class CSJPlatform implements IAdPlatform {
   async init(config: AdPlatformConfig): Promise<void> {
     this.config = config;
     this.initialized = true;
-    log.info('ad.platform.init', 'CSJ platform initialized', { appId: config.appId });
+    log.debug('ad.platform.init', 'CSJ platform initialized', { appId: config.appId });
   }
 
   async fetchAds(context: AdRequestContext): Promise<AdContent[]> {

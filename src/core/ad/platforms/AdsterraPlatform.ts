@@ -28,7 +28,7 @@ export class AdsterraPlatform implements IAdPlatform {
   async init(config: AdPlatformConfig): Promise<void> {
     this.config = config;
     this.initialized = true;
-    log.info('ad.platform.init', 'Adsterra platform initialized (script mode)', { slotId: config.slotId });
+    log.debug('ad.platform.init', 'Adsterra platform initialized (script mode)', { slotId: config.slotId });
   }
 
   async fetchAds(context: AdRequestContext): Promise<AdContent[]> {

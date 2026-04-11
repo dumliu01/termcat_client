@@ -51,3 +51,34 @@ export type RiskLevel = 'low' | 'medium' | 'high';
 // Step status
 export type StepStatus = 'pending' | 'executing' | 'completed' | 'failed';
 
+// ── Split Pane Layout Tree Types ──
+
+/** Pane leaf node — wraps a terminal session */
+export interface PaneNode {
+  type: 'pane';
+  paneId: string;
+  sessionId: string;
+}
+
+/** Split internal node — divides space into two children */
+export interface SplitNode {
+  type: 'split';
+  direction: 'horizontal' | 'vertical'; // horizontal = top/bottom, vertical = left/right
+  ratio: number; // 0.1 ~ 0.9, proportion of `first` child
+  first: LayoutNode;
+  second: LayoutNode;
+}
+
+/** Union layout node */
+export type LayoutNode = PaneNode | SplitNode;
+
+/** Tab — contains a layout tree and an active pane pointer */
+export interface Tab {
+  id: string;
+  layout: LayoutNode;
+  activePaneId: string;
+}
+
+/** Drop edge for drag-to-merge */
+export type DropEdge = 'top' | 'bottom' | 'left' | 'right' | 'center';
+

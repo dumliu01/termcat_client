@@ -42,6 +42,9 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
   // Command timeout timer: must be cleared when command completes, prevent zombie timers cross-command pollution
   protected commandTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // The raw command string sent to shell (for fallback echo stripping when bracket paste mode is not active)
+  protected lastSentCommand: string = '';
+
   // ==================== Subclasses Must Implement ====================
 
   /** Establish shell connection (connect SSH, create shell, etc.) */
@@ -109,6 +112,9 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
     // Clear output buffer, reset echo stripping state
     this.outputBuffer = '';
     this.echoStripped = false;
+    // Store the full command with markers (minus trailing \n) for fallback echo stripping.
+    // The terminal echoes the entire line including the marker suffix, not just the user command.
+    this.lastSentCommand = commandWithMarkers.replace(/\n$/, '');
 
     // Clear zombie timers from previous command (if any)
     if (this.commandTimeoutTimer) {
@@ -261,6 +267,22 @@ export abstract class BaseShellExecutor extends EventEmitter implements ICommand
       if (this.commandTimeoutTimer) {
         clearTimeout(this.commandTimeoutTimer);
         this.commandTimeoutTimer = null;
+      }
+
+      // Fallback echo stripping: when bracket paste mode is not active (e.g., independent SSH shell),
+      // [?2004l] never appears so echoStripped stays false. Strip the command echo by finding the
+      // sent command text in the buffer and removing everything up to the first newline after it.
+      if (!this.echoStripped && this.lastSentCommand) {
+        const cmdIdx = this.outputBuffer.indexOf(this.lastSentCommand);
+        if (cmdIdx >= 0) {
+          const afterCmd = cmdIdx + this.lastSentCommand.length;
+          const newlineIdx = this.outputBuffer.indexOf('\n', afterCmd);
+          if (newlineIdx >= 0) {
+            this.outputBuffer = this.outputBuffer.substring(newlineIdx + 1);
+          } else {
+            this.outputBuffer = this.outputBuffer.substring(afterCmd);
+          }
+        }
       }
 
       const buf = this.outputBuffer;

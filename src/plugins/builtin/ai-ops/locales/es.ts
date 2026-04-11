@@ -79,6 +79,41 @@ export const es: typeof zh = {
   // Valor predeterminado del adaptador
   executeCommand: 'Ejecutar comando',
 
+  // Diálogo de activación de dispositivo
+  devicesFull: 'Límite de Dispositivos Alcanzado',
+  newDeviceDetected: 'Nuevo Dispositivo Detectado',
+  activatePrompt: 'Ha comprado el paquete de Agent local. ¿Activar en este dispositivo?',
+  activatedDevices: 'Dispositivos Activados',
+  activateThisDevice: 'Activar',
+  skipActivation: 'Ahora No',
+  devicesActivatedOn: (max: number) => `Activado en ${max} dispositivos:`,
+  unbindFirst: 'Debe desvincular un dispositivo antes de activar este.',
+  manageDevices: 'Gestionar Dispositivos',
+  timeJustNow: 'ahora',
+  timeMinutesAgo: (n: number) => `hace ${n}min`,
+  timeHoursAgo: (n: number) => `hace ${n}h`,
+  timeDaysAgo: (n: number) => `hace ${n}d`,
+  timeMonthsAgo: (n: number) => `hace ${n} meses`,
+  timeYearsAgo: (n: number) => `hace ${n} años`,
+
+  // Diálogo de compra
+  purchaseTitle: 'Desbloquear Agent Local',
+  tabPurchase: 'Comprar',
+  tabActivate: 'Activar',
+  priceOneTime: 'Compra única, acceso permanente',
+  unlockFeatures: 'Desbloquear Local X-Agent + Claude Code',
+  featureAgentLoop: 'Ciclo autónomo de Agent + llamadas de herramientas',
+  featureSSH: 'Ejecución remota de comandos SSH',
+  featurePersistent: 'Licencia permanente + sesiones persistentes',
+  featureBYOK: 'Use su propia API Key, sin costo adicional',
+  buyNow: (price: number) => `Comprar ¥${price}`,
+  purchasedOnOther: '¿Comprado en otro dispositivo?',
+  purchasedOnOtherDesc: 'Después de comprar, puede activar en hasta 3 dispositivos. Haga clic abajo para activar — no necesita código de activación.',
+  activateSuccess: '¡Activado! Funciones desbloqueadas',
+  activateDefaultError: 'Activación fallida. Confirme que su cuenta ha comprado este producto.',
+  activated: 'Activado',
+  activateCurrentDevice: 'Activar Este Dispositivo',
+
   // Común (plugin autocontenido)
   cancel: 'Cancelar',
 };

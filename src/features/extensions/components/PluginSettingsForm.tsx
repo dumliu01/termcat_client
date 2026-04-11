@@ -11,21 +11,29 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Settings, Loader2, Save } from 'lucide-react';
 import { pluginService } from '@/core/plugin/pluginService';
 import type { PluginInfo } from '@/plugins/types';
+import { useI18n } from '@/base/i18n/I18nContext';
+
+/** Resolve a potentially i18n-ized field: string or { zh, en, es } object */
+function resolveI18nText(value: string | Record<string, string> | undefined, language: string): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value[language] || value.en || value.zh || Object.values(value)[0] || '';
+}
 
 interface PluginSettingField {
   key: string;
   type: 'string' | 'boolean' | 'number' | 'select';
   default: unknown;
-  description: string;
-  options?: { label: string; value: unknown }[];
-  group?: string;
+  description: string | Record<string, string>;
+  options?: { label: string | Record<string, string>; value: unknown }[];
+  group?: string | Record<string, string>;
 }
 
-/** Group settings by their `group` field. Ungrouped items go under '' key. */
-function groupSettings(fields: PluginSettingField[]): Map<string, PluginSettingField[]> {
+/** Group settings by their `group` field (resolved by language). Ungrouped items go under '' key. */
+function groupSettings(fields: PluginSettingField[], language: string): Map<string, PluginSettingField[]> {
   const groups = new Map<string, PluginSettingField[]>();
   for (const field of fields) {
-    const g = field.group || '';
+    const g = resolveI18nText(field.group as any, language) || '';
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g)!.push(field);
   }
@@ -37,8 +45,10 @@ const SettingField: React.FC<{
   field: PluginSettingField;
   value: unknown;
   onChange: (key: string, value: unknown) => void;
-}> = ({ field, value, onChange }) => {
+  language: string;
+}> = ({ field, value, onChange, language }) => {
   const displayValue = value ?? field.default ?? '';
+  const description = resolveI18nText(field.description as any, language);
 
   return (
     <div>
@@ -46,7 +56,7 @@ const SettingField: React.FC<{
         {field.key}
       </label>
       <p className="text-[11px] text-[var(--text-tertiary)] mb-2">
-        {field.description}
+        {description}
       </p>
 
       {field.type === 'select' && field.options ? (
@@ -57,7 +67,7 @@ const SettingField: React.FC<{
         >
           {field.options.map((opt) => (
             <option key={String(opt.value)} value={String(opt.value)}>
-              {opt.label}
+              {resolveI18nText(opt.label as any, language)}
             </option>
           ))}
         </select>
@@ -105,6 +115,7 @@ export const PluginSettingsForm: React.FC<{
   /** 是否显示插件名和描述头部 */
   showHeader?: boolean;
 }> = ({ plugin, showHeader = false }) => {
+  const { language } = useI18n();
   const [settings, setSettings] = useState<PluginSettingField[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [originalValues, setOriginalValues] = useState<Record<string, unknown>>({});
@@ -177,17 +188,17 @@ export const PluginSettingsForm: React.FC<{
     );
   }
 
-  const grouped = groupSettings(settings);
+  const grouped = groupSettings(settings, language);
 
   return (
     <div className="space-y-5">
       {showHeader && (
         <div className="mb-2">
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-            {plugin.manifest.displayName}
+            {resolveI18nText(plugin.manifest.displayName as any, language)}
           </h3>
           <p className="text-xs text-[var(--text-tertiary)] mt-1 leading-relaxed">
-            {plugin.manifest.description}
+            {resolveI18nText(plugin.manifest.description as any, language)}
           </p>
         </div>
       )}
@@ -209,6 +220,7 @@ export const PluginSettingsForm: React.FC<{
                 field={field}
                 value={values[field.key]}
                 onChange={updateValue}
+                language={language}
               />
             ))}
           </div>

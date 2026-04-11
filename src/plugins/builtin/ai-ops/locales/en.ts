@@ -79,6 +79,41 @@ export const en: typeof zh = {
   // Adapter default
   executeCommand: 'Execute command',
 
+  // Device activation dialog
+  devicesFull: 'Device Limit Reached',
+  newDeviceDetected: 'New Device Detected',
+  activatePrompt: 'You have purchased the local Agent pack. Activate on this device?',
+  activatedDevices: 'Activated Devices',
+  activateThisDevice: 'Activate',
+  skipActivation: 'Not Now',
+  devicesActivatedOn: (max: number) => `Activated on ${max} devices:`,
+  unbindFirst: 'You need to unbind a device before activating this one.',
+  manageDevices: 'Manage Devices',
+  timeJustNow: 'just now',
+  timeMinutesAgo: (n: number) => `${n}m ago`,
+  timeHoursAgo: (n: number) => `${n}h ago`,
+  timeDaysAgo: (n: number) => `${n}d ago`,
+  timeMonthsAgo: (n: number) => `${n}mo ago`,
+  timeYearsAgo: (n: number) => `${n}y ago`,
+
+  // Purchase dialog
+  purchaseTitle: 'Unlock Local Agent',
+  tabPurchase: 'Purchase',
+  tabActivate: 'Activate',
+  priceOneTime: 'One-time purchase, lifetime access',
+  unlockFeatures: 'Unlock Local X-Agent + Claude Code',
+  featureAgentLoop: 'Autonomous Agent loop + tool calls',
+  featureSSH: 'SSH remote command execution',
+  featurePersistent: 'Permanent license + persistent sessions',
+  featureBYOK: 'Bring your own API Key, no extra cost',
+  buyNow: (price: number) => `Buy Now ¥${price}`,
+  purchasedOnOther: 'Purchased on another device?',
+  purchasedOnOtherDesc: 'After purchasing on any device, you can activate on up to 3 devices. Click below to activate — no activation code needed.',
+  activateSuccess: 'Activated! Features unlocked',
+  activateDefaultError: 'Activation failed. Please confirm your account has purchased this product.',
+  activated: 'Activated',
+  activateCurrentDevice: 'Activate This Device',
+
   // Common (plugin self-contained)
   cancel: 'Cancel',
 };

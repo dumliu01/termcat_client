@@ -150,6 +150,20 @@ export interface UseAIAgentReturn {
   agent: AIAgent | null;
 }
 
+// ==================== Per-session conversation cache ====================
+// When the AI panel unmounts (e.g. pane switch in split mode), save conversation
+// state so it can be restored when the same session becomes active again.
+
+interface SessionConversationCache {
+  messages: AIOpsMessage[];
+  convId: string | null;
+  convCreatedAt: number;
+  convTitle: string;
+  savedMsgCount: number;
+}
+
+const sessionConversationCache = new Map<string, SessionConversationCache>();
+
 // ==================== Hook 实现 ====================
 
 export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
@@ -172,7 +186,8 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   const [isLoading, setIsLoading] = useState(false);
 
   // ==================== 消息列表 ====================
-  const [messages, setMessages] = useState<AIOpsMessage[]>([]);
+  const cachedConv = sessionId ? sessionConversationCache.get(sessionId) : undefined;
+  const [messages, setMessages] = useState<AIOpsMessage[]>(() => cachedConv?.messages ?? []);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
@@ -258,10 +273,10 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   const isPluginMode = modeInfo?.source === 'plugin';
 
   // ==================== 会话记录 ====================
-  const [convId, setConvId] = useState<string | null>(null);
-  const [convCreatedAt, setConvCreatedAt] = useState<number>(0);
-  const [convTitle, setConvTitle] = useState<string>('');
-  const [savedMsgCount, setSavedMsgCount] = useState(0);
+  const [convId, setConvId] = useState<string | null>(cachedConv?.convId ?? null);
+  const [convCreatedAt, setConvCreatedAt] = useState<number>(cachedConv?.convCreatedAt ?? 0);
+  const [convTitle, setConvTitle] = useState<string>(cachedConv?.convTitle ?? '');
+  const [savedMsgCount, setSavedMsgCount] = useState(cachedConv?.savedMsgCount ?? 0);
   const convIdRef = useRef(convId);
   convIdRef.current = convId;
   const convCreatedAtRef = useRef(convCreatedAt);
@@ -1696,6 +1711,27 @@ export function useAIAgent(options: UseAIAgentOptions): UseAIAgentReturn {
   const clearAttachments = useCallback(() => {
     setAttachedFiles([]);
   }, []);
+
+  // ==================== Save conversation to cache on unmount ====================
+  // When the panel unmounts (e.g. pane switch), save current conversation state
+  // so it can be restored when the same session becomes active again.
+  useEffect(() => {
+    if (sessionId) {
+      // Clear consumed cache entry (state was already initialized from it)
+      sessionConversationCache.delete(sessionId);
+    }
+    return () => {
+      if (sessionId && messagesRef.current.length > 0) {
+        sessionConversationCache.set(sessionId, {
+          messages: messagesRef.current,
+          convId: convIdRef.current,
+          convCreatedAt: convCreatedAtRef.current,
+          convTitle: '',
+          savedMsgCount: savedMsgCountRef.current,
+        });
+      }
+    };
+  }, [sessionId]);
 
   // ==================== 返回 ====================
 

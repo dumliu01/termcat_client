@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useReducer } from 'react';
 import { Sidebar } from '@/features/shared/components/Sidebar';
 import { Dashboard } from '@/features/dashboard/components/Dashboard';
 import { TerminalView } from '@/features/terminal/components/TerminalView';
@@ -11,7 +11,7 @@ const UpdateModal = React.lazy(() => import('@/features/shared/components/Update
 import type { UpdateVersionInfo } from '@/features/shared/components/UpdateModal';
 import { Host, ViewState, Session, TierType } from '@/utils/types';
 import { THEME_CONFIG } from '@/utils/constants';
-import { Terminal, Monitor, Loader2, KeyRound, Cloud } from 'lucide-react';
+import { Terminal, Monitor, Loader2, KeyRound, Cloud, Copy, ExternalLink, Settings, Pencil, SplitSquareVertical, SplitSquareHorizontal, XCircle } from 'lucide-react';
 const HostConfigModal = React.lazy(() => import('@/features/dashboard/components/HostConfigModal').then(m => ({ default: m.HostConfigModal })));
 import { Header } from '@/features/shared/components/Header';
 import { hostService, StorageMode } from '@/core/host/hostService';
@@ -28,10 +28,20 @@ import { activateBuiltinPlugins, panelDataStore } from '@/plugins/builtin';
 import { builtinPluginManager } from '@/plugins/builtin/builtin-plugin-manager';
 import { AI_OPS_EVENTS } from '@/plugins/builtin/events';
 import { AIServiceProvider } from '@/features/shared/contexts/AIServiceContext';
-import { useSessionManager } from '@/features/terminal/hooks/useSessionManager';
+import { useTabManager } from '@/features/terminal/hooks/useTabManager';
+import { SplitPaneLayout } from '@/features/terminal/components/SplitPaneLayout';
+import { PaneHeader } from '@/features/terminal/components/PaneHeader';
+import { PaneDropZone } from '@/features/terminal/components/PaneDropZone';
+import { findPaneNode, countPanes, collectAllPaneIds } from '@/features/terminal/utils/split-layout';
+import type { DropEdge } from '@/features/terminal/types';
 import { useHostManager } from '@/features/dashboard/hooks/useHostManager';
 import { useUserAuth } from '@/features/auth/hooks/useUserAuth';
 import { useAppSettings } from '@/features/settings/hooks/useAppSettings';
+
+// Module-level drag data store — accessible by drag sources and dragend handler
+// This avoids the browser restriction that dataTransfer.getData() returns '' in dragend
+export let __activeDragData: { type: string; tabId?: string; paneId?: string } | null = null;
+export function setActiveDragData(data: typeof __activeDragData) { __activeDragData = data; }
 
 const App: React.FC = () => {
   const { language, setLanguage, t } = useI18n();
@@ -58,9 +68,58 @@ const App: React.FC = () => {
   // Effective hostname for nested SSH (tracked per session)
   const [effectiveHostnameMap, setEffectiveHostnameMap] = useState<Record<string, string | null>>({});
 
+  // Drag-and-drop: pane currently showing drop zone overlay
+  const [dropTargetPaneId, setDropTargetPaneId] = useState<string | null>(null);
+
+  // Terminal pane context menu
+  const [paneContextMenu, setPaneContextMenu] = useState<{
+    x: number; y: number; tabId: string; paneId: string; sessionId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!paneContextMenu) return;
+    const close = () => setPaneContextMenu(null);
+    // mousedown covers both left-click and right-click to dismiss
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [paneContextMenu]);
+
+  // Per-pane portal containers: each pane gets its own set so panels stay mounted during pane switches.
+  // Active pane's containers are visible; non-active pane's containers use display:none.
+  const panePortalMapRef = useRef(new Map<string, {
+    left: { current: HTMLDivElement | null },
+    bottom: { current: HTMLDivElement | null },
+    right: { current: HTMLDivElement | null },
+  }>());
+  const [portalVersion, forcePortalUpdate] = useReducer((x: number) => x + 1, 0);
+
+  // Stable ref callbacks cached per pane+position. Using stable references prevents React from
+  // re-invoking callback refs on every render (inline arrows get called with null→element each time).
+  const refCallbackCacheRef = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const getPanePortalRefCb = useCallback((paneId: string, position: 'left' | 'bottom' | 'right') => {
+    const key = `${paneId}-${position}`;
+    let cb = refCallbackCacheRef.current.get(key);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        let entry = panePortalMapRef.current.get(paneId);
+        if (!entry) {
+          entry = { left: { current: null }, bottom: { current: null }, right: { current: null } };
+          panePortalMapRef.current.set(paneId, entry);
+        }
+        if (entry[position].current !== el) {
+          entry[position].current = el;
+          // Trigger re-render so TerminalView can use the portal target via createPortal
+          if (el !== null) forcePortalUpdate();
+        }
+      };
+      refCallbackCacheRef.current.set(key, cb);
+    }
+    return cb;
+  }, []);
+
   // --- Hooks ---
   const settings = useAppSettings();
-  const sessionManager = useSessionManager(setActiveView);
+  const tabManager = useTabManager(setActiveView);
   const hostManager = useHostManager();
 
   const userAuth = useUserAuth({
@@ -69,9 +128,83 @@ const App: React.FC = () => {
     setProxies: hostManager.setProxies,
     setStorageMode: hostManager.setStorageMode,
     loadProxies: hostManager.loadProxies,
-    resetSessions: sessionManager.resetSessions,
+    resetSessions: tabManager.resetSessions,
     setActiveView,
   });
+
+  // Drag outside window → new window.
+  // dataTransfer.getData() returns '' in dragend, so drag sources write to
+  // module-level __activeDragData / setActiveDragData() on dragstart.
+  useEffect(() => {
+    const handleDragEnd = (e: DragEvent) => {
+      const data = __activeDragData;
+      __activeDragData = null; // Always clear
+      if (!data) return;
+
+      // Check if drop landed outside window bounds
+      const isOutside = e.clientX <= 0 || e.clientY <= 0
+        || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight;
+
+      logger.info(LOG_MODULE.APP, 'app.drag.end', 'Drag ended', {
+        clientX: e.clientX, clientY: e.clientY,
+        windowW: window.innerWidth, windowH: window.innerHeight,
+        isOutside, dataType: data.type,
+      });
+
+      if (!isOutside) return;
+
+      if (data.type === 'pane' && data.tabId && data.paneId) {
+        tabManager.extractPaneToNewWindow(data.tabId, data.paneId);
+      } else if (data.type === 'tab' && data.tabId) {
+        tabManager.extractTabToNewWindow(data.tabId);
+      }
+    };
+    document.addEventListener('dragend', handleDragEnd);
+    return () => document.removeEventListener('dragend', handleDragEnd);
+  }, [tabManager.extractPaneToNewWindow, tabManager.extractTabToNewWindow]);
+
+  // Split pane keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (activeView !== 'terminal') return;
+      const currentTab = tabManager.currentTab;
+      if (!currentTab) return;
+      const meta = e.metaKey || e.ctrlKey;
+
+      // Cmd+D — vertical split
+      if (meta && !e.shiftKey && e.key === 'd') {
+        e.preventDefault();
+        tabManager.splitPane(currentTab.id, currentTab.activePaneId, 'vertical');
+        return;
+      }
+      // Cmd+Shift+D — horizontal split
+      if (meta && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        tabManager.splitPane(currentTab.id, currentTab.activePaneId, 'horizontal');
+        return;
+      }
+      // Cmd+] — next pane, Cmd+[ — previous pane
+      if (meta && (e.key === ']' || e.key === '[')) {
+        e.preventDefault();
+        const allPaneIds = collectAllPaneIds(currentTab.layout);
+        if (allPaneIds.length <= 1) return;
+        const currentIndex = allPaneIds.indexOf(currentTab.activePaneId);
+        const nextIndex = e.key === ']'
+          ? (currentIndex + 1) % allPaneIds.length
+          : (currentIndex - 1 + allPaneIds.length) % allPaneIds.length;
+        tabManager.setActivePane(currentTab.id, allPaneIds[nextIndex]);
+        return;
+      }
+      // Cmd+W — close active pane (or tab if single pane)
+      if (meta && e.key === 'w') {
+        e.preventDefault();
+        tabManager.closePane(currentTab.id, currentTab.activePaneId);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeView, tabManager.currentTab, tabManager.splitPane, tabManager.setActivePane, tabManager.closePane]);
 
   // Wrapper handleConnect: show config window when username is empty
   const handleConnect = useCallback((host: Host) => {
@@ -79,8 +212,8 @@ const App: React.FC = () => {
       setPendingConnectHost(host);
       return;
     }
-    sessionManager.handleConnect(host);
-  }, [sessionManager.handleConnect]);
+    tabManager.handleConnect(host);
+  }, [tabManager.handleConnect]);
 
   // Auto-connect: handle new windows opened with a specific host
   useEffect(() => {
@@ -95,17 +228,12 @@ const App: React.FC = () => {
   useEffect(() => {
     const cleanup = (window as any).electron.onAutoConnectLocal(() => {
       setActiveView('terminal');
-      sessionManager.handleLocalConnect();
+      tabManager.handleLocalConnect();
     });
     return cleanup;
-  }, [sessionManager.handleLocalConnect]);
+  }, [tabManager.handleLocalConnect]);
 
-  // Duplicate Tab: delegate to sessionManager, parent doesn't care about local/ssh distinction
-  const handleDuplicateSession = useCallback(
-    (session: Session) => sessionManager.duplicateSession(session),
-    [sessionManager.duplicateSession],
-  );
-
+  // Duplicate Tab: receives a virtual session whose id is actually tabId
   const handleOpenPayment = useCallback((type: 'bones' | 'gems' | 'vip_month' | 'vip_year' | 'agent_pack', amount: number, tierId?: string) => {
     setPaymentType(type);
     setPaymentAmount(amount);
@@ -113,12 +241,16 @@ const App: React.FC = () => {
     setShowPaymentModal(true);
   }, []);
 
-  // Rename session
-  const handleRenameSession = useCallback((sessionId: string, name: string | undefined) => {
-    sessionManager.setActiveSessions(prev => prev.map(s =>
-      s.id === sessionId ? { ...s, customName: name } : s
+  // Rename tab (updates the active pane's session customName)
+  const handleRenameSession = useCallback((tabId: string, name: string | undefined) => {
+    const tab = tabManager.tabs.find(t => t.id === tabId);
+    if (!tab) return;
+    const pane = findPaneNode(tab.layout, tab.activePaneId);
+    if (!pane) return;
+    tabManager.setActiveSessions(prev => prev.map(s =>
+      s.id === pane.sessionId ? { ...s, customName: name } : s
     ));
-  }, [sessionManager.setActiveSessions]);
+  }, [tabManager.tabs, tabManager.setActiveSessions]);
 
   // --- Local agent plugin: register modes/models via plugin extension point ---
   const localAgentDisposableRef = useRef<{ modeDisposable?: { dispose: () => void }; modelDisposable?: { dispose: () => void } } | null>(null);
@@ -132,7 +264,7 @@ const App: React.FC = () => {
       const modelList = data.models || [];
 
       // Register modes from plugin data — plugin declares its own modes
-      console.log('[App] registerLocalAgent: modes=', data.modes, 'wsUrl=', data.wsUrl);
+      if (import.meta.env.DEV) console.log('[App] registerLocalAgent: modes=', data.modes, 'wsUrl=', data.wsUrl);
       const pluginModes = (data.modes || [{ id: 'local-agent', name: 'Local Agent', icon: 'cpu' }])
         .map((m: any) => ({
           id: m.id,
@@ -161,7 +293,7 @@ const App: React.FC = () => {
     const pollLocalAgent = (attempt = 0) => {
       window.electron?.plugin?.getLocalAgentStatus?.().then((data: any) => {
         if (data?.wsUrl) {
-          console.log('[App] getLocalAgentStatus returned (attempt', attempt, '):', JSON.stringify(data).slice(0, 200));
+          if (import.meta.env.DEV) console.log('[App] getLocalAgentStatus returned (attempt', attempt, '):', JSON.stringify(data).slice(0, 200));
           registerLocalAgent(data);
         } else if (attempt < 5) {
           setTimeout(() => pollLocalAgent(attempt + 1), 2000);
@@ -172,7 +304,7 @@ const App: React.FC = () => {
 
     // Listen for start/stop events
     const unsubStarted = window.electron?.plugin?.onLocalAgentStarted?.((data) => {
-      console.log('[App] onLocalAgentStarted event:', data);
+      if (import.meta.env.DEV) console.log('[App] onLocalAgentStarted event:', data);
       registerLocalAgent(data);
     });
     const unsubStopped = window.electron?.plugin?.onLocalAgentStopped?.(() => {
@@ -515,7 +647,22 @@ const App: React.FC = () => {
     availableModeInfos: userAuth.availableModeInfos,
   }), [userAuth.user, userAuth.availableModels, userAuth.availableModes, userAuth.availableModeInfos]);
 
-  const activeSession = sessionManager.activeSessions.find(s => s.id === sessionManager.currentSessionId);
+  const activeSession = tabManager.getActiveSession();
+
+  // Map tabs to virtual sessions for TerminalTabBar compatibility.
+  // Each tab appears as a "session" using its active pane's host info.
+  const tabBarSessions = useMemo(() => {
+    return tabManager.tabs.map(tab => {
+      const pane = findPaneNode(tab.layout, tab.activePaneId);
+      const session = pane ? tabManager.activeSessions.find(s => s.id === pane.sessionId) : null;
+      return {
+        id: tab.id,
+        host: session?.host || { id: '', name: '?', hostname: '', username: '', port: 0, authType: 'password' as const, os: 'linux' as any, tags: [], connectionType: 'local' as const },
+        lines: [],
+        customName: session?.customName,
+      } as Session;
+    });
+  }, [tabManager.tabs, tabManager.activeSessions]);
 
   if (userAuth.showLogin) return (
     <>
@@ -542,7 +689,7 @@ const App: React.FC = () => {
         onLogout={userAuth.handleLogout}
         language={language}
         setLanguage={setLanguage}
-        terminalSessionCount={sessionManager.activeSessions.length}
+        terminalSessionCount={tabManager.tabs.length}
       />
 
       {!settings.isMinimalMode && (
@@ -554,89 +701,325 @@ const App: React.FC = () => {
           user={userAuth.user}
           onLogout={userAuth.handleLogout}
           onLoginRequest={() => userAuth.setShowLogin(true)}
-          terminalCount={sessionManager.activeSessions.length}
+          terminalCount={tabManager.tabs.length}
         />
       )}
 
-      <main className={`flex-1 flex flex-col relative overflow-hidden ${settings.isMinimalMode ? 'pt-10' : ''}`} style={{ backgroundColor: 'var(--bg-main)' }}>
-        {activeView === 'terminal' && sessionManager.activeSessions.length > 0 && (
+      <main
+        className={`flex-1 flex flex-col relative overflow-hidden ${settings.isMinimalMode ? 'pt-10' : ''}`}
+        style={{ backgroundColor: 'var(--bg-main)' }}
+      >
+        {activeView === 'terminal' && tabManager.tabs.length > 0 && (
           <TerminalTabBar
-            sessions={sessionManager.activeSessions}
-            currentSessionId={sessionManager.currentSessionId}
-            onSelectSession={sessionManager.setCurrentSessionId}
-            onCloseSession={sessionManager.closeSession}
+            sessions={tabBarSessions}
+            currentSessionId={tabManager.currentTabId}
+            onSelectSession={tabManager.setCurrentTabId}
+            onCloseSession={tabManager.closeTab}
             onConnect={handleConnect}
-            onDuplicateSession={handleDuplicateSession}
-            onReorderSessions={sessionManager.setActiveSessions}
-            onOpenHostConfig={setHostConfigSession}
-            dragTabRef={sessionManager.dragTabRef}
-            dragOverTabId={sessionManager.dragOverTabId}
-            setDragOverTabId={sessionManager.setDragOverTabId}
-            renamingTabId={sessionManager.renamingTabId}
-            setRenamingTabId={sessionManager.setRenamingTabId}
-            renameValue={sessionManager.renameValue}
-            setRenameValue={sessionManager.setRenameValue}
+            onReorderSessions={(reorderedVirtualSessions) => {
+              const orderedIds = reorderedVirtualSessions.map(vs => vs.id);
+              tabManager.reorderTabs(orderedIds);
+            }}
+            onTabContextMenu={(x, y, tabId) => {
+              const tab = tabManager.tabs.find(t => t.id === tabId);
+              if (!tab) return;
+              const pane = findPaneNode(tab.layout, tab.activePaneId);
+              if (!pane) return;
+              setPaneContextMenu({ x, y, tabId, paneId: tab.activePaneId, sessionId: pane.sessionId });
+            }}
+            dragTabRef={tabManager.dragTabRef}
+            dragOverTabId={tabManager.dragOverTabId}
+            setDragOverTabId={tabManager.setDragOverTabId}
+            renamingTabId={tabManager.renamingTabId}
+            setRenamingTabId={tabManager.setRenamingTabId}
+            renameValue={tabManager.renameValue}
+            setRenameValue={tabManager.setRenameValue}
             onRenameSession={handleRenameSession}
             hosts={hostManager.hosts}
             groups={hostManager.groups}
             isMinimalMode={settings.isMinimalMode}
-            onLocalConnect={() => sessionManager.handleLocalConnect()}
-            effectiveHostname={sessionManager.currentSessionId ? effectiveHostnameMap[sessionManager.currentSessionId] : null}
+            onLocalConnect={() => tabManager.handleLocalConnect()}
+            effectiveHostname={activeSession ? effectiveHostnameMap[activeSession.id] : null}
+            onExtractPaneToTab={(sourceTabId, paneId) => tabManager.extractPaneToTab(sourceTabId, paneId)}
           />
         )}
 
         <div className="flex-1 relative overflow-hidden" style={{ isolation: 'isolate' }}>
-          {/* All terminal tabs remain mounted and rendered, z-index controls stacking order to avoid redraw flicker during switch */}
-          {sessionManager.activeSessions.map((session) => {
-            const isActive = sessionManager.currentSessionId === session.id;
+          {/* All tabs remain mounted, z-index controls stacking to preserve xterm.js instances */}
+          {tabManager.tabs.map((tab) => {
+            const isActiveTab = tabManager.currentTabId === tab.id;
+            const isMultiPane = countPanes(tab.layout) > 1;
             return (
               <div
-                key={session.id}
-                className="absolute inset-0 flex flex-col"
-                data-tab-inactive={isActive ? undefined : ''}
+                key={tab.id}
+                className="absolute inset-0 flex"
+                data-tab-inactive={isActiveTab ? undefined : ''}
                 style={{
-                  pointerEvents: isActive ? 'auto' : 'none',
-                  zIndex: isActive ? 2 : 0,
+                  pointerEvents: isActiveTab ? 'auto' : 'none',
+                  zIndex: isActiveTab ? 2 : 0,
                   transform: 'translateZ(0)',
                   contain: 'layout paint',
                 }}
               >
-                <TerminalView
-                  host={session.host}
-                  onClose={() => {
-                    const sessionId = session.id;
-                    sessionManager.setActiveSessions(prev => {
-                      const newSessions = prev.filter(s => s.id !== sessionId);
-                      if (newSessions.length === 0) setActiveView('dashboard');
-                      return newSessions;
-                    });
-                    sessionManager.setCurrentSessionId(prev => {
-                      if (prev === sessionId) return null;
-                      return prev;
-                    });
-                  }}
-                  theme={settings.theme}
-                  terminalTheme={settings.terminalTheme}
-                  terminalFontSize={settings.terminalFontSize}
-                  isActive={isActive}
-                  defaultFocusTarget={settings.defaultFocusTarget}
-                  minimalPanelStates={settings.minimalPanelStates}
-                  onMinimalPanelStatesChange={settings.setMinimalPanelStates}
-                  initialDirectory={session.initialDirectory}
-                  onConnectionReady={(connId) => {
-                    sessionManager.setActiveSessions(prev => prev.map(s =>
-                      s.id === session.id ? { ...s, connectionId: connId } : s
-                    ));
-                  }}
-                  onEffectiveHostnameChange={(hostname) => {
-                    setEffectiveHostnameMap(prev => ({ ...prev, [session.id]: hostname }));
-                  }}
-                />
+                {/* Portal containers: left panel — one per pane, active pane visible.
+                    Hidden panes use opacity:0 + position:absolute instead of display:none
+                    so Virtuoso inside panels keeps its measured dimensions and avoids scroll jumps on switch.
+                    Note: opacity (not visibility) because visibility:hidden can be overridden by child elements. */}
+                {collectAllPaneIds(tab.layout).map(pid => {
+                  const isActivePid = tab.activePaneId === pid;
+                  return (
+                    <div
+                      key={`portal-left-${pid}`}
+                      ref={getPanePortalRefCb(pid, 'left')}
+                      className="flex shrink-0"
+                      style={isActivePid ? undefined : { position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                    />
+                  );
+                })}
+
+                <div className="flex-1 flex flex-col min-w-0">
+                  {/* Split terminal area */}
+                  <div className="flex-1 relative min-h-0">
+                    <SplitPaneLayout
+                      tab={tab}
+                      onResizePane={tabManager.resizePane}
+                      renderPane={(paneId, sessionId, isPaneActive) => {
+                        const session = tabManager.activeSessions.find(s => s.id === sessionId);
+                        if (!session) return null;
+
+                        // Pre-populate portal map entry so panelPortals is never undefined in multi-pane mode.
+                        // This prevents panels from hiding for a frame while waiting for ref callbacks.
+                        if (isMultiPane && !panePortalMapRef.current.has(paneId)) {
+                          panePortalMapRef.current.set(paneId, {
+                            left: { current: null }, bottom: { current: null }, right: { current: null },
+                          });
+                        }
+
+                        const handlePaneDragEnter = (e: React.DragEvent) => {
+                          // Only show drop zone for termcat drag data
+                          if (!e.dataTransfer.types.includes('text/termcat-drag')) return;
+                          e.preventDefault();
+                          setDropTargetPaneId(paneId);
+                        };
+
+                        const handlePaneDrop = (edge: DropEdge, e: React.DragEvent) => {
+                          setDropTargetPaneId(null);
+                          const raw = e.dataTransfer.getData('text/termcat-drag');
+                          if (!raw) return;
+                          try {
+                            const data = JSON.parse(raw) as { type: string; tabId?: string; paneId?: string };
+                            if (data.type === 'pane' && data.tabId && data.paneId) {
+                              if (data.paneId === paneId) return;
+                              // Cross-tab or same-tab pane move
+                              tabManager.movePaneBetweenTabs(data.tabId, data.paneId, tab.id, paneId, edge);
+                            } else if (data.type === 'tab' && data.tabId) {
+                              tabManager.moveTabToPane(data.tabId, tab.id, paneId, edge);
+                            }
+                          } catch {
+                            // Invalid drag data, ignore
+                          }
+                        };
+
+                        return (
+                          <div
+                            className="flex flex-col h-full group relative"
+                            onDragEnter={handlePaneDragEnter}
+                          >
+                            {isMultiPane && (
+                              <PaneHeader
+                                host={session.host}
+                                isActive={isPaneActive}
+                                customName={session.customName}
+                                effectiveHostname={effectiveHostnameMap[session.id]}
+                                tabId={tab.id}
+                                paneId={paneId}
+                                onClose={() => tabManager.closePane(tab.id, paneId)}
+                                onFocus={() => tabManager.setActivePane(tab.id, paneId)}
+                                onRename={(name) => {
+                                  tabManager.setActiveSessions(prev => prev.map(s =>
+                                    s.id === sessionId ? { ...s, customName: name } : s
+                                  ));
+                                }}
+                                onSplitVertical={() => tabManager.splitPane(tab.id, paneId, 'vertical')}
+                                onSplitHorizontal={() => tabManager.splitPane(tab.id, paneId, 'horizontal')}
+                              />
+                            )}
+                            <div
+                              className="flex-1 min-h-0"
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                setPaneContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id, paneId, sessionId });
+                              }}
+                            >
+                              <TerminalView
+                                host={session.host}
+                                onClose={() => tabManager.closePane(tab.id, paneId)}
+                                theme={settings.theme}
+                                terminalTheme={settings.terminalTheme}
+                                terminalFontSize={settings.terminalFontSize}
+                                isActive={isActiveTab}
+                                isPaneActive={isPaneActive}
+                                onPaneFocus={() => tabManager.setActivePane(tab.id, paneId)}
+                                paneOnly={isMultiPane && (!isPaneActive || !isActiveTab)}
+                                panelPortals={isMultiPane ? panePortalMapRef.current.get(paneId) : undefined}
+                                portalVersion={portalVersion}
+                                defaultFocusTarget={settings.defaultFocusTarget}
+                                minimalPanelStates={settings.minimalPanelStates}
+                                onMinimalPanelStatesChange={settings.setMinimalPanelStates}
+                                initialDirectory={session.initialDirectory}
+                                onConnectionReady={(connId) => {
+                                  tabManager.setActiveSessions(prev => prev.map(s =>
+                                    s.id === session.id ? { ...s, connectionId: connId } : s
+                                  ));
+                                }}
+                                onEffectiveHostnameChange={(hostname) => {
+                                  setEffectiveHostnameMap(prev => ({ ...prev, [session.id]: hostname }));
+                                }}
+                              />
+                            </div>
+                            {/* Drop zone overlay — shown when dragging over this pane */}
+                            {dropTargetPaneId === paneId && (
+                              <PaneDropZone
+                                onDrop={handlePaneDrop}
+                                onDragLeave={() => setDropTargetPaneId(null)}
+                              />
+                            )}
+                          </div>
+                        );
+                      }}
+                    />
+                  </div>
+
+                  {/* Portal containers: bottom panel — one per pane, active pane visible */}
+                  {collectAllPaneIds(tab.layout).map(pid => {
+                    const isActivePid = tab.activePaneId === pid;
+                    return (
+                      <div
+                        key={`portal-bottom-${pid}`}
+                        ref={getPanePortalRefCb(pid, 'bottom')}
+                        className="flex flex-col shrink-0"
+                        style={isActivePid ? undefined : { position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Portal containers: right panel — one per pane, active pane visible */}
+                {collectAllPaneIds(tab.layout).map(pid => {
+                  const isActivePid = tab.activePaneId === pid;
+                  return (
+                    <div
+                      key={`portal-right-${pid}`}
+                      ref={getPanePortalRefCb(pid, 'right')}
+                      className="flex shrink-0"
+                      style={isActivePid ? undefined : { position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+                    />
+                  );
+                })}
               </div>
             );
           })}
 
-          {activeView === 'terminal' && sessionManager.activeSessions.length === 0 && (
+          {/* Terminal pane context menu */}
+          {paneContextMenu && (() => {
+            const ctxSession = tabManager.activeSessions.find(s => s.id === paneContextMenu.sessionId);
+            const ctxTab = tabManager.tabs.find(t => t.id === paneContextMenu.tabId);
+            if (!ctxSession || !ctxTab) return null;
+            const isMulti = countPanes(ctxTab.layout) > 1;
+            return (
+              <div
+                className="fixed z-[9999] animate-in fade-in"
+                style={{ left: paneContextMenu.x, top: paneContextMenu.y }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="bg-[var(--bg-sidebar)] border border-[var(--border-color)] rounded-xl py-1.5 shadow-2xl backdrop-blur-2xl min-w-[160px]">
+                  <button
+                    onClick={() => {
+                      tabManager.duplicateSession(ctxSession);
+                      setPaneContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-[var(--text-dim)]" />
+                    {t.terminal.duplicateTab}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (ctxSession.host.connectionType === 'local') {
+                        (window as any).electron.windowCreate({ localTerminal: true });
+                      } else {
+                        (window as any).electron.windowCreate({ hostToConnect: ctxSession.host });
+                      }
+                      setPaneContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-[var(--text-dim)]" />
+                    {t.dashboard.openInNewWindow}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setHostConfigSession(ctxSession);
+                      setPaneContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-[var(--text-dim)]" />
+                    {t.terminal.hostSettings}
+                  </button>
+                  <button
+                    onClick={() => {
+                      tabManager.setRenamingTabId(ctxTab.id);
+                      tabManager.setRenameValue(ctxSession.customName || ctxSession.host.name);
+                      setPaneContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-[var(--text-dim)]" />
+                    {t.terminal.renameTab}
+                  </button>
+                  <div className="my-1 border-t border-[var(--border-color)]" />
+                  <button
+                    onClick={() => {
+                      tabManager.splitPane(ctxTab.id, paneContextMenu.paneId, 'vertical');
+                      setPaneContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
+                  >
+                    <SplitSquareVertical className="w-3.5 h-3.5 text-[var(--text-dim)]" />
+                    {t.terminal.splitVertical}
+                  </button>
+                  <button
+                    onClick={() => {
+                      tabManager.splitPane(ctxTab.id, paneContextMenu.paneId, 'horizontal');
+                      setPaneContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
+                  >
+                    <SplitSquareHorizontal className="w-3.5 h-3.5 text-[var(--text-dim)]" />
+                    {t.terminal.splitHorizontal}
+                  </button>
+                  <div className="my-1 border-t border-[var(--border-color)]" />
+                  <button
+                    onClick={() => {
+                      if (isMulti) {
+                        tabManager.closePane(ctxTab.id, paneContextMenu.paneId);
+                      } else {
+                        tabManager.closeTab(null as any, ctxTab.id);
+                      }
+                      setPaneContextMenu(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    {isMulti ? t.terminal.closePane : t.terminal.closeTab}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {activeView === 'terminal' && tabManager.tabs.length === 0 && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg-main)]">
               <div className="w-24 h-24 mb-6 rounded-3xl bg-indigo-500/10 flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.1)]">
                 <Terminal className="w-10 h-10 text-indigo-500/80" />
@@ -664,7 +1047,7 @@ const App: React.FC = () => {
                 groups={hostManager.groups}
                 proxies={hostManager.proxies}
                 onConnect={handleConnect}
-                onLocalConnect={() => sessionManager.handleLocalConnect()}
+                onLocalConnect={() => tabManager.handleLocalConnect()}
                 onDelete={hostManager.deleteHost}
                 onAdd={hostManager.addHost}
                 onUpdate={hostManager.updateHost}
@@ -729,7 +1112,7 @@ const App: React.FC = () => {
           onClose={() => setHostConfigSession(null)}
           onSave={(updatedHost) => {
             hostManager.updateHost(updatedHost);
-            sessionManager.setActiveSessions(prev => prev.map(s =>
+            tabManager.setActiveSessions(prev => prev.map(s =>
               s.host.id === updatedHost.id ? { ...s, host: updatedHost } : s
             ));
             setHostConfigSession(null);

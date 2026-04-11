@@ -1,0 +1,1 @@
+"use strict";const e=require("electron");e.contextBridge.exposeInMainWorld("electron",{getAppVersion:()=>e.ipcRenderer.invoke("get-app-version"),getPlatform:()=>e.ipcRenderer.invoke("get-platform")});

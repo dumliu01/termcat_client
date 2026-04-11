@@ -73,7 +73,7 @@ class AdService {
       }
     }
 
-    log.info('ad.service.init', 'Ad service initialized', { platformCount: this.platforms.size });
+    log.debug('ad.service.init', 'Ad service initialized', { platformCount: this.platforms.size });
   }
 
   /** Fetch ad rules (with caching) */
@@ -93,7 +93,7 @@ class AdService {
         await this.initPlatforms(response.platformConfigs);
       }
 
-      log.info('ad.rules.fetched', 'Ad rules fetched', { count: this.rules.length, enabled: this.rulesEnabled });
+      log.debug('ad.rules.fetched', 'Ad rules fetched', { count: this.rules.length, enabled: this.rulesEnabled });
       return response;
     } catch (err) {
       log.debug('ad.rules.fetch.failed', 'Failed to fetch ad rules', { error: (err as Error).message });

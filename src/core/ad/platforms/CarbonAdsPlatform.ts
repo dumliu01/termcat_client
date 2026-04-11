@@ -27,7 +27,7 @@ export class CarbonAdsPlatform implements IAdPlatform {
   async init(config: AdPlatformConfig): Promise<void> {
     this.config = config;
     this.initialized = true;
-    log.info('ad.platform.init', 'Carbon Ads platform initialized', { slotId: config.slotId });
+    log.debug('ad.platform.init', 'Carbon Ads platform initialized', { slotId: config.slotId });
   }
 
   async fetchAds(context: AdRequestContext): Promise<AdContent[]> {

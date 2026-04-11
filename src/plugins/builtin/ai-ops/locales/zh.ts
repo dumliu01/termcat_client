@@ -77,6 +77,41 @@ export const zh = {
   // adapter 默认
   executeCommand: '执行命令',
 
+  // 设备激活弹窗
+  devicesFull: '设备数量已满',
+  newDeviceDetected: '检测到新设备',
+  activatePrompt: '你已购买本地 Agent 能力包，是否在此设备上激活？',
+  activatedDevices: '已激活设备',
+  activateThisDevice: '激活此设备',
+  skipActivation: '暂不激活',
+  devicesActivatedOn: (max: number) => `已在 ${max} 台设备激活：`,
+  unbindFirst: '需要先解绑一台设备才能激活此设备。',
+  manageDevices: '管理设备',
+  timeJustNow: '刚刚',
+  timeMinutesAgo: (n: number) => `${n} 分钟前`,
+  timeHoursAgo: (n: number) => `${n} 小时前`,
+  timeDaysAgo: (n: number) => `${n} 天前`,
+  timeMonthsAgo: (n: number) => `${n} 个月前`,
+  timeYearsAgo: (n: number) => `${n} 年前`,
+
+  // 购买弹窗
+  purchaseTitle: '解锁本地 Agent 能力',
+  tabPurchase: '购买',
+  tabActivate: '激活',
+  priceOneTime: '一次性买断，永久使用',
+  unlockFeatures: '解锁 Local X-Agent + Claude Code',
+  featureAgentLoop: '自主 Agent 循环 + 工具调用',
+  featureSSH: 'SSH 远程命令执行',
+  featurePersistent: '永久授权 + 持久会话',
+  featureBYOK: '自备 API Key，无额外费用',
+  buyNow: (price: number) => `立即购买 ¥${price}`,
+  purchasedOnOther: '已在其他设备购买？',
+  purchasedOnOtherDesc: '同一账户购买后，可在最多 3 台设备上激活使用。点击下方按钮即可激活当前设备，无需输入激活码。',
+  activateSuccess: '激活成功！功能已解锁',
+  activateDefaultError: '激活失败，请确认当前账户已购买',
+  activated: '已激活',
+  activateCurrentDevice: '激活当前设备',
+
   // 通用（插件自包含）
   cancel: '取消',
 };

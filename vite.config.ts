@@ -4,8 +4,15 @@ import path from 'path';
 import electron from 'vite-plugin-electron';
 import pkg from './package.json';
 
-export default defineConfig(async () => {
-  const { visualizer } = await import('rollup-plugin-visualizer');
+export default defineConfig(async ({ mode }) => {
+  // Only load visualizer in build mode (its dependency `open` requires Node 18+)
+  const visualizerPlugin = mode === 'build'
+    ? (await import('rollup-plugin-visualizer')).visualizer({
+        filename: 'dist/bundle-report.html',
+        gzipSize: true,
+        brotliSize: true,
+      })
+    : null;
 
   return {
   define: {
@@ -13,11 +20,7 @@ export default defineConfig(async () => {
   },
   plugins: [
     react(),
-    visualizer({
-      filename: 'dist/bundle-report.html',
-      gzipSize: true,
-      brotliSize: true,
-    }),
+    visualizerPlugin,
     electron([
       {
         entry: 'src/main/main.ts',

@@ -39,7 +39,7 @@ export class LocalTerminalBackend implements ITerminalBackend {
       throw new Error('Local terminal API not available');
     }
 
-    log.info('local-backend.connecting', 'LocalTerminalBackend connecting', {
+    log.debug('local-backend.connecting', 'LocalTerminalBackend connecting', {
       shell: this._localOptions.shell,
       cwd: this._localOptions.cwd,
     });

@@ -116,7 +116,7 @@ export class SystemMonitorService {
       this.intervalId = null;
     }
     this._isRunning = false;
-    logger.info(LOG_MODULE.TERMINAL, 'monitor.stopping', 'System monitor stopped', {
+    logger.debug(LOG_MODULE.TERMINAL, 'monitor.stopping', 'System monitor stopped', {
       connection_id: this.connectionId,
     });
   }

@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { Monitor, X } from 'lucide-react';
+import { useT } from '../i18n';
 
 export interface DeviceActivationDialogProps {
   open: boolean;
@@ -22,25 +23,28 @@ export interface DeviceActivationDialogProps {
 }
 
 /**
- * Format a date string into a relative time display (Chinese).
+ * Format a date string into a locale-aware relative time display.
  */
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(
+  dateStr: string,
+  t: ReturnType<typeof useT>,
+): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
 
-  if (diffMs < 0) return '刚刚';
+  if (diffMs < 0) return t.timeJustNow;
 
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffMinutes < 1) return '刚刚';
-  if (diffMinutes < 60) return `${diffMinutes} 分钟前`;
-  if (diffHours < 24) return `${diffHours} 小时前`;
-  if (diffDays < 30) return `${diffDays} 天前`;
-  if (diffDays < 365) return `${Math.floor(diffDays / 30)} 个月前`;
-  return `${Math.floor(diffDays / 365)} 年前`;
+  if (diffMinutes < 1) return t.timeJustNow;
+  if (diffMinutes < 60) return t.timeMinutesAgo(diffMinutes);
+  if (diffHours < 24) return t.timeHoursAgo(diffHours);
+  if (diffDays < 30) return t.timeDaysAgo(diffDays);
+  if (diffDays < 365) return t.timeMonthsAgo(Math.floor(diffDays / 30));
+  return t.timeYearsAgo(Math.floor(diffDays / 365));
 }
 
 export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
@@ -53,6 +57,8 @@ export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
   devicesFull = false,
   machines = [],
 }) => {
+  const t = useT();
+
   if (!open) return null;
 
   return (
@@ -72,7 +78,7 @@ export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
             <Monitor className="w-4 h-4 text-indigo-400" />
           </div>
           <h3 className="text-sm font-black text-white">
-            {devicesFull ? '设备数量已满' : '检测到新设备'}
+            {devicesFull ? t.devicesFull : t.newDeviceDetected}
           </h3>
         </div>
 
@@ -80,12 +86,12 @@ export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
           /* Normal case: slots available */
           <div className="space-y-4">
             <p className="text-[10px] text-slate-400 leading-relaxed">
-              你已购买本地 Agent 能力包，是否在此设备上激活？
+              {t.activatePrompt}
             </p>
 
             {/* Device count */}
             <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-2.5">
-              <span className="text-[10px] text-slate-400">已激活设备</span>
+              <span className="text-[10px] text-slate-400">{t.activatedDevices}</span>
               <span className="text-xs font-black text-indigo-400">
                 {machinesUsed}/{machinesMax}
               </span>
@@ -97,13 +103,13 @@ export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
                 onClick={onActivate}
                 className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black rounded-xl shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98]"
               >
-                激活此设备
+                {t.activateThisDevice}
               </button>
               <button
                 onClick={onClose}
                 className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-bold rounded-xl transition-all"
               >
-                暂不激活
+                {t.skipActivation}
               </button>
             </div>
           </div>
@@ -111,7 +117,7 @@ export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
           /* Full case: no slots left */
           <div className="space-y-4">
             <p className="text-[10px] text-slate-400 leading-relaxed">
-              已在 {machinesMax} 台设备激活：
+              {t.devicesActivatedOn(machinesMax)}
             </p>
 
             {/* Device list */}
@@ -129,7 +135,7 @@ export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-500">
-                      {formatRelativeTime(machine.last_seen_at)}
+                      {formatRelativeTime(machine.last_seen_at, t)}
                     </span>
                   </div>
                 ))}
@@ -137,7 +143,7 @@ export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
             )}
 
             <p className="text-[10px] text-slate-500 leading-relaxed">
-              需要先解绑一台设备才能激活此设备。
+              {t.unbindFirst}
             </p>
 
             {/* Actions */}
@@ -147,14 +153,14 @@ export const DeviceActivationDialog: React.FC<DeviceActivationDialogProps> = ({
                   onClick={onManageDevices}
                   className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black rounded-xl shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.98]"
                 >
-                  管理设备
+                  {t.manageDevices}
                 </button>
               )}
               <button
                 onClick={onClose}
                 className={`${onManageDevices ? 'flex-1' : 'w-full'} py-2.5 bg-white/5 hover:bg-white/10 text-slate-400 text-xs font-bold rounded-xl transition-all`}
               >
-                暂不激活
+                {t.skipActivation}
               </button>
             </div>
           </div>

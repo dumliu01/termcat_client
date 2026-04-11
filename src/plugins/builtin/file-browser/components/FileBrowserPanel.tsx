@@ -118,7 +118,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
         fileBrowserRef.getInitialPath()
           .then(initPath => {
             loadFiles(initPath);
-            logger.info(LOG_MODULE.FILE, 'filebrowser.initial_sync', 'Initial path synced', { path: initPath });
+            logger.debug(LOG_MODULE.FILE, 'filebrowser.initial_sync', 'Initial path synced', { path: initPath });
           })
           .catch(() => {
             loadFiles('/');

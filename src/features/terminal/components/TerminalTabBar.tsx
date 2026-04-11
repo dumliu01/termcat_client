@@ -5,8 +5,9 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Copy, Settings, XCircle, ChevronRight, Server, Pencil, Monitor, ExternalLink } from 'lucide-react';
+import { X, Plus, ChevronRight, Server, Monitor } from 'lucide-react';
 import { Host, Session, HostGroup } from '@/utils/types';
+import { setActiveDragData } from '@/renderer/App';
 import { useI18n } from '@/base/i18n/I18nContext';
 
 interface TerminalTabBarProps {
@@ -15,9 +16,9 @@ interface TerminalTabBarProps {
   onSelectSession: (id: string) => void;
   onCloseSession: (e: React.MouseEvent, id: string) => void;
   onConnect: (host: Host) => void;
-  onDuplicateSession: (session: Session) => void;
   onReorderSessions: (sessions: Session[]) => void;
-  onOpenHostConfig: (session: Session) => void;
+  /** Right-click on tab → open shared context menu */
+  onTabContextMenu?: (x: number, y: number, tabId: string) => void;
   // Drag
   dragTabRef: React.MutableRefObject<{ sessionId: string; startIndex: number } | null>;
   dragOverTabId: string | null;
@@ -35,6 +36,8 @@ interface TerminalTabBarProps {
   onLocalConnect?: () => void;
   /** Effective hostname for active session (nested SSH) */
   effectiveHostname?: string | null;
+  /** Pane dragged to TabBar → extract as new tab */
+  onExtractPaneToTab?: (sourceTabId: string, paneId: string) => void;
 }
 
 export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
@@ -43,9 +46,8 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
   onSelectSession,
   onCloseSession,
   onConnect,
-  onDuplicateSession,
   onReorderSessions,
-  onOpenHostConfig,
+  onTabContextMenu,
   dragTabRef,
   dragOverTabId,
   setDragOverTabId,
@@ -59,24 +61,18 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
   isMinimalMode,
   onLocalConnect,
   effectiveHostname,
+  onExtractPaneToTab,
 }) => {
   const { t } = useI18n();
 
-  // Tab context menu
-  const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; sessionId: string } | null>(null);
+  // Drag-over auto-switch: switch to hovered tab after delay during drag
+  const dragSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragSwitchTabIdRef = useRef<string | null>(null);
 
   // Tab "+" host picker popup
   const [hostPickerPos, setHostPickerPos] = useState<{ x: number; y: number } | null>(null);
   const [hostPickerExpandedGroup, setHostPickerExpandedGroup] = useState<string | null>(null);
   const hostPickerRef = useRef<HTMLDivElement>(null);
-
-  // Context menu: click on empty space to close
-  useEffect(() => {
-    if (!tabContextMenu) return;
-    const handleClick = () => setTabContextMenu(null);
-    window.addEventListener('click', handleClick);
-    return () => window.removeEventListener('click', handleClick);
-  }, [tabContextMenu]);
 
   // Host picker popup: click outside to close
   useEffect(() => {
@@ -93,7 +89,30 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
 
   return (
     <>
-      <div className={`flex items-stretch shrink-0 drag-region h-9 ${isMinimalMode ? '' : 'mt-8'}`} style={{ backgroundColor: 'var(--bg-sidebar)', borderBottom: '1px solid var(--border-color)' }}>
+      <div
+        className={`flex items-stretch shrink-0 drag-region h-9 ${isMinimalMode ? '' : 'mt-8'}`}
+        style={{ backgroundColor: 'var(--bg-sidebar)', borderBottom: '1px solid var(--border-color)' }}
+        onDragOver={(e) => {
+          // Accept pane drops on the TabBar area
+          if (e.dataTransfer.types.includes('text/termcat-drag')) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDrop={(e) => {
+          if (!onExtractPaneToTab) return;
+          const raw = e.dataTransfer.getData('text/termcat-drag');
+          if (!raw) return;
+          try {
+            const data = JSON.parse(raw) as { type: string; tabId?: string; paneId?: string };
+            if (data.type === 'pane' && data.tabId && data.paneId) {
+              e.preventDefault();
+              e.stopPropagation();
+              onExtractPaneToTab(data.tabId, data.paneId);
+            }
+          } catch { /* ignore */ }
+        }}
+      >
         <div className="flex overflow-x-auto no-scrollbar min-w-0" style={{ flex: '0 1 auto' }}>
           {sessions.map((session, index) => {
             const isActive = currentSessionId === session.id;
@@ -105,12 +124,18 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
                 onDragStart={(e) => {
                   dragTabRef.current = { sessionId: session.id, startIndex: index };
                   e.dataTransfer.effectAllowed = 'move';
+                  const dragData = { type: 'tab', tabId: session.id };
+                  e.dataTransfer.setData('text/termcat-drag', JSON.stringify(dragData));
+                  setActiveDragData(dragData);
                   e.currentTarget.style.opacity = '0.5';
                 }}
                 onDragEnd={(e) => {
                   e.currentTarget.style.opacity = '1';
                   dragTabRef.current = null;
                   setDragOverTabId(null);
+                  // Don't clear __activeDragData here — document-level dragend handler reads it
+                  if (dragSwitchTimerRef.current) { clearTimeout(dragSwitchTimerRef.current); dragSwitchTimerRef.current = null; }
+                  dragSwitchTabIdRef.current = null;
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -118,11 +143,30 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
                   if (dragTabRef.current && dragTabRef.current.sessionId !== session.id) {
                     setDragOverTabId(session.id);
                   }
+                  // Auto-switch to this tab after 500ms hover during drag
+                  if (currentSessionId !== session.id && dragSwitchTabIdRef.current !== session.id) {
+                    dragSwitchTabIdRef.current = session.id;
+                    if (dragSwitchTimerRef.current) clearTimeout(dragSwitchTimerRef.current);
+                    dragSwitchTimerRef.current = setTimeout(() => {
+                      onSelectSession(session.id);
+                      dragSwitchTimerRef.current = null;
+                    }, 500);
+                  }
                 }}
-                onDragLeave={() => setDragOverTabId(null)}
+                onDragLeave={() => {
+                  setDragOverTabId(null);
+                  // Cancel auto-switch if leaving this tab
+                  if (dragSwitchTabIdRef.current === session.id) {
+                    if (dragSwitchTimerRef.current) clearTimeout(dragSwitchTimerRef.current);
+                    dragSwitchTimerRef.current = null;
+                    dragSwitchTabIdRef.current = null;
+                  }
+                }}
                 onDrop={(e) => {
                   e.preventDefault();
                   setDragOverTabId(null);
+                  if (dragSwitchTimerRef.current) { clearTimeout(dragSwitchTimerRef.current); dragSwitchTimerRef.current = null; }
+                  dragSwitchTabIdRef.current = null;
                   if (!dragTabRef.current || dragTabRef.current.sessionId === session.id) return;
                   const fromIndex = sessions.findIndex(s => s.id === dragTabRef.current!.sessionId);
                   const toIndex = index;
@@ -142,7 +186,7 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  setTabContextMenu({ x: e.clientX, y: e.clientY, sessionId: session.id });
+                  onTabContextMenu?.(e.clientX, e.clientY, session.id);
                 }}
                 className={`flex items-center gap-2 px-3.5 min-w-[110px] max-w-[180px] shrink-0 cursor-pointer transition-all relative group no-drag ${
                   isActive ? '' : 'hover:bg-white/[0.04]'
@@ -309,77 +353,6 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
       );
     })()}
 
-      {/* Tab context menu */}
-      {tabContextMenu && (() => {
-        const session = sessions.find(s => s.id === tabContextMenu.sessionId);
-        if (!session) return null;
-        return (
-          <div
-            className="fixed z-[9999] animate-in fade-in"
-            style={{ left: tabContextMenu.x, top: tabContextMenu.y }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="bg-[var(--bg-sidebar)] border border-[var(--border-color)] rounded-xl py-1.5 shadow-2xl backdrop-blur-2xl min-w-[160px]">
-              <button
-                onClick={() => {
-                  onDuplicateSession(session);
-                  setTabContextMenu(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
-              >
-                <Copy className="w-3.5 h-3.5 text-[var(--text-dim)]" />
-                {t.terminal.duplicateTab}
-              </button>
-              <button
-                onClick={() => {
-                  if (session.host.connectionType === 'local') {
-                    (window as any).electron.windowCreate({ localTerminal: true });
-                  } else {
-                    (window as any).electron.windowCreate({ hostToConnect: session.host });
-                  }
-                  setTabContextMenu(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5 text-[var(--text-dim)]" />
-                {t.dashboard.openInNewWindow}
-              </button>
-              <button
-                onClick={() => {
-                  onOpenHostConfig(session);
-                  setTabContextMenu(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
-              >
-                <Settings className="w-3.5 h-3.5 text-[var(--text-dim)]" />
-                {t.terminal.hostSettings}
-              </button>
-              <button
-                onClick={() => {
-                  setRenamingTabId(session.id);
-                  setRenameValue(session.customName || session.host.name);
-                  setTabContextMenu(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-[var(--text-main)] hover:bg-[rgba(var(--primary-rgb),0.1)] transition-colors"
-              >
-                <Pencil className="w-3.5 h-3.5 text-[var(--text-dim)]" />
-                {t.terminal.renameTab}
-              </button>
-              <div className="my-1 border-t border-[var(--border-color)]" />
-              <button
-                onClick={(e) => {
-                  onCloseSession(e as any, session.id);
-                  setTabContextMenu(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
-              >
-                <XCircle className="w-3.5 h-3.5" />
-                {t.terminal.closeTab}
-              </button>
-            </div>
-          </div>
-        );
-      })()}
     </>
   );
 });

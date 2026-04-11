@@ -402,10 +402,10 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
 
           <div className="flex items-center gap-2">
             {/* SSH mode toggle button */}
-            <div className="relative group">
+            <div className="relative">
               <button
                 onClick={() => onSshModeChange(sshMode === 'associated' ? 'independent' : 'associated')}
-                className="flex items-center gap-1 px-2 py-0.5 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all active:scale-95"
+                className="peer flex items-center gap-1 px-2 py-0.5 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all active:scale-95"
               >
                 {sshMode === 'associated'
                   ? <Link className="w-3 h-3 text-indigo-400" />
@@ -417,7 +417,7 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
               </button>
 
               {/* Tooltip */}
-              <div className="absolute -top-28 right-0 w-max max-w-[220px] bg-slate-800 text-[10px] text-slate-200 p-3.5 rounded-2xl shadow-2xl border border-white/10 opacity-0 group-hover:opacity-100 transition-all duration-300 delay-0 group-hover:delay-[700ms] pointer-events-none z-[100] translate-y-4 group-hover:translate-y-0">
+              <div className="absolute -top-28 right-0 w-max max-w-[220px] bg-slate-800 text-[10px] text-slate-200 p-3.5 rounded-2xl shadow-2xl border border-white/10 opacity-0 peer-hover:opacity-100 transition-all duration-300 delay-0 peer-hover:delay-[700ms] pointer-events-none z-[100] translate-y-4 peer-hover:translate-y-0">
                 <div className="font-black text-indigo-400 mb-1.5 flex items-center gap-2 border-b border-white/5 pb-1.5">
                   {sshMode === 'associated'
                     ? <Link className="w-2.5 h-2.5" />

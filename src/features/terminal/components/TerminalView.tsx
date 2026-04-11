@@ -1,5 +1,6 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Host, ThemeType, TerminalThemeType } from '@/utils/types';
 import { useI18n, useTranslation } from '@/base/i18n/I18nContext';
 import {
@@ -29,6 +30,20 @@ interface TerminalViewProps {
   terminalTheme?: TerminalThemeType;
   terminalFontSize?: number;
   isActive?: boolean;
+  /** Whether this pane is the active pane within its tab (controls plugin binding) */
+  isPaneActive?: boolean;
+  /** Callback when this pane receives focus (click / keyboard) */
+  onPaneFocus?: () => void;
+  /** Pane-only mode: render terminal only, hide all panels (sidebar/bottom/AI) */
+  paneOnly?: boolean;
+  /** Portal targets for panels — when provided, panels render via portal to these containers */
+  panelPortals?: {
+    left: React.RefObject<HTMLDivElement>;
+    bottom: React.RefObject<HTMLDivElement>;
+    right: React.RefObject<HTMLDivElement>;
+  };
+  /** Version counter — increments when portal refs change, used to bust memo cache */
+  portalVersion?: number;
   defaultFocusTarget?: 'input' | 'terminal';
   minimalPanelStates?: MinimalPanelStates;
   onMinimalPanelStatesChange?: (states: MinimalPanelStates) => void;
@@ -45,6 +60,10 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   terminalTheme = 'classic',
   terminalFontSize = 14,
   isActive = true,
+  isPaneActive = true,
+  onPaneFocus,
+  paneOnly = false,
+  panelPortals,
   defaultFocusTarget = 'terminal',
   minimalPanelStates,
   onMinimalPanelStatesChange,
@@ -98,6 +117,15 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   const showAiPanel = minimalPanelStates?.ai ?? false;
   const showBottomPanel = minimalPanelStates?.bottom ?? false;
 
+  // Panel rendering mode:
+  // - paneOnly=true AND no panelPortals: no panels (non-active tab)
+  // - panelPortals set: render panels via portal (multi-pane, any pane in active tab)
+  // - otherwise: render panels inline (single-pane)
+  // Note: non-active panes in multi-pane active tab have paneOnly=true but panelPortals set,
+  // so panels stay mounted in hidden portal containers to avoid flicker on pane switch.
+  const shouldRenderPanels = !paneOnly || !!panelPortals;
+  const usePortals = shouldRenderPanels && !!panelPortals;
+
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const commandInputRef = useRef<CommandInputAreaRef>(null);
 
@@ -115,38 +143,38 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   const templateBottomPanels = usePanelList('bottom-panel');
 
   // Push connection info to built-in plugins (supports SSH and local terminal)
-  // Only triggers plugin onConnectionChange when connection identity changes
+  // Only push when this pane is the active pane of the active tab
   useEffect(() => {
+    const shouldPush = isActive && isPaneActive && connectionRef.current;
     builtinPluginManager.setConnectionInfo(
-      connectionRef.current ? {
-        connectionId: connectionRef.current.id,
-        connectionType: connectionRef.current.type,
-        hostname: connectionRef.current.type === 'local' ? 'localhost' : host.hostname,
+      shouldPush ? {
+        connectionId: connectionRef.current!.id,
+        connectionType: connectionRef.current!.type,
+        hostname: connectionRef.current!.type === 'local' ? 'localhost' : host.hostname,
         isVisible: showSidebar,
-        isActive,
+        isActive: true,
         language,
         effectiveHostname: effectiveHostname ?? undefined,
       } : null
     );
-  }, [connectionId, host.connectionType, host.hostname, language]);
+  }, [connectionId, host.connectionType, host.hostname, language, isActive, isPaneActive]);
 
   // Update visibility/activity state separately (lightweight, no plugin rebuild)
-  // When this tab becomes active, re-push its connection info so monitoring switches to this tab.
-  // Pass connectionId to updateVisibility so inactive tabs don't stop the active tab's monitor.
+  // Re-push connection info when this pane becomes the active pane of the active tab.
   useEffect(() => {
-    if (isActive && connectionRef.current) {
+    if (isActive && isPaneActive && connectionRef.current) {
       builtinPluginManager.setConnectionInfo({
         connectionId: connectionRef.current.id,
         connectionType: connectionRef.current.type,
         hostname: connectionRef.current.type === 'local' ? 'localhost' : host.hostname,
         isVisible: showSidebar,
-        isActive,
+        isActive: true,
         language,
         effectiveHostname: effectiveHostname ?? undefined,
       });
     }
-    builtinPluginManager.updateVisibility(showSidebar, isActive, connectionRef.current?.id);
-  }, [showSidebar, isActive]);
+    builtinPluginManager.updateVisibility(showSidebar, isActive && isPaneActive, connectionRef.current?.id);
+  }, [showSidebar, isActive, isPaneActive]);
 
   // Reset nested SSH state when connection changes
   useEffect(() => {
@@ -317,6 +345,18 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   useEffect(() => {
     localStorage.setItem('termcat_ai_panel_width', aiPanelWidth.toString());
   }, [aiPanelWidth]);
+
+  // Sync panel sizes from localStorage when this pane becomes active
+  // useLayoutEffect runs before paint — prevents visible flash of old width
+  useLayoutEffect(() => {
+    if (!isPaneActive) return;
+    const savedAi = localStorage.getItem('termcat_ai_panel_width');
+    if (savedAi) { const v = parseInt(savedAi, 10); if (v !== aiPanelWidth) setAiPanelWidth(v); }
+    const savedSidebar = localStorage.getItem('termcat_sidebar_width');
+    if (savedSidebar) { const v = parseInt(savedSidebar, 10); if (v !== sidebarWidth) setSidebarWidth(v); }
+    const savedBottom = localStorage.getItem('termcat_bottom_panel_height');
+    if (savedBottom) { const v = parseInt(savedBottom, 10); if (v !== bottomPanelHeight) setBottomPanelHeight(v); }
+  }, [isPaneActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When bottom panel height or sidebar size changes, trigger a global resize event to let xterm refit
   useEffect(() => {
@@ -606,9 +646,17 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
     return () => disposable.dispose();
   }, [showBottomPanel]);
 
+  // Refs for active state checks in plugin event listeners
+  const isPaneActiveRef = useRef(isPaneActive);
+  isPaneActiveRef.current = isPaneActive;
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+
   // Listen for command library plugin command select events, fill into terminal input
   useEffect(() => {
     const disposable = builtinPluginManager.on(COMMAND_LIBRARY_EVENTS.COMMAND_SELECTED, (payload) => {
+      // Only fill command input on the active pane of the active tab
+      if (!isPaneActiveRef.current || !isActiveRef.current) return;
       const cmd = payload as string;
       setInputValue(cmd);
       setTimeout(() => {
@@ -623,6 +671,8 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   handleExecuteRef.current = handleExecute;
   useEffect(() => {
     const disposable = builtinPluginManager.on(AI_OPS_EVENTS.EXECUTE_COMMAND, (payload) => {
+      // Only execute on the active pane of the active tab
+      if (!isPaneActiveRef.current || !isActiveRef.current) return;
       const cmd = payload as string;
       handleExecuteRef.current(cmd);
     });
@@ -651,31 +701,26 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
     }
   };
 
-  return (
-    <div ref={terminalContainerRef} className="flex h-full overflow-hidden select-none relative" style={{ backgroundColor: 'var(--bg-main)' }}>
+  // ── Panel JSX (rendered inline or via portal) ──
 
-      {/* Left sidebar (template-driven panels, with Tab switch for multiple panels) */}
-      {showSidebar && templateLeftPanels.length > 0 && (
-        <aside
-          style={{ width: `${sidebarWidth}px`, backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--border-color)' }}
-          className="flex flex-col relative shrink-0 border-r overflow-y-auto no-scrollbar font-sans select-text tv-side-panel"
-        >
-          <TabbedPanelGroup
-            tabs={templateLeftPanels.map(panel => ({
-              id: panel.id,
-              title: panel.title,
-              icon: panel.icon,
-              content: <PanelRenderer panelId={panel.id} />,
-            }))}
-          />
-        </aside>
-      )}
-
-      {/* Sidebar vertical width resize handle */}
-      {showSidebar && (
-        <div
-          className="w-1.5 -mx-0.5 cursor-col-resize z-[45] relative group flex items-center justify-center transition-all shrink-0 hover:bg-white/10"
-          onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebarWidth(true); }}
+  const leftPanelJsx = shouldRenderPanels && showSidebar && templateLeftPanels.length > 0 ? (
+    <>
+      <aside
+        style={{ width: `${sidebarWidth}px`, backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--border-color)' }}
+        className="flex flex-col relative shrink-0 border-r overflow-y-auto no-scrollbar font-sans select-text tv-side-panel"
+      >
+        <TabbedPanelGroup
+          tabs={templateLeftPanels.map(panel => ({
+            id: panel.id,
+            title: panel.title,
+            icon: panel.icon,
+            content: <PanelRenderer panelId={panel.id} />,
+          }))}
+        />
+      </aside>
+      <div
+        className="w-1.5 -mx-0.5 cursor-col-resize z-[45] relative group flex items-center justify-center transition-all shrink-0 hover:bg-white/10"
+        onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebarWidth(true); }}
         >
           <div
             className={`w-0.5 h-12 rounded-full transition-all duration-300 ${
@@ -685,7 +730,24 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
             }`}
           />
         </div>
-      )}
+    </>
+  ) : null;
+
+  // Read the bottom panel and right panel JSX sections below within the return.
+
+  return (
+    <div
+      ref={terminalContainerRef}
+      className={`flex h-full overflow-hidden select-none relative ${isPaneActive ? 'ring-2 ring-indigo-500/50 ring-inset' : ''}`}
+      style={{ backgroundColor: 'var(--bg-main)' }}
+      onMouseDown={() => onPaneFocus?.()}
+    >
+
+      {/* Left panel — inline or portal (never inline when portal mode) */}
+      {usePortals
+        ? (panelPortals!.left.current ? createPortal(leftPanelJsx, panelPortals!.left.current) : null)
+        : leftPanelJsx
+      }
 
       {/* Main view area */}
       <main className="flex-1 flex flex-col relative overflow-hidden min-w-0" style={{ backgroundColor: 'var(--terminal-bg)' }}>
@@ -728,8 +790,10 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
               isActive={isActive}
             />
 
-            {/* Command input area */}
-            <CommandInputArea
+            {/* Command input area — use isActive (tab active) instead of !paneOnly to keep it mounted
+                for all panes in the active tab. This prevents terminal height changes (and canvas flicker)
+                when switching between split panes. */}
+            {isActive && <CommandInputArea
               ref={commandInputRef}
               inputValue={inputValue}
               onInputChange={setInputValue}
@@ -750,7 +814,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
               initialDirectory={initialDirectory}
               onInputFocusGained={() => { userFocusOverrideRef.current = 'input'; }}
               defaultFocusTarget={defaultFocusTarget}
-            />
+            />}
           </div>
         ) : (
           <div className="flex-1 flex items-center justify-center" style={{ backgroundColor: 'var(--terminal-bg)' }}>
@@ -774,151 +838,147 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
           </div>
         )}
 
-        {showBottomPanel ? (
+        {(() => {
+          const bottomJsx = shouldRenderPanels && showBottomPanel ? (
+            <>
+              <div
+                className="h-1.5 -my-0.5 cursor-row-resize z-[40] relative group flex items-center justify-center transition-all hover:bg-white/10"
+                onMouseDown={(e) => { e.preventDefault(); setIsResizingBottom(true); }}
+              >
+                <div
+                  className={`w-12 h-0.5 rounded-full transition-all duration-300 ${
+                    isResizingBottom
+                      ? 'bg-primary scale-x-110 opacity-100'
+                      : 'bg-white/20 opacity-0 group-hover:opacity-100'
+                  }`}
+                />
+              </div>
+              <div className="shrink-0 border-t flex flex-col bg-[var(--bg-sidebar)] tv-bottom-panel" style={{ borderColor: 'var(--border-color)', height: `${bottomPanelHeight}px` }}>
+                <div className="h-10 border-b flex items-center px-0 shrink-0" style={{ backgroundColor: 'var(--bg-main)', borderColor: 'var(--border-color)' }}>
+                  {[
+                    ...builtinBottomPanels.map(p => ({ id: p.id, label: p.getLocalizedTitle ? p.getLocalizedTitle(language) : p.title })),
+                    ...templateBottomPanels.map(p => ({ id: `plugin:${p.id}`, label: p.title })),
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        if (activeBottomTab === tab.id) {
+                          setBottomPanelVisible(false);
+                        } else {
+                          setActiveBottomTab(tab.id);
+                        }
+                      }}
+                      className={`flex items-center justify-center px-8 h-full text-[11px] font-bold transition-all border-t-2 ${activeBottomTab === tab.id ? 'border-primary text-primary' : 'border-transparent hover:text-primary opacity-60'}`}
+                      style={{ backgroundColor: activeBottomTab === tab.id ? 'var(--bg-sidebar)' : 'transparent' }}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                  <div className="ml-auto flex items-center px-4">
+                    <button
+                      onClick={() => setBottomPanelVisible(false)}
+                      className="text-slate-500 hover:text-white transition-colors p-1 hover:bg-white/5 rounded"
+                      title="Close Panel"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 flex flex-col min-h-0">
+                  {builtinBottomPanels.map(panel => {
+                    const Comp = panel.component;
+                    return (
+                      <div key={panel.id} className="flex-1 min-h-0" style={{ display: activeBottomTab === panel.id ? 'block' : 'none' }}>
+                        <Comp connectionId={connectionId} fsHandler={connectionRef.current?.fsHandler} theme={theme} isVisible={activeBottomTab === panel.id} />
+                      </div>
+                    );
+                  })}
+                  {templateBottomPanels.map(panel => (
+                    <div key={panel.id} className="flex-1 min-h-0 overflow-y-auto no-scrollbar" style={{ display: activeBottomTab === `plugin:${panel.id}` ? 'block' : 'none' }}>
+                      <PanelRenderer panelId={panel.id} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : null;
+
+          return usePortals
+            ? (panelPortals!.bottom.current ? createPortal(bottomJsx, panelPortals!.bottom.current) : null)
+            : bottomJsx;
+        })()}
+      </main>
+
+      {/* Right panel — inline or portal */}
+      {(() => {
+        const rightJsx = shouldRenderPanels && showAiPanel && (builtinRightPanels.length > 0 || templateRightPanels.length > 0) ? (
           <>
-            {/* Main view horizontal split resize handle - placed before bottom panel */}
             <div
-              className="h-1.5 -my-0.5 cursor-row-resize z-[40] relative group flex items-center justify-center transition-all hover:bg-white/10"
-              onMouseDown={(e) => { e.preventDefault(); setIsResizingBottom(true); }}
+              className="w-1.5 -mx-0.5 cursor-col-resize z-[45] relative group flex items-center justify-center transition-all shrink-0 hover:bg-white/10"
+              onMouseDown={(e) => { e.preventDefault(); setIsResizingAi(true); }}
             >
               <div
-                className={`w-12 h-0.5 rounded-full transition-all duration-300 ${
-                  isResizingBottom
-                    ? 'bg-primary scale-x-110 opacity-100'
+                className={`w-0.5 h-12 rounded-full transition-all duration-300 ${
+                  isResizingAi
+                    ? 'bg-primary scale-y-110 opacity-100'
                     : 'bg-white/20 opacity-0 group-hover:opacity-100'
                 }`}
               />
             </div>
-
-            <div className="shrink-0 border-t flex flex-col bg-[var(--bg-sidebar)] tv-bottom-panel" style={{ borderColor: 'var(--border-color)', height: `${bottomPanelHeight}px` }}>
-              <div className="h-10 border-b flex items-center px-0 shrink-0" style={{ backgroundColor: 'var(--bg-main)', borderColor: 'var(--border-color)' }}>
-                {[
-                  ...builtinBottomPanels.map(p => ({ id: p.id, label: p.getLocalizedTitle ? p.getLocalizedTitle(language) : p.title })),
-                  ...templateBottomPanels.map(p => ({ id: `plugin:${p.id}`, label: p.title })),
-                ].map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      if (activeBottomTab === tab.id) {
-                        setBottomPanelVisible(false);
-                      } else {
-                        setActiveBottomTab(tab.id);
-                      }
-                    }}
-                    className={`flex items-center justify-center px-8 h-full text-[11px] font-bold transition-all border-t-2 ${activeBottomTab === tab.id ? 'border-primary text-primary' : 'border-transparent hover:text-primary opacity-60'}`}
-                    style={{ backgroundColor: activeBottomTab === tab.id ? 'var(--bg-sidebar)' : 'transparent' }}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-                <div className="ml-auto flex items-center px-4">
-                  <button
-                    onClick={() => setBottomPanelVisible(false)}
-                    className="text-slate-500 hover:text-white transition-colors p-1 hover:bg-white/5 rounded"
-                    title="Close Panel"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 flex flex-col min-h-0">
-                {/* Built-in plugin bottom panels (e.g. file browser) */}
-                {builtinBottomPanels.map(panel => {
-                  const Comp = panel.component;
-                  return (
-                    <div key={panel.id} className="flex-1 min-h-0" style={{ display: activeBottomTab === panel.id ? 'block' : 'none' }}>
-                      <Comp connectionId={connectionId} fsHandler={connectionRef.current?.fsHandler} theme={theme} isVisible={activeBottomTab === panel.id} />
-                    </div>
-                  );
-                })}
-
-                {/* External plugin bottom panels (template-driven) */}
-                {templateBottomPanels.map(panel => (
-                  <div key={panel.id} className="flex-1 min-h-0 overflow-y-auto no-scrollbar" style={{ display: activeBottomTab === `plugin:${panel.id}` ? 'block' : 'none' }}>
-                    <PanelRenderer panelId={panel.id} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : null}
-      </main>
-
-      {/* Right: Built-in plugin panels + template-driven panels (Tab switch for multiple panels) */}
-      {showAiPanel && (builtinRightPanels.length > 0 || templateRightPanels.length > 0) && (
-        <>
-          {/* Right resize handle */}
-          <div
-            className="w-1.5 -mx-0.5 cursor-col-resize z-[45] relative group flex items-center justify-center transition-all shrink-0 hover:bg-white/10"
-            onMouseDown={(e) => { e.preventDefault(); setIsResizingAi(true); }}
-          >
-            <div
-              className={`w-0.5 h-12 rounded-full transition-all duration-300 ${
-                isResizingAi
-                  ? 'bg-primary scale-y-110 opacity-100'
-                  : 'bg-white/20 opacity-0 group-hover:opacity-100'
-              }`}
-            />
-          </div>
-
-          {/* Right panel content */}
-          <aside
-            className="flex flex-col shrink-0 relative tv-side-panel"
-            style={{ width: `${aiPanelWidth}px`, backgroundColor: 'var(--bg-sidebar)' }}
-          >
-            {(() => {
-              const rightTabs: TabItem[] = [
-                // Built-in right sidebar panels (e.g. AI Ops)
-                ...builtinRightPanels.map(panel => {
-                  const Comp = panel.component;
-                  return {
+            <aside
+              className="flex flex-col shrink-0 relative tv-side-panel"
+              style={{ width: `${aiPanelWidth}px`, backgroundColor: 'var(--bg-sidebar)' }}
+            >
+              {(() => {
+                const rightTabs: TabItem[] = [
+                  ...builtinRightPanels.map(panel => {
+                    const Comp = panel.component;
+                    return {
+                      id: panel.id,
+                      title: panel.id,
+                      content: (
+                        <Comp
+                          sessionId={connectionId || ''}
+                          connectionId={connectionId || ''}
+                          connectionType={host.connectionType === 'local' ? 'local' : 'ssh'}
+                          terminalId={terminalId || connectionId || ''}
+                          host={host}
+                          width={aiPanelWidth}
+                          isVisible={showAiPanel}
+                          isActive={isActive}
+                          theme={theme}
+                          language={language}
+                          onClose={() => {
+                            if (minimalPanelStates && onMinimalPanelStatesChange) {
+                              onMinimalPanelStatesChange({ ...minimalPanelStates, ai: false });
+                            }
+                          }}
+                        />
+                      ),
+                    };
+                  }),
+                  ...templateRightPanels.map(panel => ({
                     id: panel.id,
-                    title: panel.id,
+                    title: panel.title,
+                    icon: panel.icon,
                     content: (
-                      <Comp
-                        sessionId={connectionId || ''}
-                        connectionId={connectionId || ''}
-                        connectionType={host.connectionType === 'local' ? 'local' : 'ssh'}
-                        terminalId={terminalId || connectionId || ''}
-                        host={host}
-                        width={aiPanelWidth}
-                        isVisible={showAiPanel}
-                        isActive={isActive}
-                        theme={theme}
-                        language={language}
-                        onClose={() => {
-                          if (minimalPanelStates && onMinimalPanelStatesChange) {
-                            onMinimalPanelStatesChange({ ...minimalPanelStates, ai: false });
-                          }
-                        }}
-                      />
+                      <div className="h-full overflow-y-auto no-scrollbar">
+                        <PanelRenderer panelId={panel.id} />
+                      </div>
                     ),
-                  };
-                }),
-                // Template-driven right panels
-                ...templateRightPanels.map(panel => ({
-                  id: panel.id,
-                  title: panel.title,
-                  icon: panel.icon,
-                  content: (
-                    <div className="h-full overflow-y-auto no-scrollbar">
-                      <PanelRenderer panelId={panel.id} />
-                    </div>
-                  ),
-                })),
-              ];
+                  })),
+                ];
+                if (rightTabs.length === 1) return rightTabs[0].content;
+                return <TabbedPanelGroup tabs={rightTabs} />;
+              })()}
+            </aside>
+          </>
+        ) : null;
 
-              // Don't show Tab bar if there's only one panel
-              if (rightTabs.length === 1) {
-                return rightTabs[0].content;
-              }
-
-              return <TabbedPanelGroup tabs={rightTabs} />;
-            })()}
-          </aside>
-        </>
-      )}
+        return usePortals
+          ? (panelPortals!.right.current ? createPortal(rightJsx, panelPortals!.right.current) : null)
+          : rightJsx;
+      })()}
 
     </div>
   );
@@ -938,6 +998,10 @@ export const TerminalView = React.memo(TerminalViewInner, (prev, next) => {
     prev.terminalTheme === next.terminalTheme &&
     prev.terminalFontSize === next.terminalFontSize &&
     prev.isActive === next.isActive &&
+    prev.isPaneActive === next.isPaneActive &&
+    prev.paneOnly === next.paneOnly &&
+    prev.panelPortals === next.panelPortals &&
+    prev.portalVersion === next.portalVersion &&
     prev.defaultFocusTarget === next.defaultFocusTarget &&
     prev.minimalPanelStates === next.minimalPanelStates &&
     prev.onMinimalPanelStatesChange === next.onMinimalPanelStatesChange

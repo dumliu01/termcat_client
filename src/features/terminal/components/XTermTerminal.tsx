@@ -300,7 +300,7 @@ log.warn('xterm.dimensions_error', 'Caught xterm dimensions error, suppressing',
       terminal.focus();
       // Use options object instead of setOption method (new xterm.js API)
       (terminal as any).options.disableStdin = false;
-              log.info('xterm.focus_setup', 'Terminal focus and stdin setup completed');
+              log.debug('xterm.focus_setup', 'Terminal focus and stdin setup completed');
     } catch (e) {
       log.warn('xterm.focus_failed', 'Terminal focus setup failed', { error: 1001, details: e instanceof Error ? e.message : 'Unknown error' });
     }
@@ -310,7 +310,7 @@ log.warn('xterm.dimensions_error', 'Caught xterm dimensions error, suppressing',
       terminalRef.current.addEventListener('click', () => {
         try {
           terminal.focus();
-          log.info('xterm.focused', 'Terminal focused on click');
+          log.debug('xterm.focused', 'Terminal focused on click');
         } catch (e) {
           log.warn('xterm.focus_click_failed', 'Failed to focus terminal on click', { error: 1002, details: e instanceof Error ? e.message : 'Unknown error' });
         }
@@ -451,12 +451,26 @@ log.warn('xterm.dimensions_error', 'Caught xterm dimensions error, suppressing',
     // Use ResizeObserver to directly listen for container size changes
     let animationFrameId: number;
     let fitAddonReady = false;
+    // Track last known size to skip fit() when dimensions haven't actually changed.
+    // This prevents unnecessary canvas redraws (flicker) caused by layout reflows
+    // from sibling elements (e.g. portal container changes during split pane switch).
+    let lastObservedWidth = 0;
+    let lastObservedHeight = 0;
 
     const resizeObserver = new ResizeObserver((entries) => {
       // Wait for fitAddon to be ready
       if (!fitAddon || !fitAddonReady) return;
       // Skip fit for background tabs, will refit uniformly when switching back to foreground
       if (!isActiveRef.current) return;
+
+      // Check if size actually changed (skip spurious callbacks from sibling layout reflows)
+      const entry = entries[0];
+      if (entry) {
+        const { width, height } = entry.contentRect;
+        if (Math.abs(width - lastObservedWidth) < 1 && Math.abs(height - lastObservedHeight) < 1) return;
+        lastObservedWidth = width;
+        lastObservedHeight = height;
+      }
 
       // Use requestAnimationFrame for throttling
       if (animationFrameId) {
@@ -728,7 +742,7 @@ log.warn('xterm.dimensions_error', 'Caught xterm dimensions error, suppressing',
         log.info('terminal.health_check.cancelled', 'Health check cancelled, backend responded', { backend_type: backend.type, backend_id: backend.id });
       }
 
-      log.info('shell.data_received', 'Received shell data', { data_length: data.length, backend_type: backend.type, backend_id: backend.id, is_active: isActiveRef.current });
+      log.debug('shell.data_received', 'Received shell data', { data_length: data.length, backend_type: backend.type, backend_id: backend.id, is_active: isActiveRef.current });
       log.debug('shell.write_terminal', 'Writing data to terminal', { data_preview: JSON.stringify(data.substring(0, 200)), hex_dump: data.substring(0, 50).split('').map(c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('') });
 
       // Filter out sequences that may modify font

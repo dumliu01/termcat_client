@@ -44,7 +44,11 @@ export function buildCommandWithMarkers(command: string, shell?: string): string
   // Shells with bracket paste mode enabled already send [?2004h] on prompt — the
   // executor will match on whichever arrives first. On shells without bracket paste
   // mode (e.g., nested SSH via passthrough), the printf provides the signal.
-  return `${command}; printf '\\033[?2004h'\n`;
+  //
+  // IMPORTANT: Use printf format substitution (%s) so the echo text does NOT contain
+  // a literal '[?2004h' string. Otherwise isCommandComplete() matches the echo before
+  // the command actually executes, causing premature completion with echo as "output".
+  return `${command}; printf '\\033[?%sh' 2004\n`;
 }
 
 // ==================== Legacy API Compatibility ====================

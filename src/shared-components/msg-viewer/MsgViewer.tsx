@@ -104,8 +104,14 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
 
   // During streaming output, the last block content grows (height changes) but block count stays the same,
   // followOutput won't trigger. Use RAF to batch scroll to bottom, max once per frame.
+  // Skip the initial mount to avoid visible scroll jump when restoring cached messages.
   const scrollRAFRef = useRef(0);
+  const isInitialMountRef = useRef(true);
   useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
     if (!autoScroll || displayBlocks.length === 0) return;
     cancelAnimationFrame(scrollRAFRef.current);
     scrollRAFRef.current = requestAnimationFrame(() => {
@@ -119,6 +125,13 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
     (): 'smooth' | false => autoScroll ? 'smooth' : false,
     [autoScroll],
   );
+
+  // When mounting with pre-existing blocks (e.g. restored from cache after pane switch),
+  // start Virtuoso at the last item to avoid a visible scroll-from-top animation.
+  const initialItemIndex = useMemo(() => {
+    return displayBlocks.length > 0 ? displayBlocks.length - 1 : 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — only compute on initial mount
 
   // Empty state (placed after all hooks to avoid conditional return causing hooks order inconsistency)
   if (blocks.length === 0 && !isLoading) {
@@ -147,6 +160,7 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
       className="flex-1 no-scrollbar msg-viewer-selectable"
       style={{ height: '100%' }}
       data={displayBlocks}
+      initialTopMostItemIndex={initialItemIndex}
       followOutput={handleFollowOutput}
       atBottomThreshold={200}
       atBottomStateChange={(atBottom) => onAutoScrollChange?.(atBottom)}

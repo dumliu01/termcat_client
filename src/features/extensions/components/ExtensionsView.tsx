@@ -1,6 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Blocks, Search, Download, Check, Star, Settings, ShieldCheck, FolderUp, Power, PowerOff, Loader2, AlertCircle, CheckCircle, RefreshCw, Heart, Package, ArrowLeft, Lock, ShoppingCart, Monitor, KeyRound } from 'lucide-react';
 import { useI18n } from '@/base/i18n/I18nContext';
+
+/** Resolve a potentially i18n-ized field: string or { zh, en, es } object */
+function resolveI18nText(value: string | Record<string, string> | undefined, lang: string): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value[lang] || value.en || value.zh || Object.values(value)[0] || '';
+}
 import { usePluginList } from '@/features/terminal/hooks/usePlugins';
 import { apiService } from '@/base/http/api';
 import type { PluginInfo } from '@/plugins/types';
@@ -57,7 +64,8 @@ const PluginDetailView: React.FC<{
   onToggle: (plugin: PluginInfo) => void;
   operating: boolean;
   t: any;
-}> = ({ plugin, onBack, onToggle, operating, t }) => {
+  language: string;
+}> = ({ plugin, onBack, onToggle, operating, t, language }) => {
   const hasSettings = plugin.manifest.contributes?.settings
     && Object.keys(plugin.manifest.contributes.settings).length > 0;
 
@@ -82,7 +90,7 @@ const PluginDetailView: React.FC<{
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-1">
-            <h2 className="text-xl font-bold text-[var(--text-main)]">{plugin.manifest.displayName}</h2>
+            <h2 className="text-xl font-bold text-[var(--text-main)]">{resolveI18nText(plugin.manifest.displayName as any, language)}</h2>
             <span className="text-xs text-[var(--text-dim)] px-2 py-0.5 rounded bg-black/20">v{plugin.manifest.version}</span>
             {plugin.builtin && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 font-medium">
@@ -97,7 +105,7 @@ const PluginDetailView: React.FC<{
               {getStateLabel(plugin.state)}
             </span>
           </div>
-          <p className="text-sm text-[var(--text-dim)] leading-relaxed">{plugin.manifest.description}</p>
+          <p className="text-sm text-[var(--text-dim)] leading-relaxed">{resolveI18nText(plugin.manifest.description as any, language)}</p>
           {plugin.error && (
             <p className="text-xs text-red-400 mt-2 p-2 rounded-lg bg-red-500/5 border border-red-500/10">{plugin.error}</p>
           )}
@@ -151,12 +159,12 @@ const PluginDetailView: React.FC<{
                 )}
                 <div>
                   <h4 className="text-sm font-bold text-[var(--text-main)]">
-                    {unlocked ? `${lockedModeNames} — 已激活` : `${lockedModeNames} — 未购买`}
+                    {unlocked ? `${lockedModeNames} — ${t.extensions.licenseActivated}` : `${lockedModeNames} — ${t.extensions.licenseNotPurchased}`}
                   </h4>
                   <p className="text-xs text-[var(--text-dim)] mt-0.5">
                     {unlocked
-                      ? `${lockedModeNames} 已解锁`
-                      : `购买后解锁 ${lockedModeNames}`
+                      ? t.extensions.licenseUnlocked(lockedModeNames)
+                      : t.extensions.licensePurchaseToUnlock(lockedModeNames)
                     }
                   </p>
                 </div>
@@ -165,7 +173,7 @@ const PluginDetailView: React.FC<{
                 <div className="flex items-center gap-3 text-xs text-[var(--text-dim)]">
                   <div className="flex items-center gap-1">
                     <Monitor className="w-3 h-3" />
-                    <span>{cache?.machinesUsed || 0}/{cache?.machinesMax || 3} 台设备</span>
+                    <span>{cache?.machinesUsed || 0}/{cache?.machinesMax || 3} {t.extensions.licenseDevices}</span>
                   </div>
                   <span className="font-mono text-[10px]">{cache?.licenseKeyMasked}</span>
                 </div>
@@ -174,13 +182,13 @@ const PluginDetailView: React.FC<{
                   <button
                     onClick={() => {
                       licenseService.activateDevice().catch(() => {
-                        alert('激活失败，请确认当前账户已购买');
+                        alert(t.extensions.licenseActivateFailed);
                       });
                     }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10 transition-colors"
                   >
                     <KeyRound className="w-3.5 h-3.5" />
-                    激活
+                    {t.extensions.licenseActivate}
                   </button>
                   <button
                     onClick={() => {
@@ -192,7 +200,7 @@ const PluginDetailView: React.FC<{
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-amber-500 text-black hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/20"
                   >
                     <ShoppingCart className="w-3.5 h-3.5" />
-                    {price ? `购买 ¥${price}` : '购买'}
+                    {price ? t.extensions.licenseBuyWithPrice(price) : t.extensions.licenseBuy}
                   </button>
                 </div>
               )}
@@ -390,8 +398,8 @@ export const ExtensionsView: React.FC = () => {
   // Filter installed plugins (local)
   const filteredInstalled = plugins.filter(p =>
     !searchQuery ||
-    p.manifest.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (p.manifest.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+    resolveI18nText(p.manifest.displayName as any, language).toLowerCase().includes(searchQuery.toLowerCase()) ||
+    resolveI18nText(p.manifest.description as any, language).toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleLocalInstall = () => {
@@ -473,6 +481,7 @@ export const ExtensionsView: React.FC = () => {
                 onToggle={handleToggle}
                 operating={operating === selectedPluginId}
                 t={t}
+                language={language}
               />
             ) : activeTab === 'installed' ? (
               /* Installed Plugins List */
@@ -519,7 +528,7 @@ export const ExtensionsView: React.FC = () => {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-bold text-[var(--text-main)] truncate">
-                              {plugin.manifest.displayName}
+                              {resolveI18nText(plugin.manifest.displayName as any, language)}
                             </span>
                             <span className="text-[10px] text-[var(--text-dim)] px-1.5 py-0.5 rounded bg-black/20">
                               v{plugin.manifest.version}
@@ -538,7 +547,7 @@ export const ExtensionsView: React.FC = () => {
                             </span>
                           </div>
                           <p className="text-xs text-[var(--text-dim)] mt-0.5 truncate">
-                            {plugin.manifest.description}
+                            {resolveI18nText(plugin.manifest.description as any, language)}
                           </p>
                           {plugin.error && (
                             <p className="text-xs text-red-400 mt-1 truncate">{plugin.error}</p>

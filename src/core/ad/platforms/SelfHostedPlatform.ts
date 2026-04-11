@@ -19,7 +19,7 @@ export class SelfHostedPlatform implements IAdPlatform {
 
   async init(config: AdPlatformConfig): Promise<void> {
     this.config = config;
-    log.info('ad.platform.init', 'SelfHosted platform initialized');
+    log.debug('ad.platform.init', 'SelfHosted platform initialized');
   }
 
   async fetchAds(context: AdRequestContext): Promise<AdContent[]> {
