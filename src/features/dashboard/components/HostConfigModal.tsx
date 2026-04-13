@@ -200,6 +200,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
             <div className="w-full md:flex-[2] space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.name}</label>
               <input
+                data-testid="host-config-name"
                 value={formData.name}
                 onChange={e => setFormData({...formData, name: e.target.value})}
                 className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
@@ -269,6 +270,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
                 {formData.connectionType === 'jump' ? t.hostConfig.ssh.jumpHostLabel : t.hostConfig.ssh.host}
               </label>
               <input
+                data-testid="host-config-hostname"
                 value={formData.hostname}
                 onChange={e => setFormData({...formData, hostname: e.target.value})}
                 className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
@@ -278,6 +280,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
             <div className="w-full md:w-32 space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.port}</label>
               <input
+                data-testid="host-config-port"
                 type="number"
                 value={formData.port}
                 onChange={e => setFormData({...formData, port: parseInt(e.target.value) || 22})}
@@ -307,6 +310,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
             <div className="w-full md:flex-1 space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.method}</label>
               <select
+                data-testid="host-config-auth-type"
                 value={formData.authType}
                 onChange={e => setFormData({...formData, authType: e.target.value as any})}
                 className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none appearance-none cursor-pointer"
@@ -340,6 +344,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
               <div className="w-full md:flex-1 space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-[var(--text-dim)] ml-1">{t.hostConfig.ssh.username}</label>
                 <input
+                  data-testid="host-config-username"
                   value={formData.username}
                   onChange={e => setFormData({...formData, username: e.target.value})}
                   className="w-full bg-[var(--bg-main)] border border-[var(--border-color)] rounded-xl px-4 py-2.5 text-sm text-[var(--text-main)] focus:border-indigo-500 outline-none transition-all"
@@ -354,6 +359,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
                 <input
+                  data-testid="host-config-password"
                   type="password"
                   value={formData.password || ''}
                   onChange={e => setFormData({...formData, password: e.target.value})}
@@ -368,6 +374,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
               <div className="relative">
                 <FileKey className="absolute left-4 top-4 w-3.5 h-3.5 opacity-40" />
                 <textarea
+                  data-testid="host-config-sshkey"
                   value={formData.sshKey || ''}
                   onChange={e => setFormData({...formData, sshKey: e.target.value})}
                   rows={4}
@@ -765,7 +772,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-2xl animate-in fade-in duration-300">
+    <div data-testid="host-config-modal" className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-2xl animate-in fade-in duration-300">
       <div className="w-full max-w-4xl h-[700px] bg-[var(--bg-card)] rounded-[2.5rem] border border-[var(--border-color)] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95">
         <div className="h-14 flex items-center justify-between px-8 border-b border-[var(--border-color)] shrink-0 bg-black/10">
           <div className="flex gap-2">
@@ -776,7 +783,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
           <span className="text-[11px] font-black uppercase tracking-[0.2em] text-[var(--text-dim)]">
              {host ? t.hostConfig.editAsset : t.hostConfig.addAsset}: {formData.name || 'UNNAMED'}
           </span>
-          <button onClick={onClose} className="text-[var(--text-dim)] hover:text-rose-500 transition-colors">
+          <button data-testid="host-config-close" onClick={onClose} className="text-[var(--text-dim)] hover:text-rose-500 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -791,6 +798,7 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
             ].map(tab => (
               <button
                 key={tab.id}
+                data-testid={`host-config-tab-${tab.id}`}
                 onClick={() => setActiveTab(tab.id as ConfigTab)}
                 className={`flex items-center gap-4 px-6 py-4 rounded-2xl text-[11px] font-black uppercase tracking-wider transition-all ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-[var(--text-dim)] hover:bg-black/5 hover:text-[var(--text-main)]'}`}
               >
@@ -845,8 +853,8 @@ export const HostConfigModal: React.FC<HostConfigModalProps> = ({
              </div>
           </div>
           <div className="flex gap-4">
-            <button onClick={handleSaveAndClose} className="px-10 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-[11px] rounded-2xl shadow-xl shadow-indigo-600/30 hover:bg-indigo-500 active:scale-95 transition-all">{t.hostConfig.footer.ok}</button>
-            <button onClick={handleApply} className="px-8 py-3 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-500/20 active:scale-95 transition-all">{t.hostConfig.footer.apply}</button>
+            <button data-testid="host-config-save" onClick={handleSaveAndClose} className="px-10 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-[11px] rounded-2xl shadow-xl shadow-indigo-600/30 hover:bg-indigo-500 active:scale-95 transition-all">{t.hostConfig.footer.ok}</button>
+            <button data-testid="host-config-apply" onClick={handleApply} className="px-8 py-3 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-indigo-500/20 active:scale-95 transition-all">{t.hostConfig.footer.apply}</button>
             <button onClick={onClose} className="px-6 py-3 bg-white/5 text-[var(--text-dim)] font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-white/10 active:scale-95 transition-all">{t.hostConfig.footer.cancel}</button>
           </div>
         </div>

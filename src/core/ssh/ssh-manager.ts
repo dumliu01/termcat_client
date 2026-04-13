@@ -52,6 +52,8 @@ export interface SSHConnection {
   jumpClient?: Client; // Jump host SSH client (if any)
   banner?: string; // SSH Banner (sshd_config Banner directive, sent before auth)
   shellPassthroughCmd?: string; // Shell passthrough: commands automatically executed in shell (e.g., ssh target_host)
+  /** Target host info for passthrough mode (exec commands are routed via SSH through jump host) */
+  passthroughTarget?: { host: string; port: number; username?: string };
 }
 
 export class SSHService {
@@ -365,6 +367,7 @@ export class SSHService {
             encoding: 'UTF-8',
             banner: jumpBanner,
             shellPassthroughCmd: `ssh -tt -o StrictHostKeyChecking=no -p ${config.port}${config.username ? ` ${config.username}@${config.host}` : ` ${config.host}`}\n`,
+            passthroughTarget: { host: config.host, port: config.port, username: config.username },
           });
 
           this.configs.set(connectionId, config);
@@ -850,6 +853,17 @@ export class SSHService {
         finalCommand = `bash -l -i -c "${escapedCommand}"`;
       } else {
         finalCommand = fullCommand;
+      }
+
+      // Shell passthrough mode: wrap command via SSH to execute on target host
+      // In this mode connection.client is the jump host, so exec() runs on jump host.
+      // We route commands to the actual target by wrapping them in an SSH call.
+      if (connection.passthroughTarget) {
+        const t = connection.passthroughTarget;
+        const target = t.username ? `${t.username}@${t.host}` : t.host;
+        // Escape single quotes for safe wrapping: ' → '\''
+        const escaped = finalCommand.replace(/'/g, "'\\''" );
+        finalCommand = `ssh -o StrictHostKeyChecking=no -o BatchMode=yes -p ${t.port} ${target} '${escaped}'`;
       }
 
       connection.client.exec(finalCommand, (err, stream) => {
@@ -1534,7 +1548,14 @@ export class SSHService {
     }
 
     return new Promise((resolve, reject) => {
-      connection.client.exec('echo $HOME', (err, stream) => {
+      // In passthrough mode, route to target host via SSH
+      let homeCmd = 'echo $HOME';
+      if (connection.passthroughTarget) {
+        const t = connection.passthroughTarget;
+        const target = t.username ? `${t.username}@${t.host}` : t.host;
+        homeCmd = `ssh -o StrictHostKeyChecking=no -o BatchMode=yes -p ${t.port} ${target} 'echo \$HOME'`;
+      }
+      connection.client.exec(homeCmd, (err, stream) => {
         if (err) {
           reject(new Error(`Failed to get home directory: ${err.message}`));
           return;

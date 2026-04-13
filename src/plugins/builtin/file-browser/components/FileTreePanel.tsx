@@ -107,7 +107,7 @@ export const FileTreePanel: React.FC<FileTreePanelProps> = React.memo(({
   const t = useT();
 
   return (
-    <>
+    <div data-testid="file-tree-panel" className="contents">
       <div className="px-3 py-2 border-b flex items-center justify-between shrink-0" style={{ backgroundColor: 'var(--bg-tab)/40', borderColor: 'var(--border-color)' }}>
         <div className="flex items-center gap-2">
           <FolderOpen className="w-3.5 h-3.5 text-primary" />
@@ -169,6 +169,6 @@ export const FileTreePanel: React.FC<FileTreePanelProps> = React.memo(({
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 });

@@ -6,17 +6,25 @@
  */
 import React, { useState, useEffect } from 'react';
 import { Puzzle, Settings, Loader2 } from 'lucide-react';
+import { useI18n } from '@/base/i18n/I18nContext';
 import { usePluginList } from '@/features/terminal/hooks/usePlugins';
 import { PluginSettingsForm } from '@/features/extensions/components/PluginSettingsForm';
 import type { PluginInfo } from '@/plugins/types';
+
+function resolveI18nText(value: string | Record<string, string> | undefined, lang: string): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return value[lang] || value.en || value.zh || Object.values(value)[0] || '';
+}
 
 // ==================== 左侧：插件树列表项 ====================
 
 const PluginTreeItem: React.FC<{
   plugin: PluginInfo;
   selected: boolean;
+  language: string;
   onClick: () => void;
-}> = ({ plugin, selected, onClick }) => {
+}> = ({ plugin, selected, language, onClick }) => {
   const hasSettings = plugin.manifest.contributes?.settings
     && Object.keys(plugin.manifest.contributes.settings).length > 0;
 
@@ -34,7 +42,7 @@ const PluginTreeItem: React.FC<{
         plugin.state === 'error' ? 'bg-red-400' :
         'bg-[var(--text-tertiary)] opacity-40'
       }`} />
-      <span className="text-xs truncate flex-1">{plugin.manifest.displayName}</span>
+      <span className="text-xs truncate flex-1">{resolveI18nText(plugin.manifest.displayName as any, language)}</span>
       {hasSettings && (
         <Settings className={`w-3 h-3 flex-shrink-0 ${
           selected ? 'text-indigo-400' : 'text-[var(--text-tertiary)] opacity-50'
@@ -47,7 +55,8 @@ const PluginTreeItem: React.FC<{
 // ==================== 主组件：左右分栏 ====================
 
 export const SettingPlugins: React.FC = () => {
-  const { plugins, loading } = usePluginList();
+  const { language } = useI18n();
+  const { plugins, loading } = usePluginList(language);
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
 
   // 有设置项的插件排前面
@@ -72,8 +81,8 @@ export const SettingPlugins: React.FC = () => {
     : null;
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <section className="bg-[var(--bg-card)] p-6 rounded-[2rem] border border-[var(--border-color)] shadow-xl backdrop-blur-md">
+    <div data-testid="plugins-settings" className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <section data-testid="plugins-list" className="bg-[var(--bg-card)] p-6 rounded-[2rem] border border-[var(--border-color)] shadow-xl backdrop-blur-md">
         <div className="flex items-center gap-3 text-indigo-400 mb-6">
           <Puzzle className="w-5 h-5" />
           <h3 className="font-black uppercase tracking-[0.2em] text-[10px]">Plugin Settings</h3>
@@ -97,6 +106,7 @@ export const SettingPlugins: React.FC = () => {
                   key={plugin.manifest.id}
                   plugin={plugin}
                   selected={selectedPluginId === plugin.manifest.id}
+                  language={language}
                   onClick={() => setSelectedPluginId(plugin.manifest.id)}
                 />
               ))}

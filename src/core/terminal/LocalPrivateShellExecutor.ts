@@ -164,19 +164,27 @@ export class LocalPrivateShellExecutor implements ICmdExecutor {
         settle({ output: collected, exitCode: -1 });
       }, timeout);
 
+      // Match marker at the start of a line to skip echoed command text.
+      // When stty -echo fails, the command itself is echoed back and contains
+      // the marker inside the echo (e.g., "echo '___MARKER___'"). The actual
+      // marker output always appears at the start of a line.
+      const startLinePattern = new RegExp(`(?:^|\\n)${startMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+      const endLinePattern = new RegExp(`(?:^|\\n)${endMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+
       this._dataHandler = (data: string) => {
         buffer += data;
         if (!started) {
-          const startIdx = buffer.indexOf(startMarker);
-          if (startIdx === -1) return;
-          const afterStart = buffer.substring(startIdx + startMarker.length);
+          const startMatch = startLinePattern.exec(buffer);
+          if (!startMatch) return;
+          const markerEnd = startMatch.index + startMatch[0].length;
+          const afterStart = buffer.substring(markerEnd);
           buffer = afterStart.startsWith('\n') ? afterStart.substring(1)
             : afterStart.startsWith('\r\n') ? afterStart.substring(2) : afterStart;
           started = true;
         }
-        const endIdx = buffer.indexOf(endMarker);
-        if (endIdx === -1) { collected = buffer; return; }
-        const content = buffer.substring(0, endIdx);
+        const endMatch = endLinePattern.exec(buffer);
+        if (!endMatch) { collected = buffer; return; }
+        const content = buffer.substring(0, endMatch.index);
         const exitMatch = content.match(exitMarkerPattern);
         if (exitMatch) exitCode = parseInt(exitMatch[1], 10);
         const output = content

@@ -80,7 +80,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-[#020617]">
+    <div data-testid="login-view" className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-[#020617]">
       {/* Back Button */}
       <button
         onClick={() => onLogin(null)}
@@ -110,6 +110,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
           {!isWaitingForBrowser ? (
             <div className="space-y-4">
               <button
+                data-testid="login-browser-btn"
                 onClick={handleBrowserLogin}
                 className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-black text-xs uppercase tracking-[0.2em] py-4 rounded-2xl transition-all shadow-[0_15px_40px_rgba(79,70,229,0.3)] flex items-center justify-center gap-2 group active:scale-[0.97]"
               >
@@ -118,6 +119,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin, language, theme }
               </button>
 
               <button
+                data-testid="login-skip-btn"
                 onClick={() => onLogin(null)}
                 className="w-full bg-white/5 border border-white/5 text-slate-400 font-black text-[10px] uppercase tracking-widest py-4 rounded-2xl transition-all flex items-center justify-center gap-3 hover:bg-white/10 hover:text-white active:scale-[0.97]"
               >

@@ -407,9 +407,9 @@ export const ExtensionsView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[var(--bg-main)] overflow-hidden">
+    <div data-testid="extensions-view" className="flex-1 flex flex-col h-full bg-[var(--bg-main)] overflow-hidden">
       {/* Header */}
-      <div className="h-12 flex items-center justify-between px-6 border-b border-[var(--border-color)] bg-[var(--bg-card)] shrink-0">
+      <div data-testid="extensions-header" className="h-12 flex items-center justify-between px-6 border-b border-[var(--border-color)] bg-[var(--bg-card)] shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-500">
             <Blocks className="w-4 h-4" />
@@ -440,6 +440,7 @@ export const ExtensionsView: React.FC = () => {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
               <input
+                data-testid="extensions-search"
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -451,16 +452,18 @@ export const ExtensionsView: React.FC = () => {
 
           <div className="p-2 space-y-1">
             <button
+              data-testid="extensions-tab-installed"
               onClick={() => setActiveTab('installed')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'installed' ? 'bg-indigo-500/10 text-indigo-500' : 'text-[var(--text-dim)] hover:bg-[var(--bg-card)] hover:text-[var(--text-main)]'}`}
             >
               <Check className="w-4 h-4" />
               {t.extensions.installed}
-              <span className="ml-auto bg-black/20 px-2 py-0.5 rounded-full text-xs">
+              <span data-testid="extensions-installed-count" className="ml-auto bg-black/20 px-2 py-0.5 rounded-full text-xs">
                 {plugins.length}
               </span>
             </button>
             <button
+              data-testid="extensions-tab-recommended"
               onClick={() => setActiveTab('recommended')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'recommended' ? 'bg-indigo-500/10 text-indigo-500' : 'text-[var(--text-dim)] hover:bg-[var(--bg-card)] hover:text-[var(--text-main)]'}`}
             >

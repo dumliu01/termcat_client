@@ -154,6 +154,7 @@ export const MonitoringSidebarPanel: React.FC<SidebarPanelProps> = React.memo(({
 
   return (
     <aside
+      data-testid="monitoring-panel"
       style={{ width: `${width}px`, backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--border-color)' }}
       className="flex flex-col relative shrink-0 border-r overflow-y-auto no-scrollbar font-sans select-text"
     >

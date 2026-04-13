@@ -459,7 +459,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
   if (!isVisible) return null;
 
   return (
-    <div className="flex flex-col h-full relative" style={{ backgroundColor: 'var(--bg-sidebar)' }}>
+    <div className="flex flex-col h-full relative" style={{ backgroundColor: 'var(--bg-sidebar)' }} data-testid="ai-ops-panel">
       {/* Header */}
       <AIOpsHeader
         isConnected={ai.isConnected}

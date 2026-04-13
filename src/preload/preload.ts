@@ -412,7 +412,7 @@ declare global {
 
       // SSH methods
       sshConnectTest: () => Promise<{ message: string; timestamp: number }>;
-      sshConnect: (config: SSHConfig) => Promise<string>;
+      sshConnect: (config: SSHConfig) => Promise<{ connectionId: string; isShellPassthrough?: boolean }>;
       sshExecute: (connectionId: string, command: string, options?: { useLoginShell?: boolean }) => Promise<{ output: string; exitCode: number }>;
       sshDisconnect: (connectionId: string) => Promise<{ success: boolean }>;
       sshCreateShell: (connectionId: string, encoding?: string) => Promise<string>;

@@ -98,9 +98,9 @@ export const SettingSupport: React.FC = () => {
   }, []);
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div data-testid="support-settings" className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Version Info — compact horizontal layout */}
-      <section className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm relative overflow-hidden">
+      <section data-testid="support-version" className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm relative overflow-hidden">
         <div className="flex items-center gap-5">
           <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-600/30 shrink-0">
             <Cat className="w-7 h-7 text-white" />
@@ -132,7 +132,7 @@ export const SettingSupport: React.FC = () => {
       </section>
 
       {/* FAQ */}
-      <section className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
+      <section data-testid="support-faq" className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
         <h3 className="font-black uppercase tracking-[0.2em] text-[10px] mb-4 opacity-40 flex items-center gap-2 text-[var(--text-dim)]">
           <HelpCircle className="w-4 h-4" />{t.settings.technicalSupport}
         </h3>
@@ -164,7 +164,7 @@ export const SettingSupport: React.FC = () => {
       </section>
 
       {/* Feedback */}
-      <section className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
+      <section data-testid="support-feedback" className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
         <h3 className="font-black uppercase tracking-[0.2em] text-[10px] mb-4 opacity-40 flex items-center gap-2 text-[var(--text-dim)]">
           <Mail className="w-4 h-4" />
           {t.settings.feedbackTitle}

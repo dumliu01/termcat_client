@@ -43,6 +43,8 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
   const [fileBrowserRef, setFileBrowserRef] = useState<IFsHandler | null>(null);
   const [isDirectoryTreeLoaded, setIsDirectoryTreeLoaded] = useState(false);
   const isInitialPathSyncedRef = useRef(false);
+  /** Incremented when proxy handler switches (nested SSH enter/exit), triggers re-sync */
+  const [handlerSwitchCount, setHandlerSwitchCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Context menu state
@@ -109,7 +111,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
     };
   }, [fsHandlerProp, connectionId]);
 
-  // When file tab becomes visible, sync terminal directory for the first time, then refresh file list when switching tabs
+  // When file tab becomes visible or handler switches, sync terminal directory
   useEffect(() => {
     if (isVisible && fileBrowserRef) {
       if (!isInitialPathSyncedRef.current) {
@@ -127,7 +129,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
         loadFiles(currentPath);
       }
     }
-  }, [isVisible, fileBrowserRef, connectionId]);
+  }, [isVisible, fileBrowserRef, connectionId, handlerSwitchCount]);
 
   // Directory tree loading (independent from file list loading, avoid triggering file list reload)
   useEffect(() => {
@@ -285,6 +287,20 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
     } finally {
       setIsLoadingTree(false);
     }
+  }, [fileBrowserRef]);
+
+  // When the proxy handler switches (nested SSH enter/exit), reset sync state and trigger reload.
+  // Uses handlerSwitchCount state to re-trigger the isVisible effect above.
+  useEffect(() => {
+    if (!fileBrowserRef || !('onHandlerSwitch' in fileBrowserRef)) return;
+    const proxy = fileBrowserRef as IFsHandler & { onHandlerSwitch: (cb: () => void) => () => void };
+    return proxy.onHandlerSwitch(() => {
+      logger.info(LOG_MODULE.FILE, 'filebrowser.handler_switched', 'Proxy handler switched, triggering reload');
+      isInitialPathSyncedRef.current = false;
+      setIsDirectoryTreeLoaded(false);
+      // Increment counter to re-trigger the isVisible effect which handles the actual loading
+      setHandlerSwitchCount(c => c + 1);
+    });
   }, [fileBrowserRef]);
 
   // ─── Tree handlers ───
@@ -934,7 +950,7 @@ export const FileBrowserPanel: React.FC<FileBrowserPanelProps> = ({
   // ─── Render ───
 
   return (
-    <div ref={containerRef} className="flex h-full animate-in fade-in duration-200 overflow-hidden bg-[var(--bg-card)]">
+    <div ref={containerRef} data-testid="file-browser-panel" className="flex h-full animate-in fade-in duration-200 overflow-hidden bg-[var(--bg-card)]">
       {/* Left directory tree */}
       <div
         className="border-r flex flex-col overflow-hidden shrink-0"

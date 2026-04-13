@@ -128,6 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
               return (
                 <button
                   key={item.id}
+                  data-testid={`header-nav-${item.id}`}
                   onClick={() => setActiveView(item.id as ViewState)}
                   className={`px-3 h-7 flex items-center gap-2 rounded-md transition-all duration-300 relative group ${
                     isActive

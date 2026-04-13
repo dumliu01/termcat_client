@@ -66,6 +66,7 @@ export const AIOpsHeader: React.FC<AIOpsHeaderProps> = ({
     <div
       className="h-10 flex items-center justify-between px-4 border-b shrink-0 bg-black/10"
       style={{ borderColor: 'var(--border-color)' }}
+      data-testid="ai-ops-header"
     >
       {/* 左侧：标题 */}
       <div className="flex items-center gap-0">
@@ -98,6 +99,7 @@ export const AIOpsHeader: React.FC<AIOpsHeaderProps> = ({
             onClick={onNewConversation}
             className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-500 hover:text-slate-300"
             title={t.newConversation}
+            data-testid="ai-ops-new-chat"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -109,6 +111,7 @@ export const AIOpsHeader: React.FC<AIOpsHeaderProps> = ({
             onClick={onShowHistory}
             className="p-1 hover:bg-white/10 rounded-lg transition-colors text-slate-500 hover:text-slate-300"
             title={t.chatHistory}
+            data-testid="ai-ops-history"
           >
             <History className="w-3.5 h-3.5" />
           </button>
@@ -138,6 +141,7 @@ export const AIOpsHeader: React.FC<AIOpsHeaderProps> = ({
           <button
             onClick={onClose}
             className="p-1 hover:bg-rose-500/10 rounded-lg transition-colors text-slate-500 hover:text-rose-500"
+            data-testid="ai-ops-close"
           >
             <X className="w-4 h-4" />
           </button>

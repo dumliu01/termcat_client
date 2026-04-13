@@ -12,7 +12,6 @@ import { SSHFsHandler } from './SSHFsHandler';
 import { SSHCmdExecutor } from './SSHCmdExecutor';
 import { NestedSSHDetector } from './NestedSSHDetector';
 import type { NestedHost } from './NestedSSHDetector';
-import { TerminalCmdExecutor } from './TerminalCmdExecutor';
 import { TerminalFsHandler } from './TerminalFsHandler';
 import { ProxyCmdExecutor } from './ProxyCmdExecutor';
 import { ProxyFsHandler } from './ProxyFsHandler';
@@ -35,6 +34,9 @@ export class SSHHostConnection implements IHostConnection {
   private _hostChangedCallbacks: Array<(hostname: string) => void> = [];
   private _isConnected = false;
   private _monitorExecutor: PrivateShellExecutor | null = null;
+  /** Separate private shell for file/cmd operations (isolated from user's terminal) */
+  private _opsExecutor: PrivateShellExecutor | null = null;
+  private _isShellPassthrough = false;
 
   constructor(private host: Host) {}
 
@@ -80,6 +82,7 @@ export class SSHHostConnection implements IHostConnection {
     }
 
     this._id = session.connectionId;
+    this._isShellPassthrough = !!session.isShellPassthrough;
     this._terminal = new SSHTerminalBackend(
       session.connectionId,
       this.host.terminal?.encoding,
@@ -107,6 +110,8 @@ export class SSHHostConnection implements IHostConnection {
   }
 
   dispose(): void {
+    this._opsExecutor?.dispose();
+    this._opsExecutor = null;
     this._monitorExecutor?.dispose();
     this._monitorExecutor = null;
     this._detector?.dispose();
@@ -119,35 +124,52 @@ export class SSHHostConnection implements IHostConnection {
     this._hostChangedCallbacks = [];
   }
 
-  /** Create a TerminalCmdExecutor wired to the raw data channel and mute control */
-  private _createTerminalExecutor(): TerminalCmdExecutor {
-    const terminal = this._terminal as SSHTerminalBackend;
-    return new TerminalCmdExecutor(this._terminal!, {
-      onMuteChange: (muted) => terminal.setMuted(muted),
-      registerRawData: (cb) => terminal.onRawData(cb),
-    });
-  }
-
   private _setupNestedDetection(): void {
     if (!this._detector || !this._terminal) return;
 
-    // Feed terminal output to detector via raw channel (always fires, even when muted)
-    (this._terminal as SSHTerminalBackend).onRawData(data => this._detector?.feedOutput(data));
+    // Feed terminal output to detector and track CWD from OSC sequences
+    (this._terminal as SSHTerminalBackend).onRawData(data => {
+      this._detector?.feedOutput(data);
+      // Parse OSC 7 (file://host/path) and OSC 2 (user@host: path) to track terminal CWD
+      const osc7Match = data.match(/\x1b\]7;file:\/\/[^\/]*(\/[^\x07\x1b]*?)(?:\x07|\x1b\\)/);
+      if (osc7Match) {
+        try {
+          this._proxyFs?._setTrackedCwd(decodeURIComponent(osc7Match[1]));
+        } catch {
+          this._proxyFs?._setTrackedCwd(osc7Match[1]);
+        }
+      } else {
+        // OSC 0 (icon+title) and OSC 2 (title): "user@host: /path" or "user@host: ~"
+        const oscTitleMatch = data.match(/\x1b\][02];[^@\x07\x1b]+@[^:\x07\x1b]+:\s*(~[^\x07\x1b]*|\/[^\x07\x1b]*)(?:\x07|\x1b\\)/);
+        if (oscTitleMatch) {
+          this._proxyFs?._setTrackedCwdFromTitle(oscTitleMatch[1].trim());
+        }
+      }
+    });
 
     // Handle entering nested host
     this._detector.on('host-entered', (nestedHost: NestedHost) => {
-      const termCmd = this._createTerminalExecutor();
-      const termFs = new TerminalFsHandler(termCmd);
-      this._proxyCmd!._switchToNested(termCmd);
-      this._proxyFs!._switchToNested(termFs);
-      this._effectiveHostname = nestedHost.hostname;
-
-      // Create private shell executor for monitoring (lazy — shell created on first use).
-      // Build passthrough command from detected nestedHost info (works for ALL cases:
-      // pre-configured jump hosts, manual SSH jumps, shell passthrough, etc.)
       const portFlag = nestedHost.port ? ` -p ${nestedHost.port}` : '';
       const userPrefix = nestedHost.username ? `${nestedHost.username}@` : '';
       const passthroughCmd = `ssh -tt -o StrictHostKeyChecking=no${portFlag} ${userPrefix}${nestedHost.hostname}\n`;
+
+      // In shell passthrough mode, sshExecute() already routes commands to the target
+      // via SSH wrapping in ssh-manager.ts. No need to switch proxy handlers.
+      // For user-initiated nested SSH, use a PrivateShellExecutor (hidden extra shell)
+      // instead of TerminalCmdExecutor to avoid polluting the user's terminal with markers.
+      if (!this._isShellPassthrough) {
+        this._opsExecutor?.dispose();
+        this._opsExecutor = new PrivateShellExecutor({
+          connectionId: this._id,
+          passthroughCmd,
+        });
+        const termFs = new TerminalFsHandler(this._opsExecutor);
+        this._proxyCmd!._switchToNested(this._opsExecutor);
+        this._proxyFs!._switchToNested(termFs);
+      }
+      this._effectiveHostname = nestedHost.hostname;
+
+      // Create private shell executor for monitoring (lazy — shell created on first use).
       this._monitorExecutor?.dispose();
       this._monitorExecutor = new PrivateShellExecutor({
         connectionId: this._id,
@@ -160,6 +182,7 @@ export class SSHHostConnection implements IHostConnection {
 
       log.info('nested-ssh.proxy_switched', 'Proxy switched to nested host', {
         hostname: this._effectiveHostname, depth: nestedHost.depth,
+        is_shell_passthrough: this._isShellPassthrough,
       });
     });
 
@@ -167,9 +190,17 @@ export class SSHHostConnection implements IHostConnection {
     this._detector.on('host-exited', (current: NestedHost | null) => {
       if (current) {
         // Returned to a higher-level nested host
-        const termCmd = this._createTerminalExecutor();
-        const termFs = new TerminalFsHandler(termCmd);
-        this._proxyCmd!._switchToNested(termCmd);
+        const portFlag = current.port ? ` -p ${current.port}` : '';
+        const userPrefix = current.username ? `${current.username}@` : '';
+        const passthroughCmd = `ssh -tt -o StrictHostKeyChecking=no${portFlag} ${userPrefix}${current.hostname}\n`;
+
+        this._opsExecutor?.dispose();
+        this._opsExecutor = new PrivateShellExecutor({
+          connectionId: this._id,
+          passthroughCmd,
+        });
+        const termFs = new TerminalFsHandler(this._opsExecutor);
+        this._proxyCmd!._switchToNested(this._opsExecutor);
         this._proxyFs!._switchToNested(termFs);
         this._effectiveHostname = current.hostname;
       } else {
@@ -177,6 +208,9 @@ export class SSHHostConnection implements IHostConnection {
         this._proxyCmd!._switchToOriginal();
         this._proxyFs!._switchToOriginal();
         this._effectiveHostname = null;
+
+        this._opsExecutor?.dispose();
+        this._opsExecutor = null;
       }
 
       const hostname = current?.hostname ?? this.host.hostname;

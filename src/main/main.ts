@@ -368,7 +368,10 @@ ipcMain.handle('ssh-connect', async (event, config) => {
     // avoiding race conditions on the Renderer side
     await pluginManager.emitSSHConnect(connInfo);
 
-    return connectionId;
+    // Return passthrough mode info so renderer can handle proxy correctly
+    const connection = sshService.getConnection(connectionId);
+    const isShellPassthrough = !!connection?.shellPassthroughCmd;
+    return { connectionId, isShellPassthrough };
   } catch (error: any) {
     logger.error(LOG_MODULE.SSH, 'ssh.connection.failed', 'SSH connection failed', {
       module: LOG_MODULE.SSH,

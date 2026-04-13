@@ -10,6 +10,7 @@ export interface SSHSession {
   connectionId: string;
   host: Host;
   isConnected: boolean;
+  isShellPassthrough?: boolean;
   lines: TerminalLine[];
 }
 
@@ -222,10 +223,14 @@ class SSHService {
           username: sshConfig.username,
         });
 
-        const connectionId = await window.electron.sshConnect(sshConfig);
+        const connectResult = await window.electron.sshConnect(sshConfig);
+        // Handle both old (string) and new ({ connectionId, isShellPassthrough }) return formats
+        const connectionId = typeof connectResult === 'string' ? connectResult : connectResult.connectionId;
+        const isShellPassthrough = typeof connectResult === 'object' ? !!connectResult.isShellPassthrough : false;
 
         const session: SSHSession = {
           connectionId,
+          isShellPassthrough,
           host,
           isConnected: true,
           // Do not include a synthetic prompt here — the interactive shell (created later)

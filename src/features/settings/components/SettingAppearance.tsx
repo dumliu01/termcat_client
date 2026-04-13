@@ -29,9 +29,9 @@ export const SettingAppearance: React.FC<SettingAppearanceProps> = ({
   const activeTermTheme = TERMINAL_THEMES[terminalTheme];
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div data-testid="appearance-settings" className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* UI Themes */}
-      <section className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
+      <section data-testid="appearance-themes" className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
         <div className="flex items-center gap-2 mb-4 text-indigo-400">
           <Layout className="w-4 h-4" />
           <h3 className="font-black uppercase tracking-[0.2em] text-[10px]">{t.settings.uiThemes}</h3>
@@ -66,13 +66,13 @@ export const SettingAppearance: React.FC<SettingAppearanceProps> = ({
       <section className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
         <h3 className="font-black uppercase tracking-[0.2em] text-[10px] mb-3 opacity-40 text-[var(--text-dim)]">{t.settings.systemLanguage}</h3>
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => setLanguage('en')} className={`py-2.5 rounded-xl border font-black uppercase tracking-[0.3em] text-[10px] transition-all ${language === 'en' ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-[var(--border-color)] bg-[var(--bg-main)]/40 text-[var(--text-dim)]'}`}>ENGLISH</button>
-          <button onClick={() => setLanguage('zh')} className={`py-2.5 rounded-xl border font-black uppercase tracking-[0.3em] text-[10px] transition-all ${language === 'zh' ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-[var(--border-color)] bg-[var(--bg-main)]/40 text-[var(--text-dim)]'}`}>简体中文</button>
+          <button data-testid="lang-en" onClick={() => setLanguage('en')} className={`py-2.5 rounded-xl border font-black uppercase tracking-[0.3em] text-[10px] transition-all ${language === 'en' ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-[var(--border-color)] bg-[var(--bg-main)]/40 text-[var(--text-dim)]'}`}>ENGLISH</button>
+          <button data-testid="lang-zh" onClick={() => setLanguage('zh')} className={`py-2.5 rounded-xl border font-black uppercase tracking-[0.3em] text-[10px] transition-all ${language === 'zh' ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-[var(--border-color)] bg-[var(--bg-main)]/40 text-[var(--text-dim)]'}`}>简体中文</button>
         </div>
       </section>
 
       {/* Terminal Theme */}
-      <section className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
+      <section data-testid="appearance-terminal-theme" className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
         <div className="flex items-center gap-2 mb-4 text-indigo-400">
           <Palette className="w-4 h-4" />
           <h3 className="font-black uppercase tracking-[0.2em] text-[10px]">{t.settings.terminalColorScheme}</h3>
@@ -88,7 +88,7 @@ export const SettingAppearance: React.FC<SettingAppearanceProps> = ({
       </section>
 
       {/* Font Settings + Preview */}
-      <section className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
+      <section data-testid="appearance-font-settings" className="bg-[var(--bg-card)] px-6 py-5 rounded-2xl border border-[var(--border-color)] shadow-sm">
         <h3 className="font-black uppercase tracking-[0.2em] text-[10px] mb-4 opacity-40 text-[var(--text-dim)]">{t.settings.consoleTypography}</h3>
         <div className="grid grid-cols-2 gap-6 mb-4">
           <div className="space-y-2">

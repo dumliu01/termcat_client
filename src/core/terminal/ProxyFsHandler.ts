@@ -14,9 +14,42 @@ export class ProxyFsHandler implements IFsHandler {
   private _original: IFsHandler;
   private _nested: TerminalFsHandler | null = null;
   private _isNested = false;
+  private _switchCallbacks: Array<() => void> = [];
+  /**
+   * Terminal CWD tracked from OSC sequences (set externally by HostConnection).
+   * Used by getTerminalCwd() in nested mode so we return the user's interactive
+   * terminal CWD instead of the private shell's home directory.
+   */
+  private _trackedCwd: string | null = null;
+  /** Remote home directory, used to resolve ~ in OSC title sequences */
+  private _remoteHome: string | null = null;
 
   constructor(original: IFsHandler) {
     this._original = original;
+  }
+
+  /** Update tracked terminal CWD (called by HostConnection when OSC sequences arrive) */
+  _setTrackedCwd(cwd: string): void {
+    this._trackedCwd = cwd;
+  }
+
+  /**
+   * Update tracked CWD from an OSC title path that may contain ~.
+   * Resolves ~ using the stored remote home directory.
+   */
+  _setTrackedCwdFromTitle(titlePath: string): void {
+    if (titlePath.startsWith('/')) {
+      this._trackedCwd = titlePath;
+    } else if (titlePath.startsWith('~') && this._remoteHome) {
+      this._trackedCwd = titlePath === '~'
+        ? this._remoteHome
+        : this._remoteHome + titlePath.slice(1);
+    }
+  }
+
+  /** Set the remote home directory (called after getInitialPath resolves) */
+  _setRemoteHome(home: string): void {
+    this._remoteHome = home;
   }
 
   /** Active handler based on current mode */
@@ -24,16 +57,33 @@ export class ProxyFsHandler implements IFsHandler {
     return this._isNested && this._nested ? this._nested : this._original;
   }
 
-  /** Switch to nested mode (internal, called by SSHHostConnection) */
+  /** Register a callback for when the active handler switches (nested enter/exit) */
+  onHandlerSwitch(cb: () => void): () => void {
+    this._switchCallbacks.push(cb);
+    return () => {
+      const idx = this._switchCallbacks.indexOf(cb);
+      if (idx >= 0) this._switchCallbacks.splice(idx, 1);
+    };
+  }
+
+  private _notifySwitch(): void {
+    for (const cb of this._switchCallbacks) {
+      try { cb(); } catch { /* ignore */ }
+    }
+  }
+
+  /** Switch to nested mode (internal, called by SSHHostConnection / LocalHostConnection) */
   _switchToNested(termHandler: TerminalFsHandler): void {
     this._nested = termHandler;
     this._isNested = true;
+    this._notifySwitch();
   }
 
-  /** Restore original mode (internal, called by SSHHostConnection) */
+  /** Restore original mode (internal, called by SSHHostConnection / LocalHostConnection) */
   _switchToOriginal(): void {
     this._isNested = false;
     this._nested = null;
+    this._notifySwitch();
   }
 
   /** Whether currently in nested mode */
@@ -120,6 +170,12 @@ export class ProxyFsHandler implements IFsHandler {
   }
 
   getTerminalCwd(): Promise<string | null> {
+    // In nested mode, prefer OSC-tracked CWD from the user's interactive terminal.
+    // The nested handler's getTerminalCwd() runs `pwd` in a private shell which
+    // always returns the home directory, not the user's current directory.
+    if (this._isNested && this._trackedCwd) {
+      return Promise.resolve(this._trackedCwd);
+    }
     return this._active.getTerminalCwd?.() ?? Promise.resolve(null);
   }
 }

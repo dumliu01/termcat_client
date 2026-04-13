@@ -1020,7 +1020,7 @@ const App: React.FC = () => {
           })()}
 
           {activeView === 'terminal' && tabManager.tabs.length === 0 && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg-main)]">
+            <div data-testid="view-terminal-empty" className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg-main)]">
               <div className="w-24 h-24 mb-6 rounded-3xl bg-indigo-500/10 flex items-center justify-center shadow-[0_0_50px_rgba(99,102,241,0.1)]">
                 <Terminal className="w-10 h-10 text-indigo-500/80" />
               </div>
@@ -1041,7 +1041,7 @@ const App: React.FC = () => {
           )}
 
           {activeView === 'dashboard' && (
-            <div className="absolute inset-0 z-50 bg-[var(--bg-main)]">
+            <div data-testid="view-dashboard" className="absolute inset-0 z-50 bg-[var(--bg-main)]">
               <Dashboard
                 hosts={hostManager.hosts}
                 groups={hostManager.groups}
@@ -1066,7 +1066,7 @@ const App: React.FC = () => {
           )}
 
           {activeView === 'settings' && (
-            <div className="absolute inset-0 z-50 bg-[var(--bg-main)]">
+            <div data-testid="view-settings" className="absolute inset-0 z-50 bg-[var(--bg-main)]">
               <React.Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" size={24} /></div>}>
                 <SettingsView
                 user={userAuth.user}
@@ -1093,7 +1093,7 @@ const App: React.FC = () => {
           )}
 
           {activeView === 'extensions' && (
-            <div className="absolute inset-0 z-50 bg-[var(--bg-main)]">
+            <div data-testid="view-extensions" className="absolute inset-0 z-50 bg-[var(--bg-main)]">
               <React.Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" size={24} /></div>}>
                 <ExtensionsView />
               </React.Suspense>

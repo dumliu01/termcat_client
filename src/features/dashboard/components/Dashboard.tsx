@@ -95,9 +95,9 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
   });
 
   return (
-    <div className="flex h-full overflow-hidden animate-in fade-in duration-700 bg-[var(--bg-main)]">
+    <div data-testid="dashboard-view" className="flex h-full overflow-hidden animate-in fade-in duration-700 bg-[var(--bg-main)]">
       {/* Group Sidebar */}
-      <aside className="w-72 overflow-y-auto flex flex-col px-6 py-10 shrink-0 bg-[var(--bg-sidebar)]/40 backdrop-blur-xl relative">
+      <aside data-testid="dashboard-groups" className="w-72 overflow-y-auto flex flex-col px-6 py-10 shrink-0 bg-[var(--bg-sidebar)]/40 backdrop-blur-xl relative">
         {/* Right border: starts below title bar to avoid bleeding into header */}
         <div className="absolute top-8 bottom-0 right-0 w-[1px] bg-[var(--border-color)]" />
         <div className="flex items-center justify-between mb-8 px-2">
@@ -210,6 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
               </span>
             )}
             <button
+              data-testid="dashboard-add-host"
               onClick={() => { if (isGuest && hosts.length >= 2) return; setEditingHost(null); setShowAddModal(true); }}
               disabled={isGuest && hosts.length >= 2}
               className={`px-6 py-3.5 rounded-xl font-black uppercase tracking-widest text-[10px] flex items-center gap-3 transition-all shadow-xl ${
@@ -228,6 +229,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
         <div className="relative mb-8">
           <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)] opacity-40" />
           <input
+            data-testid="dashboard-search"
             type="text"
             placeholder={t.dashboard.searchPlaceholder}
             className="w-full bg-[var(--input-bg)] border border-[var(--border-color)] rounded-xl py-4 pl-12 pr-6 transition-all outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/50 text-[var(--text-main)] text-sm font-medium"

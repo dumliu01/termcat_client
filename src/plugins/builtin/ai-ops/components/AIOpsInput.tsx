@@ -231,7 +231,7 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
   }
 
   return (
-    <div className="border-t shrink-0 bg-white/[0.02]" style={{ borderColor: 'var(--border-color)' }}>
+    <div className="border-t shrink-0 bg-white/[0.02]" style={{ borderColor: 'var(--border-color)' }} data-testid="ai-ops-input-area">
       {/* Pending attachment preview area */}
       {attachedFiles.length > 0 && (
         <div className="px-4 py-1 border-t flex gap-2 overflow-x-auto no-scrollbar bg-black/10" style={{ borderColor: 'var(--border-color)' }}>
@@ -266,6 +266,7 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
             onCompositionEnd={onCompositionEnd}
             placeholder={getPlaceholder()}
             className="w-full bg-[var(--input-bg)] border border-white/5 rounded-2xl py-3 pl-4 pr-12 text-sm text-white outline-none focus:border-indigo-500/50 transition-all resize-none h-24 no-scrollbar shadow-inner shadow-black/40"
+            data-testid="ai-ops-input"
           />
           <div className="absolute bottom-3 right-3 flex flex-col gap-2">
             {/* Attachment button */}
@@ -273,6 +274,7 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
               onClick={() => fileInputRef.current?.click()}
               className="p-2 rounded-xl bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white transition-all"
               title={t.attachFiles}
+              data-testid="ai-ops-attach"
             >
               <Paperclip className="w-4 h-4" />
             </button>
@@ -281,6 +283,7 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
             <button
               onClick={isLoading ? onStop : onSend}
               disabled={!isLoading && (!input.trim() && attachedFiles.length === 0)}
+              data-testid="ai-ops-send"
               className={`p-2 rounded-xl transition-all ${
                 isLoading
                   ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30 hover:bg-rose-700'
@@ -313,6 +316,7 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
               <button
                 onClick={toggleModeMenu}
                 className={getModeButtonClass()}
+                data-testid="ai-ops-mode-selector"
               >
                 {getModeIcon()}
                 {getModeLabel()}
@@ -360,6 +364,7 @@ export const AIOpsInput: React.FC<AIOpsInputProps> = ({
               <button
                 onClick={toggleModelMenu}
                 className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white transition-colors border-l border-white/10 pl-2"
+                data-testid="ai-ops-model-selector"
               >
                 <span>{getSelectedModelName()}</span>
                 <ChevronDown className={`w-3 h-3 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`} />

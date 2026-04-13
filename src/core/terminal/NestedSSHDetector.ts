@@ -105,6 +105,19 @@ export class NestedSSHDetector extends EventEmitter {
     for (const rawLine of lines) {
       this.processLine(rawLine);
     }
+
+    // When pending login, also check the incomplete line buffer for shell prompts.
+    // Prompts (e.g. "www@host:~$ ") don't end with \n so they stay in the buffer.
+    if (this.state === 'pending_login' && this.lineBuffer) {
+      const stripped = stripAnsi(this.lineBuffer).trim();
+      if (stripped && this.looksLikePrompt(stripped)) {
+        log.info('nested-ssh.prompt-detected', 'Shell prompt detected in buffer, confirming login', {
+          hostname: this.pendingHost?.hostname,
+          prompt: stripped.substring(0, 50),
+        });
+        this.confirmLogin();
+      }
+    }
   }
 
   /** Feed user input for SSH command detection (cleaner than output parsing for local terminals) */
@@ -344,5 +357,23 @@ export class NestedSSHDetector extends EventEmitter {
   /** Check if a line matches any pattern in the list */
   private matchesAny(line: string, patterns: RegExp[]): boolean {
     return patterns.some((p) => p.test(line));
+  }
+
+  /**
+   * Check if a string looks like a shell prompt (e.g. "www@host:~$ " or "[root@host ~]# ").
+   * Used to detect successful SSH login when no MOTD/banner is shown.
+   */
+  private looksLikePrompt(line: string): boolean {
+    // Must be reasonably short (prompts are typically < 200 chars)
+    if (line.length > 200 || line.length < 2) return false;
+    // Must not look like a login failure
+    if (this.matchesAny(line, LOGIN_FAILURE_PATTERNS)) return false;
+    // Must end with a common prompt character (possibly followed by space)
+    if (!/[$#%>]\s*$/.test(line)) return false;
+    // Prefer patterns that include user@host (strong indicator of a real prompt)
+    if (/\S+@\S+/.test(line)) return true;
+    // Accept short lines ending with prompt char (minimal prompts like "# " or "$ ")
+    if (line.length < 30) return true;
+    return false;
   }
 }

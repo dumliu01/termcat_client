@@ -14,7 +14,6 @@ import { LocalFsHandler } from './LocalFsHandler';
 import { LocalCmdExecutor } from './LocalCmdExecutor';
 import { NestedSSHDetector } from './NestedSSHDetector';
 import type { NestedHost } from './NestedSSHDetector';
-import { TerminalCmdExecutor } from './TerminalCmdExecutor';
 import { TerminalFsHandler } from './TerminalFsHandler';
 import { ProxyCmdExecutor } from './ProxyCmdExecutor';
 import { ProxyFsHandler } from './ProxyFsHandler';
@@ -37,6 +36,8 @@ export class LocalHostConnection implements IHostConnection {
   private _effectiveHostname: string | null = null;
   private _hostChangedCallbacks: Array<(hostname: string) => void> = [];
   private _monitorExecutor: LocalPrivateShellExecutor | null = null;
+  /** Separate private shell for file/cmd operations (isolated from user's terminal) */
+  private _opsExecutor: LocalPrivateShellExecutor | null = null;
 
   constructor(private host: Host) {
     this._id = `local-${Date.now()}`;
@@ -85,6 +86,8 @@ export class LocalHostConnection implements IHostConnection {
     log.info('local-host.disposing', 'LocalHostConnection disposing', {
       id: this._id,
     });
+    this._opsExecutor?.dispose();
+    this._opsExecutor = null;
     this._monitorExecutor?.dispose();
     this._monitorExecutor = null;
     this._detector.dispose();
@@ -99,14 +102,6 @@ export class LocalHostConnection implements IHostConnection {
     return `ssh -tt -o StrictHostKeyChecking=no${portFlag} ${userPrefix}${nestedHost.hostname}`;
   }
 
-  /** Create a TerminalCmdExecutor wired to the raw data channel and mute control */
-  private _createTerminalExecutor(): TerminalCmdExecutor {
-    return new TerminalCmdExecutor(this._terminal, {
-      onMuteChange: (muted) => this._terminal.setMuted(muted),
-      registerRawData: (cb) => this._terminal.onRawData(cb),
-    });
-  }
-
   private _setupNestedDetection(): void {
     // Intercept terminal writes to detect SSH commands from user input
     const originalWrite = this._terminal.write.bind(this._terminal);
@@ -115,22 +110,56 @@ export class LocalHostConnection implements IHostConnection {
       originalWrite(data);
     };
 
-    // Feed terminal output to detector via raw channel (for login success/exit detection)
-    this._terminal.onRawData(data => this._detector.feedOutput(data));
+    // Feed terminal output to detector and track CWD from OSC sequences
+    this._terminal.onRawData(data => {
+      this._detector.feedOutput(data);
+      // Parse OSC sequences to track terminal CWD:
+      // - OSC 7: file://hostname/path (most reliable, sent by modern shells)
+      // - OSC 0/2: user@host: path (Ubuntu default bash, oh-my-zsh window title)
+      const osc7Match = data.match(/\x1b\]7;file:\/\/[^\/]*(\/[^\x07\x1b]*?)(?:\x07|\x1b\\)/);
+      if (osc7Match) {
+        try {
+          this._proxyFs._setTrackedCwd(decodeURIComponent(osc7Match[1]));
+        } catch {
+          this._proxyFs._setTrackedCwd(osc7Match[1]);
+        }
+      } else {
+        // OSC 0 (icon+title) and OSC 2 (title): "user@host: /path" or "user@host: ~"
+        const oscTitleMatch = data.match(/\x1b\][02];[^@\x07\x1b]+@[^:\x07\x1b]+:\s*(~[^\x07\x1b]*|\/[^\x07\x1b]*)(?:\x07|\x1b\\)/);
+        if (oscTitleMatch) {
+          this._proxyFs._setTrackedCwdFromTitle(oscTitleMatch[1].trim());
+        }
+      }
+    });
 
     // Handle entering nested host
     this._detector.on('host-entered', (nestedHost: NestedHost) => {
-      const termCmd = this._createTerminalExecutor();
-      const termFs = new TerminalFsHandler(termCmd);
-      this._proxyCmd._switchToNested(termCmd);
+      const sshCommand = this._buildSSHCommand(nestedHost);
+
+      // Create a separate hidden PTY for file/cmd operations (isolated from user's terminal).
+      // This avoids injecting marker-wrapped commands into the interactive terminal.
+      this._opsExecutor?.dispose();
+      this._opsExecutor = new LocalPrivateShellExecutor({ sshCommand });
+      const termFs = new TerminalFsHandler(this._opsExecutor);
+      this._proxyCmd._switchToNested(this._opsExecutor);
       this._proxyFs._switchToNested(termFs);
       this._effectiveHostname = nestedHost.hostname;
 
+      // Fetch remote home directory in background for OSC ~ resolution
+      this._opsExecutor.execute('echo $HOME').then(result => {
+        const home = result.output?.trim();
+        if (home && home.startsWith('/')) {
+          this._proxyFs._setRemoteHome(home);
+          // If no tracked CWD yet, default to home
+          if (!this._proxyFs['_trackedCwd']) {
+            this._proxyFs._setTrackedCwd(home);
+          }
+        }
+      }).catch(() => { /* ignore */ });
+
       // Create private shell executor for monitoring (lazy -- shell created on first use)
       this._monitorExecutor?.dispose();
-      this._monitorExecutor = new LocalPrivateShellExecutor({
-        sshCommand: this._buildSSHCommand(nestedHost),
-      });
+      this._monitorExecutor = new LocalPrivateShellExecutor({ sshCommand });
 
       for (const cb of this._hostChangedCallbacks) {
         try { cb(this._effectiveHostname!); } catch { /* ignore */ }
@@ -145,23 +174,25 @@ export class LocalHostConnection implements IHostConnection {
     this._detector.on('host-exited', (current: NestedHost | null) => {
       if (current) {
         // Returned to a higher-level nested host
-        const termCmd = this._createTerminalExecutor();
-        const termFs = new TerminalFsHandler(termCmd);
-        this._proxyCmd._switchToNested(termCmd);
+        const sshCommand = this._buildSSHCommand(current);
+        this._opsExecutor?.dispose();
+        this._opsExecutor = new LocalPrivateShellExecutor({ sshCommand });
+        const termFs = new TerminalFsHandler(this._opsExecutor);
+        this._proxyCmd._switchToNested(this._opsExecutor);
         this._proxyFs._switchToNested(termFs);
         this._effectiveHostname = current.hostname;
 
         // Recreate monitor executor for the new target
         this._monitorExecutor?.dispose();
-        this._monitorExecutor = new LocalPrivateShellExecutor({
-          sshCommand: this._buildSSHCommand(current),
-        });
+        this._monitorExecutor = new LocalPrivateShellExecutor({ sshCommand });
       } else {
         // Returned to original local host
         this._proxyCmd._switchToOriginal();
         this._proxyFs._switchToOriginal();
         this._effectiveHostname = null;
 
+        this._opsExecutor?.dispose();
+        this._opsExecutor = null;
         this._monitorExecutor?.dispose();
         this._monitorExecutor = null;
       }

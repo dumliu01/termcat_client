@@ -706,6 +706,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   const leftPanelJsx = shouldRenderPanels && showSidebar && templateLeftPanels.length > 0 ? (
     <>
       <aside
+        data-testid="terminal-sidebar-panel"
         style={{ width: `${sidebarWidth}px`, backgroundColor: 'var(--bg-sidebar)', borderColor: 'var(--border-color)' }}
         className="flex flex-col relative shrink-0 border-r overflow-y-auto no-scrollbar font-sans select-text tv-side-panel"
       >
@@ -738,6 +739,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
   return (
     <div
       ref={terminalContainerRef}
+      data-testid="terminal-view"
       className={`flex h-full overflow-hidden select-none relative ${isPaneActive ? 'ring-2 ring-indigo-500/50 ring-inset' : ''}`}
       style={{ backgroundColor: 'var(--bg-main)' }}
       onMouseDown={() => onPaneFocus?.()}
@@ -853,7 +855,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
                   }`}
                 />
               </div>
-              <div className="shrink-0 border-t flex flex-col bg-[var(--bg-sidebar)] tv-bottom-panel" style={{ borderColor: 'var(--border-color)', height: `${bottomPanelHeight}px` }}>
+              <div data-testid="terminal-bottom-panel" className="shrink-0 border-t flex flex-col bg-[var(--bg-sidebar)] tv-bottom-panel" style={{ borderColor: 'var(--border-color)', height: `${bottomPanelHeight}px` }}>
                 <div className="h-10 border-b flex items-center px-0 shrink-0" style={{ backgroundColor: 'var(--bg-main)', borderColor: 'var(--border-color)' }}>
                   {[
                     ...builtinBottomPanels.map(p => ({ id: p.id, label: p.getLocalizedTitle ? p.getLocalizedTitle(language) : p.title })),

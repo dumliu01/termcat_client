@@ -210,7 +210,7 @@ export const FileListPanel: React.FC<FileListPanelProps> = React.memo(({
   ];
 
   return (
-    <>
+    <div data-testid="file-list-panel" className="contents">
       {/* 文件路径工具栏 */}
       <div className="px-4 py-2 border-b flex items-center justify-between shrink-0" style={{ backgroundColor: 'var(--bg-tab)/20', borderColor: 'var(--border-color)' }}>
         <div
@@ -265,6 +265,7 @@ export const FileListPanel: React.FC<FileListPanelProps> = React.memo(({
 
       {/* 文件列表表格 */}
       <div
+        data-testid="file-list-area"
         className="flex-1 overflow-auto relative bg-[var(--bg-card)]"
         onDrop={onListDrop}
         onDragOver={(e) => { e.preventDefault(); onDragOver('list'); }}
@@ -411,6 +412,6 @@ export const FileListPanel: React.FC<FileListPanelProps> = React.memo(({
           </table>
         )}
       </div>
-    </>
+    </div>
   );
 });

@@ -43,7 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-12 pt-10 flex flex-col shrink-0 relative z-[100] transition-all bg-[var(--bg-sidebar)]/80 backdrop-blur-xl drag-region">
+    <aside data-testid="sidebar" className="w-12 pt-10 flex flex-col shrink-0 relative z-[100] transition-all bg-[var(--bg-sidebar)]/80 backdrop-blur-xl drag-region">
       {/* Windows: prevent sidebar drag-region from covering Header's custom traffic light buttons */}
       <div className="absolute top-0 left-0 right-0 h-8 no-drag" />
       {/* Right border: starts below title bar (top-8 = 32px) to avoid bleeding into traffic lights area */}
@@ -64,6 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <button
               key={item.id}
+              data-testid={`sidebar-nav-${item.id}`}
               onClick={() => setActiveView(item.id as ViewState)}
               className={`w-10 h-10 mx-auto flex flex-col items-center justify-center rounded-2xl transition-all duration-300 relative group ${
                 isActive

@@ -90,6 +90,7 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
   return (
     <>
       <div
+        data-testid="terminal-tab-bar"
         className={`flex items-stretch shrink-0 drag-region h-9 ${isMinimalMode ? '' : 'mt-8'}`}
         style={{ backgroundColor: 'var(--bg-sidebar)', borderBottom: '1px solid var(--border-color)' }}
         onDragOver={(e) => {
@@ -120,6 +121,7 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
             return (
               <div
                 key={session.id}
+                data-testid={`terminal-tab-${session.id}`}
                 draggable={renamingTabId !== session.id}
                 onDragStart={(e) => {
                   dragTabRef.current = { sessionId: session.id, startIndex: index };
@@ -232,6 +234,7 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
                   </span>
                 )}
                 <button
+                  data-testid={`terminal-tab-close-${session.id}`}
                   onClick={(e) => onCloseSession(e, session.id)}
                   className={`ml-auto w-4 h-4 flex items-center justify-center rounded transition-all no-drag shrink-0 ${
                     isActive
@@ -246,6 +249,7 @@ export const TerminalTabBar: React.FC<TerminalTabBarProps> = React.memo(({
           })}
         </div>
         <button
+          data-testid="terminal-tab-add"
           onClick={(e) => {
             if (hostPickerPos) {
               setHostPickerPos(null);

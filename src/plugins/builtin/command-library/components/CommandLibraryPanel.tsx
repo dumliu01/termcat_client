@@ -188,11 +188,12 @@ export const CommandLibraryPanel: React.FC<CommandLibraryPanelProps> = ({ theme,
 
   return (
     <>
-      <div className="flex flex-col h-full animate-in fade-in duration-200 overflow-hidden">
+      <div data-testid="command-library-panel" className="flex flex-col h-full animate-in fade-in duration-200 overflow-hidden">
         <div className="px-4 py-2.5 border-b flex items-center justify-between gap-4" style={{ backgroundColor: subHeaderBg, borderColor: 'var(--border-color)' }}>
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
             <input
+              data-testid="command-library-search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t.search}
@@ -201,6 +202,7 @@ export const CommandLibraryPanel: React.FC<CommandLibraryPanelProps> = ({ theme,
             />
           </div>
           <button
+            data-testid="command-library-add"
             onClick={() => { setEditingTitle(null); setNewTitle(''); setNewContent(''); setShowModal(true); }}
             className="flex items-center gap-2 px-4 py-1.5 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all"
           >
@@ -209,7 +211,7 @@ export const CommandLibraryPanel: React.FC<CommandLibraryPanelProps> = ({ theme,
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto no-scrollbar py-4 px-4 overflow-visible">
+        <div data-testid="command-library-list" className="flex-1 overflow-y-auto no-scrollbar py-4 px-4 overflow-visible">
           <div className="flex flex-wrap gap-3">
             {filteredCommands.length > 0 ? filteredCommands.map((cmd) => (
               <CommandItem

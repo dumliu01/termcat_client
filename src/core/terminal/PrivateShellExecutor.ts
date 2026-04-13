@@ -227,37 +227,36 @@ export class PrivateShellExecutor implements ICmdExecutor {
         settle({ output: collected, exitCode: -1 });
       }, timeout);
 
-      this._dataHandler = (data: string) => {
-        log.debug('private-shell.data_received', 'Private shell received data', {
-          shell_id: this._shellId, data_length: data.length,
-          preview: data.substring(0, 200).replace(/[\r\n]/g, '\\n'),
-          has_start: data.includes(startMarker),
-          has_end: data.includes(endMarker),
-          started,
-        });
+      // Match marker at the start of a line to skip echoed command text.
+      // When stty -echo fails, the command itself is echoed back and contains
+      // the marker inside the echo (e.g., "echo '___MARKER___'"). The actual
+      // marker output always appears at the start of a line.
+      const startLinePattern = new RegExp(`(?:^|\\n)${startMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+      const endLinePattern = new RegExp(`(?:^|\\n)${endMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
 
+      this._dataHandler = (data: string) => {
         buffer += data;
 
         if (!started) {
-          const startIdx = buffer.indexOf(startMarker);
-          if (startIdx === -1) return;
-          const afterStart = buffer.substring(startIdx + startMarker.length);
+          const startMatch = startLinePattern.exec(buffer);
+          if (!startMatch) return;
+          const markerEnd = startMatch.index + startMatch[0].length;
+          const afterStart = buffer.substring(markerEnd);
           buffer = afterStart.startsWith('\n')
             ? afterStart.substring(1)
             : afterStart.startsWith('\r\n')
               ? afterStart.substring(2)
               : afterStart;
           started = true;
-          log.debug('private-shell.marker_start', 'Start marker found', { shell_id: this._shellId });
         }
 
-        const endIdx = buffer.indexOf(endMarker);
-        if (endIdx === -1) {
+        const endMatch = endLinePattern.exec(buffer);
+        if (!endMatch) {
           collected = buffer;
           return;
         }
 
-        const content = buffer.substring(0, endIdx);
+        const content = buffer.substring(0, endMatch.index);
         const exitMatch = content.match(exitMarkerPattern);
         if (exitMatch) {
           exitCode = parseInt(exitMatch[1], 10);

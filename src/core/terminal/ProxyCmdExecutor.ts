@@ -6,12 +6,11 @@
  * Upper layers call execute() without knowing which backend is active.
  */
 
-import type { TerminalCmdExecutor } from './TerminalCmdExecutor';
 import type { CmdResult, ICmdExecutor } from './ICmdExecutor';
 
 export class ProxyCmdExecutor implements ICmdExecutor {
   private _original: ICmdExecutor;
-  private _nested: TerminalCmdExecutor | null = null;
+  private _nested: ICmdExecutor | null = null;
   private _isNested = false;
 
   constructor(original: ICmdExecutor) {
@@ -25,13 +24,13 @@ export class ProxyCmdExecutor implements ICmdExecutor {
     return this._original.execute(command);
   }
 
-  /** Switch to nested mode (internal, called by SSHHostConnection) */
-  _switchToNested(termExecutor: TerminalCmdExecutor): void {
-    this._nested = termExecutor;
+  /** Switch to nested mode (internal, called by SSHHostConnection / LocalHostConnection) */
+  _switchToNested(executor: ICmdExecutor): void {
+    this._nested = executor;
     this._isNested = true;
   }
 
-  /** Restore original mode (internal, called by SSHHostConnection) */
+  /** Restore original mode (internal, called by SSHHostConnection / LocalHostConnection) */
   _switchToOriginal(): void {
     this._isNested = false;
     this._nested = null;
