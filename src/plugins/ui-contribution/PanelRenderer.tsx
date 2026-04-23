@@ -20,14 +20,21 @@ interface PanelRendererProps {
 export const PanelRenderer: React.FC<PanelRendererProps> = ({ panelId }) => {
   const sections = usePanelSections(panelId);
 
-  const handleEvent = useCallback((eventId: string, payload: unknown) => {
-    panelEventBus.emit(panelId, eventId, payload);
-  }, [panelId]);
+  const makeSectionHandler = useCallback(
+    (sectionId: string) => (eventId: string, payload: unknown) => {
+      panelEventBus.emit(panelId, eventId, payload);
+      const bridge = (window as any).electron?.plugin?.sendPanelEvent;
+      if (typeof bridge === 'function') {
+        bridge({ panelId, sectionId, eventId, data: payload });
+      }
+    },
+    [panelId],
+  );
 
   if (sections.length === 0) return null;
 
   return (
-    <>
+    <div className="flex flex-col h-full min-h-0">
       {sections.map((section, idx) => {
         const Template = getTemplate(section.template);
         if (!Template) {
@@ -37,20 +44,31 @@ export const PanelRenderer: React.FC<PanelRendererProps> = ({ panelId }) => {
           return null;
         }
 
-        if (section.collapsible) {
+        const sectionId = section.id || String(idx);
+        const onEvent = makeSectionHandler(sectionId);
+
+        const rendered = section.collapsible ? (
+          <CollapsibleSection key={sectionId} defaultCollapsed={section.collapsed}>
+            <Template data={section.data} variant={section.variant} onEvent={onEvent} />
+          </CollapsibleSection>
+        ) : (
+          <Template key={sectionId} data={section.data} variant={section.variant} onEvent={onEvent} />
+        );
+
+        // Sections marked `fill` grow to occupy remaining vertical space so
+        // templates like msg-viewer/tabs can size themselves against a real
+        // height rather than collapsing to content.
+        if (section.fill) {
           return (
-            <CollapsibleSection
-              key={section.id || idx}
-              defaultCollapsed={section.collapsed}
-            >
-              <Template data={section.data} variant={section.variant} onEvent={handleEvent} />
-            </CollapsibleSection>
+            <div key={sectionId} className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              {rendered}
+            </div>
           );
         }
 
-        return <Template key={section.id || idx} data={section.data} variant={section.variant} onEvent={handleEvent} />;
+        return rendered;
       })}
-    </>
+    </div>
   );
 };
 

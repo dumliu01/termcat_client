@@ -243,6 +243,11 @@ export interface MsgViewerProps {
   /** Virtuoso handle */
   virtuosoRef?: React.RefObject<VirtuosoHandle>;
 
+  /** Block id to scroll into view when `scrollNonce` changes. */
+  scrollToBlockId?: string;
+  /** Incrementing counter — each change triggers a scroll to `scrollToBlockId`. */
+  scrollNonce?: number;
+
   /** Empty state customization */
   emptyIcon?: React.ReactNode;
   emptyTitle?: string;

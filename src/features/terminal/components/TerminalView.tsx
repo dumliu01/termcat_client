@@ -711,6 +711,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
         className="flex flex-col relative shrink-0 border-r overflow-y-auto no-scrollbar font-sans select-text tv-side-panel"
       >
         <TabbedPanelGroup
+          storageKey="termcat_left_panel_active_tab"
           tabs={templateLeftPanels.map(panel => ({
             id: panel.id,
             title: panel.title,
@@ -971,7 +972,7 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
                   })),
                 ];
                 if (rightTabs.length === 1) return rightTabs[0].content;
-                return <TabbedPanelGroup tabs={rightTabs} />;
+                return <TabbedPanelGroup storageKey="termcat_right_panel_active_tab" tabs={rightTabs} />;
               })()}
             </aside>
           </>

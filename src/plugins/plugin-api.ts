@@ -27,6 +27,8 @@ import type {
   InputBoxOptions,
   QuickPickItem,
   ConfirmOptions,
+  MessageBoxOptions,
+  FormDialogOptions,
   WebviewPanelOptions,
   WebviewPanel,
   SidebarViewProvider,
@@ -434,9 +436,19 @@ export function createPluginAPI(
       return mainBridge.invoke('getTerminals');
     },
 
+    async getPid(sessionId: string): Promise<number | null> {
+      checkPermission('terminal.read');
+      return mainBridge.invoke('terminalGetPid', sessionId);
+    },
+
     async write(sessionId: string, data: string): Promise<void> {
       checkPermission('terminal.write');
       return mainBridge.invoke('terminalWrite', sessionId, data);
+    },
+
+    async focus(sessionId: string): Promise<void> {
+      checkPermission('terminal.write');
+      return mainBridge.invoke('terminalFocus', sessionId);
     },
 
     async executeCommand(sessionId: string, command: string): Promise<CommandResult> {
@@ -610,6 +622,19 @@ export function createPluginAPI(
       return mainBridge.invoke('showConfirm', pluginId, message, options);
     },
 
+    /** Display a read-only text modal. Returns when the user closes the dialog. */
+    async showMessage(options: MessageBoxOptions): Promise<void> {
+      return mainBridge.invoke('showMessage', pluginId, options);
+    },
+
+    /**
+     * Show a multi-field form dialog. Resolves to a `{ fieldId: value }` map
+     * on submit, or `undefined` on cancel. Password-type fields are masked.
+     */
+    async showForm(options: FormDialogOptions): Promise<Record<string, string> | undefined> {
+      return mainBridge.invoke('showForm', pluginId, options);
+    },
+
     registerStatusBarItem(item: StatusBarItem): Disposable {
       return registry.registerStatusBarItem(pluginId, item);
     },
@@ -628,11 +653,25 @@ export function createPluginAPI(
 
     // ---- UI contribution points (template-driven panels)----
 
-    registerPanel(options: PanelRegistration): Disposable {
+    registerPanel(
+      options: PanelRegistration,
+      onEvent?: (sectionId: string, eventId: string, payload: unknown) => void,
+    ): Disposable {
       // External plugins run in Main process, need to bridge to Renderer's panelDataStore via IPC
-      mainBridge.invoke('panelRegister', pluginId, options);
+      mainBridge.invoke('panelRegister', pluginId, options, Boolean(onEvent));
+      const off = onEvent
+        ? registry.addEventListener(pluginId, `panel:event:${options.id}`, (...args) => {
+            const [sectionId, eventId, payload] = args as [string, string, unknown];
+            try {
+              onEvent(sectionId, eventId, payload);
+            } catch {
+              /* swallow */
+            }
+          })
+        : null;
       return {
         dispose: () => {
+          off?.dispose();
           mainBridge.invoke('panelUnregister', options.id);
         },
       };
@@ -726,7 +765,18 @@ export function createPluginAPI(
     },
   };
 
-  return { terminal, ssh, files, ai, monitor, ui, commands, config, storage, host, events };
+  const i18n = {
+    /** Current UI language as known to the host ('zh' | 'en' | 'es'). */
+    async getLanguage(): Promise<string> {
+      return mainBridge.invoke('getLanguage');
+    },
+    /** Subscribe to UI language changes. Fires on every `setLanguage` in the renderer. */
+    onDidChangeLanguage(callback: (language: string) => void): Disposable {
+      return registry.addEventListener(pluginId, 'i18n:language-change', callback as (...args: unknown[]) => void);
+    },
+  };
+
+  return { terminal, ssh, files, ai, monitor, ui, commands, config, storage, host, events, i18n };
 }
 
 export type PluginAPI = ReturnType<typeof createPluginAPI>;

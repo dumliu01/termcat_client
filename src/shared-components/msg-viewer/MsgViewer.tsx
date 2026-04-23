@@ -33,6 +33,8 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
   emptyIcon,
   emptyTitle,
   emptySubtitle,
+  scrollToBlockId,
+  scrollNonce,
 }) => {
   // Append loading indicator as a data item at the end, not as a Footer.
   // This allows Virtuoso's followOutput to auto-track new items and scroll.
@@ -56,7 +58,7 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
     // Loading block doesn't need "copy reply" button
     if (block.type === 'loading') {
       return (
-        <div className="py-3">
+        <div className="py-3 px-3">
           <BlockRenderer block={block} language={language} actions={actions} passwordState={passwordState} />
         </div>
       );
@@ -80,7 +82,7 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
     }
 
     return (
-      <div className="py-3">
+      <div className="py-3 px-3">
         <BlockRenderer
           block={block}
           language={language}
@@ -102,6 +104,21 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
     );
   }, [displayBlocks, language, actions, passwordState]);
 
+  // Track "is user currently at the bottom" internally so we can avoid
+  // yanking the list back to the tail while they are scrolling up through
+  // history. This is independent of the `autoScroll` prop: the prop is the
+  // parent's *intent*; `atBottomRef` is the user's actual scroll position.
+  // Flicker happens when the prop says "follow" but the user has scrolled
+  // away — we now gate on both.
+  const atBottomRef = useRef(true);
+  const handleAtBottomChange = useCallback(
+    (atBottom: boolean) => {
+      atBottomRef.current = atBottom;
+      onAutoScrollChange?.(atBottom);
+    },
+    [onAutoScrollChange],
+  );
+
   // During streaming output, the last block content grows (height changes) but block count stays the same,
   // followOutput won't trigger. Use RAF to batch scroll to bottom, max once per frame.
   // Skip the initial mount to avoid visible scroll jump when restoring cached messages.
@@ -112,23 +129,56 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
       isInitialMountRef.current = false;
       return;
     }
-    if (!autoScroll || displayBlocks.length === 0) return;
+    if (!autoScroll || !atBottomRef.current || displayBlocks.length === 0) return;
     cancelAnimationFrame(scrollRAFRef.current);
     scrollRAFRef.current = requestAnimationFrame(() => {
       virtuosoRef?.current?.scrollTo({ top: Number.MAX_SAFE_INTEGER });
     });
   }, [displayBlocks, autoScroll]);
 
-  // Change followOutput to a function: force follow when autoScroll is true,
-  // to avoid Virtuoso's internal atBottom detection temporarily losing track due to rapid height changes.
+  // followOutput also respects the user's current position — never force a
+  // smooth animation that would snap them away from mid-history.
   const handleFollowOutput = useCallback(
-    (): 'smooth' | false => autoScroll ? 'smooth' : false,
+    (): 'smooth' | false => (autoScroll && atBottomRef.current ? 'smooth' : false),
     [autoScroll],
   );
 
-  // When mounting with pre-existing blocks (e.g. restored from cache after pane switch),
-  // start Virtuoso at the last item to avoid a visible scroll-from-top animation.
+  // Programmatic "jump to block" — each time `scrollNonce` changes, scroll
+  // the virtualized list so the matching block is visible at the top.
+  // Sentinel init (undefined) ensures the very first nonce after mount still
+  // triggers a scroll; without it, a freshly-mounted MsgViewer with an
+  // incoming nonce would short-circuit on `scrollNonce === ref.current` and
+  // silently drop the scroll request.
+  const lastScrollNonceRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (scrollNonce === undefined || scrollNonce === lastScrollNonceRef.current) return;
+    lastScrollNonceRef.current = scrollNonce;
+    if (!scrollToBlockId) return;
+    const idx = displayBlocks.findIndex((b) => b.id === scrollToBlockId);
+    if (idx < 0) return;
+    // Two-stage scroll to handle variable-height items. The first jump uses
+    // estimated heights and may land imprecisely; after Virtuoso measures
+    // the items that rendered into view, a second pass realigns exactly.
+    // Without this, far-away targets can be off by hundreds of pixels.
+    requestAnimationFrame(() => {
+      virtuosoRef?.current?.scrollToIndex({ index: idx, align: 'start', behavior: 'auto' });
+      setTimeout(() => {
+        virtuosoRef?.current?.scrollToIndex({ index: idx, align: 'start', behavior: 'smooth' });
+      }, 120);
+    });
+  }, [scrollNonce, scrollToBlockId, displayBlocks, virtuosoRef]);
+
+  // On initial mount, if the caller already supplied a `scrollToBlockId`, use
+  // it as Virtuoso's starting anchor. `initialTopMostItemIndex` is the most
+  // precise way to land on a variable-height item because it's interpreted as
+  // "this index sits at the top of the viewport" rather than a height-based
+  // scroll offset. Falls back to the last item (original behavior) for
+  // pane-restore / streaming scenarios.
   const initialItemIndex = useMemo(() => {
+    if (scrollToBlockId) {
+      const idx = displayBlocks.findIndex((b) => b.id === scrollToBlockId);
+      if (idx >= 0) return idx;
+    }
     return displayBlocks.length > 0 ? displayBlocks.length - 1 : 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally empty — only compute on initial mount
@@ -157,14 +207,22 @@ export const MsgViewer: React.FC<MsgViewerProps> = ({
   return (
     <Virtuoso
       ref={virtuosoRef}
-      className="flex-1 no-scrollbar msg-viewer-selectable"
+      className="flex-1 msg-viewer-selectable msg-viewer-scroll"
       style={{ height: '100%' }}
       data={displayBlocks}
       initialTopMostItemIndex={initialItemIndex}
       followOutput={handleFollowOutput}
       atBottomThreshold={200}
-      atBottomStateChange={(atBottom) => onAutoScrollChange?.(atBottom)}
+      atBottomStateChange={handleAtBottomChange}
       itemContent={(index) => renderItem(index)}
+      // Stable per-message key so items aren't re-mounted (and measured again)
+      // when the data array updates (e.g. JSONL watcher appends).
+      computeItemKey={(idx) => displayBlocks[idx]?.id ?? idx}
+      // Pre-render a generous buffer above / below the viewport so that when
+      // the user scrolls upward through previously-unseen history, heights
+      // get measured BEFORE the item enters view — avoiding the
+      // first-measurement layout shift that looks like flicker.
+      increaseViewportBy={{ top: 1200, bottom: 600 }}
     />
   );
 };

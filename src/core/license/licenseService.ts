@@ -157,6 +157,38 @@ class LicenseService {
     }
   }
 
+  /**
+   * Apply a license payload pushed from the server (e.g. via /user/bootstrap).
+   * This bypasses the network and writes straight into the local cache so
+   * the bootstrap aggregator can hydrate license state without a separate
+   * /license/features round-trip.
+   */
+  async applyFromServer(resp: LicenseFeaturesResponse): Promise<LicenseCache> {
+    const machineId = await this.getMachineId();
+    const cache: LicenseCache = {
+      hasLicense: resp.has_license,
+      features: resp.features || [],
+      activated: resp.current_machine_activated,
+      machinesUsed: resp.machines_used,
+      machinesMax: resp.machines_max,
+      licenseKeyMasked: resp.license_key_masked || '',
+      verifiedAt: Date.now(),
+      cacheTtl: resp.cache_ttl || 86400,
+      machineId,
+    };
+    this.saveToCache(cache);
+    log.info('license.applied_from_server', 'License applied from server payload', {
+      hasLicense: cache.hasLicense,
+      activated: cache.activated,
+      features: cache.features,
+    });
+    if (cache.hasLicense && !cache.activated) {
+      this.emitEvent('new-device-detected', cache);
+    }
+    this.notifyChange();
+    return cache;
+  }
+
   // ---- Device Activation ----
 
   /** Activate current device */

@@ -116,12 +116,16 @@ class ApiService {
   }
 
   // Auth endpoints
-  async login(email: string, password: string) {
+  async login(email: string, password: string): Promise<import('@/core/commerce/types').LoginResponseWithSeqs> {
     return this.rpc('/auth/login', { email, password });
   }
 
-  async register(email: string, password: string, name: string) {
+  async register(email: string, password: string, name: string): Promise<import('@/core/commerce/types').LoginResponseWithSeqs> {
     return this.rpc('/auth/register', { email, password, name });
+  }
+
+  async bootstrap(req: import('@/core/bootstrap/types').BootstrapRequest): Promise<import('@/core/bootstrap/types').BootstrapResponse> {
+    return this.rpc('/user/bootstrap', req);
   }
 
   async refreshToken(): Promise<{ token: string; refresh_interval_minutes: number; seqs?: import('@/core/commerce/types').SyncSeqs }> {

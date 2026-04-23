@@ -546,17 +546,50 @@ ipcMain.handle('local-pty-create', async (event, options) => {
     webContents: event.sender,
   });
   windowManager.registerPty(event.sender.id, ptyId);
+
+  // Expose the local PTY to plugins the same way SSH shells do.
+  const pluginManager = getPluginManager();
+  const terminalInfo = {
+    sessionId: ptyId,
+    hostId: 'local',
+    title: 'Local Terminal',
+    isActive: true,
+  };
+  pluginManager.registerTerminal(terminalInfo);
+  pluginManager.emitTerminalOpen(terminalInfo);
+
   return { ptyId };
 });
 
 ipcMain.handle('local-pty-destroy', async (_event, ptyId: string) => {
   windowManager.unregisterPty(_event.sender.id, ptyId);
+  const pluginManager = getPluginManager();
+  const existing = {
+    sessionId: ptyId,
+    hostId: 'local',
+    title: 'Local Terminal',
+    isActive: false,
+  };
+  pluginManager.unregisterTerminal(ptyId);
+  pluginManager.emitTerminalClose(existing);
   localPtyService.destroy(ptyId);
   return { success: true };
 });
 
 ipcMain.handle('local-pty-resize', async (_event, ptyId: string, cols: number, rows: number) => {
   return { success: localPtyService.resize(ptyId, cols, rows) };
+});
+
+// Renderer-driven active-tab change. Notifies plugins so panels (e.g. claude_code_power)
+// can rebind to the currently focused terminal.
+ipcMain.on('plugin:terminal:active-change', (_event, sessionId: string | null) => {
+  getPluginManager().emitTerminalActiveChange(sessionId);
+});
+
+// Renderer-driven UI language change. Propagates the current I18nContext
+// language to Main-process plugins so their panels translate in sync.
+ipcMain.on('plugin:i18n:language-change', (_event, language: string) => {
+  if (typeof language === 'string') getPluginManager().emitLanguageChange(language);
 });
 
 ipcMain.handle('local-pty-get-shells', async () => {

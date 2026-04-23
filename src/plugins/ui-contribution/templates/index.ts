@@ -24,6 +24,7 @@ import { StatusBarTemplate } from './StatusBarTemplate';
 import { NotificationTemplate } from './NotificationTemplate';
 import { ColumnsTemplate } from './ColumnsTemplate';
 import { GridTemplate } from './GridTemplate';
+import { MsgViewerTemplate } from './MsgViewerTemplate';
 
 type TemplateComponent = React.ComponentType<TemplateProps<any>>;
 
@@ -54,6 +55,9 @@ templateRegistry.set('status-bar', StatusBarTemplate);
 templateRegistry.set('notification', NotificationTemplate);
 templateRegistry.set('columns', ColumnsTemplate);
 templateRegistry.set('grid', GridTemplate);
+
+// 注册 P3 模板
+templateRegistry.set('msg-viewer', MsgViewerTemplate);
 
 /** 获取模板组件 */
 export function getTemplate(type: TemplateType | string): TemplateComponent | undefined {

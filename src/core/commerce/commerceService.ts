@@ -88,6 +88,21 @@ class CommerceService {
     return this.config;
   }
 
+  /**
+   * Apply a commerce config payload pushed from the server (e.g. via
+   * /user/bootstrap). Skips the network call entirely — the bootstrap
+   * aggregator already validated freshness via seq comparison.
+   */
+  applyFromServer(data: CommerceConfig): void {
+    if (!data || !data.tiers) return;
+    this.config = data;
+    localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(data));
+    log.info('commerce.config.applied_from_server', 'Commerce config applied from server payload', {
+      seq: data.seq,
+    });
+    this.notifyChange();
+  }
+
   // ---- Seq Sync ----
 
   /** Get locally cached seqs */

@@ -19,16 +19,23 @@ interface TabbedPanelGroupProps {
   tabs: TabItem[];
   defaultActiveTab?: string;
   className?: string;
+  /** When set, active tab id is persisted to localStorage under this key so it survives unmount. */
+  storageKey?: string;
 }
 
 export const TabbedPanelGroup: React.FC<TabbedPanelGroupProps> = ({
   tabs,
   defaultActiveTab,
   className = '',
+  storageKey,
 }) => {
-  const [activeTabId, setActiveTabId] = useState<string>(
-    defaultActiveTab || tabs[0]?.id || ''
-  );
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    if (storageKey) {
+      const saved = typeof window !== 'undefined' ? window.localStorage.getItem(storageKey) : null;
+      if (saved && tabs.find(t => t.id === saved)) return saved;
+    }
+    return defaultActiveTab || tabs[0]?.id || '';
+  });
 
   // When tabs list changes, ensure activeTabId is still valid
   useEffect(() => {
@@ -36,6 +43,17 @@ export const TabbedPanelGroup: React.FC<TabbedPanelGroupProps> = ({
       setActiveTabId(tabs[0].id);
     }
   }, [tabs, activeTabId]);
+
+  // Persist active tab id to localStorage
+  useEffect(() => {
+    if (storageKey && activeTabId) {
+      try {
+        window.localStorage.setItem(storageKey, activeTabId);
+      } catch {
+        // ignore quota / privacy mode errors
+      }
+    }
+  }, [storageKey, activeTabId]);
 
   if (tabs.length === 0) return null;
 

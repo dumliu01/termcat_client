@@ -301,6 +301,36 @@ export interface ConfirmOptions {
   cancelText?: string;
 }
 
+export interface MessageBoxOptions {
+  title?: string;
+  content: string;
+  /** Rendered as preformatted code block if 'pre' / 'code', otherwise plain text. */
+  format?: 'plain' | 'pre' | 'code';
+  closeText?: string;
+}
+
+export interface FormDialogField {
+  id: string;
+  label: string;
+  type?: 'text' | 'password' | 'textarea' | 'select';
+  value?: string;
+  placeholder?: string;
+  required?: boolean;
+  /** Short hint rendered below the input. */
+  hint?: string;
+  /** Options for 'select' type. */
+  options?: Array<{ label: string; value: string }>;
+}
+
+export interface FormDialogOptions {
+  title?: string;
+  /** Optional lead-in text shown above the fields. */
+  description?: string;
+  fields: FormDialogField[];
+  submitText?: string;
+  cancelText?: string;
+}
+
 export interface WebviewPanelOptions {
   id: string;
   title: string;

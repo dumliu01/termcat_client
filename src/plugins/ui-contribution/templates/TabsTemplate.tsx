@@ -6,6 +6,18 @@ import { getTemplate } from './index';
 export const TabsTemplate: React.FC<TemplateProps<TabsData>> = ({ data, onEvent }) => {
   const [activeTab, setActiveTab] = useState(data.activeTab || data.tabs[0]?.id || '');
 
+  // Programmatic tab switching: when the plugin bumps `activeTabNonce`, force
+  // local state to `data.activeTab` regardless of whether the user had clicked
+  // elsewhere. Without the nonce, user clicks would be "sticky" and plugin
+  // could never re-route to the same tab twice.
+  const lastNonceRef = React.useRef(data.activeTabNonce);
+  React.useEffect(() => {
+    if (data.activeTabNonce !== undefined && data.activeTabNonce !== lastNonceRef.current) {
+      if (data.activeTab) setActiveTab(data.activeTab);
+      lastNonceRef.current = data.activeTabNonce;
+    }
+  }, [data.activeTabNonce, data.activeTab]);
+
   const handleTabChange = useCallback((tabId: string) => {
     setActiveTab(tabId);
     onEvent?.('tabs:change', { tabId });
@@ -14,9 +26,9 @@ export const TabsTemplate: React.FC<TemplateProps<TabsData>> = ({ data, onEvent 
   const currentTab = data.tabs.find(t => t.id === activeTab);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Tab 栏 */}
-      <div className="flex border-b overflow-x-auto no-scrollbar" style={{ borderColor: 'var(--border-color)' }}>
+      <div className="flex border-b overflow-x-auto no-scrollbar shrink-0" style={{ borderColor: 'var(--border-color)' }}>
         {data.tabs.map(tab => {
           const Icon = resolveIcon(tab.icon);
           const isActive = tab.id === activeTab;
@@ -42,13 +54,24 @@ export const TabsTemplate: React.FC<TemplateProps<TabsData>> = ({ data, onEvent 
         })}
       </div>
 
-      {/* Tab 内容 */}
+      {/* Tab 内容 — flex-1 min-h-0 lets nested msg-viewer / scrollable templates
+          size against the remaining vertical space. */}
       {currentTab && (
-        <div>
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           {currentTab.sections.map((section, idx) => {
             const Template = getTemplate(section.template);
             if (!Template) return null;
-            return <Template key={section.id || idx} data={section.data} variant={section.variant} onEvent={onEvent} />;
+            const rendered = (
+              <Template key={section.id || idx} data={section.data} variant={section.variant} onEvent={onEvent} />
+            );
+            if (section.fill) {
+              return (
+                <div key={section.id || idx} className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                  {rendered}
+                </div>
+              );
+            }
+            return rendered;
           })}
         </div>
       )}

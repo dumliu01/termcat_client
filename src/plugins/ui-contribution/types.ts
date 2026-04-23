@@ -4,6 +4,8 @@
  * 插件通过这些类型描述 UI，App 的模板组件负责渲染。
  */
 
+import type { MsgBlock } from '../../shared-components/msg-viewer/types';
+
 // ==================== 通用类型 ====================
 
 /** 主题颜色 — 映射到 App 预定义色板 */
@@ -59,10 +61,12 @@ export type TemplateType =
   | 'tabs'
   | 'form'
   | 'status-bar'
-  | 'notification';
+  | 'notification'
+  // P3
+  | 'msg-viewer';
 
-/** 模板变体 — compact 紧凑模式，card 卡片模式 */
-export type TemplateVariant = 'default' | 'compact' | 'card';
+/** 模板变体 — compact 紧凑、card 卡片、nested 嵌套子项（带缩进+分区底色） */
+export type TemplateVariant = 'default' | 'compact' | 'card' | 'nested';
 
 /** 区域描述 */
 export interface SectionDescriptor {
@@ -78,6 +82,8 @@ export interface SectionDescriptor {
   collapsed?: boolean;
   /** 模板变体 */
   variant?: TemplateVariant;
+  /** 若为 true，该区域在 flex 容器中占满剩余空间（多用于 tabs/msg-viewer 之类需要填满面板的区域） */
+  fill?: boolean;
 }
 
 /** 所有模板数据的联合类型 */
@@ -102,7 +108,8 @@ export type TemplateData =
   | TabsData
   | FormData
   | StatusBarData
-  | NotificationData;
+  | NotificationData
+  | MsgViewerData;
 
 // ==================== 具体模板数据 ====================
 
@@ -192,6 +199,15 @@ export interface ListData {
     color?: ThemeColor;
     badge?: { text: string; color?: ThemeColor };
     actions?: ActionItem[];
+    /** Optional button rendered before the icon (e.g. a chevron that toggles expansion). */
+    leadingAction?: ActionItem;
+    /** Multi-line tooltip shown on hover via the HTML `title` attribute. */
+    tooltip?: string;
+    /**
+     * Inline icon+text badges, rendered on a line below the label.
+     * Use this instead of `description` when you want real lucide icons.
+     */
+    inlineBadges?: Array<{ icon?: string; text: string; color?: ThemeColor }>;
   }>;
   selectable?: boolean;
   maxVisibleItems?: number;
@@ -324,6 +340,9 @@ export interface TabsData {
     sections: SectionDescriptor[];
   }>;
   activeTab?: string;
+  /** Incrementing nonce: when it changes, force local state to `activeTab`
+   *  (lets plugins programmatically switch tabs even after user click). */
+  activeTabNonce?: number;
 }
 
 /** form 简单表单 */
@@ -337,6 +356,10 @@ export interface FormData {
     options?: Array<{ label: string; value: string }>;
     required?: boolean;
     disabled?: boolean;
+    /** Optional inline action rendered after the input (compact layout). */
+    trailingAction?: ActionItem;
+    /** Multiple inline actions rendered after the input (compact layout). Takes precedence over `trailingAction`. */
+    trailingActions?: ActionItem[];
   }>;
   submitLabel?: string;
   layout?: 'vertical' | 'horizontal';
@@ -365,6 +388,31 @@ export interface NotificationData {
     dismissible?: boolean;
     timestamp?: string;
   }>;
+}
+
+// ==================== P3 msg-viewer ====================
+
+/**
+ * msg-viewer template data.
+ *
+ * Render a list of MsgBlock via the shared `MsgViewer` component.
+ * Interactions are forwarded through `onEvent`:
+ *   - `msg-viewer:execute-command` with `{ command }`
+ *   - `msg-viewer:copy-reply` with `{ startIndex, endIndex }`
+ * Other MsgViewerActions are stubbed (read-only display).
+ */
+export interface MsgViewerData {
+  blocks: MsgBlock[];
+  language?: 'zh' | 'en';
+  autoScroll?: boolean;
+  isLoading?: boolean;
+  loadingMessage?: string;
+  emptyTitle?: string;
+  emptySubtitle?: string;
+  /** Block id to scroll into view when `scrollNonce` changes. */
+  scrollToBlockId?: string;
+  /** Incrementing nonce: each change triggers a scroll to `scrollToBlockId`. */
+  scrollNonce?: number;
 }
 
 // ==================== 面板注册 ====================

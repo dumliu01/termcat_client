@@ -7,6 +7,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { app, ipcMain, BrowserWindow } from 'electron';
+import { localPtyService } from '../core/pty/local-pty-manager';
+import { sshService } from '../core/ssh/ssh-manager';
 import type {
   PluginManifest,
   PluginInfo,
@@ -40,7 +42,10 @@ export class PluginManager {
   private pluginConfig: PluginConfigFile;
   private windows: Map<number, BrowserWindow> = new Map(); // key = webContents.id
   /** 缓存外部插件的面板注册（Renderer reload 后可重放） */
-  private panelRegistrations = new Map<string, { pluginId: string; options: any }>();
+  private panelRegistrations = new Map<string, { pluginId: string; options: any; wantsEvents?: boolean }>();
+  /** Pending UI dialog requests awaiting Renderer response. */
+  private pendingUiRequests = new Map<string, { resolve: (v: unknown) => void }>();
+  private uiRequestSeq = 0;
   /** 缓存外部插件的面板数据（Renderer reload 后可重放） */
   private panelDataCache = new Map<string, any[]>();
 
@@ -355,6 +360,36 @@ export class PluginManager {
   /** 终端关闭事件 */
   emitTerminalClose(terminal: TerminalInfo): void {
     this.registry.emitEvent('terminal:close', terminal);
+  }
+
+  /**
+   * UI language change event. Renderer forwards every I18nContext change here
+   * so Main-process plugins (e.g. claude_code_power) can re-render their
+   * panels in the current language.
+   */
+  emitLanguageChange(language: string): void {
+    this.currentLanguage = language;
+    this.registry.emitEvent('i18n:language-change', language);
+  }
+
+  getLanguage(): string {
+    return this.currentLanguage;
+  }
+
+  /**
+   * Active-terminal change event.
+   * Keeps `activeTerminals[*].isActive` in sync (single-active invariant) and
+   * emits `terminal:active-change` so plugins subscribed via `api.events.on`
+   * can react (e.g. claude_code_power rebinds its panel to the focused tab).
+   */
+  emitTerminalActiveChange(sessionId: string | null): void {
+    for (const [sid, info] of this.activeTerminals) {
+      const shouldBeActive = sid === sessionId;
+      if (info.isActive !== shouldBeActive) {
+        this.activeTerminals.set(sid, { ...info, isActive: shouldBeActive });
+      }
+    }
+    this.registry.emitEvent('terminal:active-change', sessionId);
   }
 
   /** 终端数据事件 */
@@ -699,6 +734,26 @@ export class PluginManager {
       };
     });
 
+    // UI dialog responses coming back from Renderer — resolve the pending request.
+    ipcMain.on('plugin:ui:response', (_event, payload: { requestId: string; result: unknown }) => {
+      const pending = this.pendingUiRequests.get(payload.requestId);
+      if (!pending) return;
+      this.pendingUiRequests.delete(payload.requestId);
+      pending.resolve(payload.result);
+    });
+
+    // Panel events coming from Renderer templates — forward to the owning plugin.
+    ipcMain.on('plugin:panel:event', (_event, payload: { panelId: string; sectionId: string; eventId: string; data?: unknown }) => {
+      const reg = this.panelRegistrations.get(payload.panelId);
+      if (!reg || !reg.wantsEvents) return;
+      this.registry.emitEvent(
+        `panel:event:${payload.panelId}`,
+        payload.sectionId,
+        payload.eventId,
+        payload.data,
+      );
+    });
+
     // 卸载插件（删除本地目录）
     ipcMain.handle(PLUGIN_IPC_CHANNELS.UNINSTALL_PLUGIN, async (_event, pluginId: string) => {
       return this.uninstallPlugin(pluginId);
@@ -765,8 +820,15 @@ export class PluginManager {
             return manager.getActiveTerminalInfo();
           case 'getTerminals':
             return manager.getAllTerminalInfos();
+          case 'getLanguage':
+            return manager.getLanguage();
           case 'terminalWrite':
             return manager.writeToTerminal(args[0] as string, args[1] as string);
+          case 'terminalGetPid':
+            return manager.getTerminalPid(args[0] as string);
+          case 'terminalFocus':
+            manager.focusTerminal(args[0] as string);
+            return;
           case 'terminalExecute':
             return manager.executeInTerminal(args[0] as string, args[1] as string);
           case 'getSSHConnection':
@@ -789,16 +851,26 @@ export class PluginManager {
             manager.broadcastToRenderer(PLUGIN_IPC_CHANNELS.NOTIFICATION, args[0]);
             return;
           case 'showInputBox':
-            return manager.broadcastToRenderer('plugin:ui:inputbox', { pluginId: args[0], options: args[1] });
+            return manager.requestUiDialog('inputbox', { pluginId: args[0], options: args[1] });
           case 'showQuickPick':
-            return manager.broadcastToRenderer('plugin:ui:quickpick', { pluginId: args[0], items: args[1] });
+            return manager.requestUiDialog('quickpick', { pluginId: args[0], items: args[1] });
           case 'showConfirm':
-            return manager.broadcastToRenderer('plugin:ui:confirm', { pluginId: args[0], message: args[1], options: args[2] });
+            return manager.requestUiDialog('confirm', { pluginId: args[0], message: args[1], options: args[2] });
+          case 'showMessage':
+            return manager.requestUiDialog('message', { pluginId: args[0], options: args[1] });
+          case 'showForm':
+            return manager.requestUiDialog('form', { pluginId: args[0], options: args[1] });
           // UI 贡献点面板操作 —— 转发到 Renderer 进程的 panelDataStore（同时缓存，支持 reload 重放）
-          case 'panelRegister':
-            manager.panelRegistrations.set((args[1] as any).id, { pluginId: args[0] as string, options: args[1] });
+          case 'panelRegister': {
+            const panelId = (args[1] as any).id as string;
+            manager.panelRegistrations.set(panelId, {
+              pluginId: args[0] as string,
+              options: args[1],
+              wantsEvents: Boolean(args[2]),
+            });
             manager.broadcastToRenderer('plugin:panel:register', { pluginId: args[0], options: args[1] });
             return;
+          }
           case 'panelUnregister':
             manager.panelRegistrations.delete(args[0] as string);
             manager.panelDataCache.delete(args[0] as string);
@@ -833,6 +905,10 @@ export class PluginManager {
 
   private activeTerminals = new Map<string, TerminalInfo>();
   private activeSSHConnections = new Map<string, SSHConnectionInfo>();
+  // Last-known UI language, pushed by the renderer via IPC. Used both as a
+  // synchronous query (plugins call getLanguage on activate) and the source
+  // for re-emitting language on plugin (re)activation.
+  private currentLanguage = 'zh';
 
   /** 注册终端信息（由 main.ts 在终端创建时调用） */
   registerTerminal(info: TerminalInfo): void {
@@ -863,7 +939,52 @@ export class PluginManager {
   }
 
   private async writeToTerminal(sessionId: string, data: string): Promise<void> {
+    // Route to whichever backend owns this session: local PTY first, then SSH.
+    if (localPtyService.exists(sessionId)) {
+      localPtyService.write(sessionId, data);
+      return;
+    }
+    if (sshService && sshService.writeToShell(sessionId, data)) {
+      return;
+    }
+    // No backend claimed it; keep the legacy broadcast as a fall-through hook.
     this.broadcastToRenderer('plugin:terminal:write', { sessionId, data });
+  }
+
+  /**
+   * Return the OS pid backing this terminal session.
+   * Local PTYs have a real pid; SSH sessions return null.
+   */
+  private getTerminalPid(sessionId: string): number | null {
+    return localPtyService.getPid(sessionId);
+  }
+
+  /**
+   * Request a UI dialog from Renderer and wait for the user's response.
+   * Stores a pending resolver keyed by a generated requestId; Renderer
+   * replies on `plugin:ui:response` with that id.
+   */
+  private requestUiDialog(kind: string, payload: Record<string, unknown>): Promise<unknown> {
+    const requestId = `uireq-${++this.uiRequestSeq}-${Date.now()}`;
+    return new Promise((resolve) => {
+      this.pendingUiRequests.set(requestId, { resolve });
+      this.broadcastToRenderer(`plugin:ui:${kind}`, { requestId, ...payload });
+      // Safety timeout: 2 min — drop if Renderer never replies.
+      setTimeout(() => {
+        const p = this.pendingUiRequests.get(requestId);
+        if (!p) return;
+        this.pendingUiRequests.delete(requestId);
+        p.resolve(undefined);
+      }, 120_000);
+    });
+  }
+
+  /**
+   * Ask the Renderer to move keyboard focus to the xterm of a given session.
+   * Best-effort — Renderer may ignore if the session has no mounted xterm.
+   */
+  private focusTerminal(sessionId: string): void {
+    this.broadcastToRenderer('plugin:terminal:focus', { sessionId });
   }
 
   private async executeInTerminal(sessionId: string, command: string): Promise<CommandResult> {

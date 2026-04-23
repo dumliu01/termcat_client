@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, useReducer } from 'react';
 import { Sidebar } from '@/features/shared/components/Sidebar';
 import { Dashboard } from '@/features/dashboard/components/Dashboard';
-import { TerminalView } from '@/features/terminal/components/TerminalView';
 import { TerminalTabBar } from '@/features/terminal/components/TerminalTabBar';
 import { LoginView } from '@/features/auth/components/LoginView';
 const SettingsView = React.lazy(() => import('@/features/settings/components/SettingsView').then(m => ({ default: m.SettingsView })));
@@ -19,11 +18,13 @@ import { authService } from '@/core/auth/authService';
 import { apiService } from '@/base/http/api';
 import { commerceService } from '@/core/commerce/commerceService';
 import { licenseService } from '@/core/license/licenseService';
+import { bootstrapService } from '@/core/bootstrap/bootstrapService';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
 import { useI18n } from '@/base/i18n/I18nContext';
 import { VERSION_NUMBER, versionToNumber } from '@/utils/version';
 import { PluginStatusBar } from '@/features/shared/components/PluginStatusBar';
 import { PluginNotifications } from '@/features/shared/components/PluginNotifications';
+import { PluginDialogHost } from '@/plugins/ui-contribution/PluginDialogHost';
 import { activateBuiltinPlugins, panelDataStore } from '@/plugins/builtin';
 import { builtinPluginManager } from '@/plugins/builtin/builtin-plugin-manager';
 import { AI_OPS_EVENTS } from '@/plugins/builtin/events';
@@ -32,6 +33,8 @@ import { useTabManager } from '@/features/terminal/hooks/useTabManager';
 import { SplitPaneLayout } from '@/features/terminal/components/SplitPaneLayout';
 import { PaneHeader } from '@/features/terminal/components/PaneHeader';
 import { PaneDropZone } from '@/features/terminal/components/PaneDropZone';
+import { PaneSlot } from '@/features/terminal/components/PaneSlot';
+import { TerminalHostLayer } from '@/features/terminal/components/TerminalHostLayer';
 import { findPaneNode, countPanes, collectAllPaneIds } from '@/features/terminal/utils/split-layout';
 import type { DropEdge } from '@/features/terminal/types';
 import { useHostManager } from '@/features/dashboard/hooks/useHostManager';
@@ -93,6 +96,41 @@ const App: React.FC = () => {
   }>());
   const [portalVersion, forcePortalUpdate] = useReducer((x: number) => x + 1, 0);
 
+  // Session-level slot map for TerminalHostLayer (cross-tab terminal preservation).
+  // A ref callback per sessionId registers its pane slot <div> so the host layer
+  // can portal the TerminalView into the current slot. SessionId is stable across
+  // tab/pane moves — paneId is not.
+  const [slotMap, setSlotMap] = useState<Map<string, HTMLDivElement>>(new Map());
+  const slotRefCacheRef = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
+  const getSlotRef = useCallback((sessionId: string) => {
+    let cb = slotRefCacheRef.current.get(sessionId);
+    if (!cb) {
+      cb = (el: HTMLDivElement | null) => {
+        setSlotMap((prev) => {
+          const current = prev.get(sessionId);
+          if (el) {
+            if (current === el) return prev;
+            logger.debug(LOG_MODULE.TERMINAL, 'terminal.slot.register', 'Terminal slot registered', { session_id: sessionId });
+            const next = new Map(prev);
+            next.set(sessionId, el);
+            return next;
+          }
+          if (!prev.has(sessionId)) return prev;
+          logger.debug(LOG_MODULE.TERMINAL, 'terminal.slot.unregister', 'Terminal slot unregistered', { session_id: sessionId });
+          const next = new Map(prev);
+          next.delete(sessionId);
+          return next;
+        });
+      };
+      slotRefCacheRef.current.set(sessionId, cb);
+    }
+    return cb;
+  }, []);
+
+  // Staging container — holds TerminalViews whose pane slot is not yet mounted
+  // (e.g. first paint, or mid-transition during a cross-tab move).
+  const stagingRef = useRef<HTMLDivElement | null>(null);
+
   // Stable ref callbacks cached per pane+position. Using stable references prevents React from
   // re-invoking callback refs on every render (inline arrows get called with null→element each time).
   const refCallbackCacheRef = useRef(new Map<string, (el: HTMLDivElement | null) => void>());
@@ -120,6 +158,19 @@ const App: React.FC = () => {
   // --- Hooks ---
   const settings = useAppSettings();
   const tabManager = useTabManager(setActiveView);
+
+  // Prune slot ref callbacks for closed sessions. Runs whenever the active
+  // session list changes; removes any cache entries whose sessionId is no
+  // longer present, preventing unbounded growth in long-lived app sessions.
+  useEffect(() => {
+    const activeIds = new Set(tabManager.activeSessions.map(s => s.id));
+    for (const id of Array.from(slotRefCacheRef.current.keys())) {
+      if (!activeIds.has(id)) {
+        slotRefCacheRef.current.delete(id);
+      }
+    }
+  }, [tabManager.activeSessions]);
+
   const hostManager = useHostManager();
 
   const userAuth = useUserAuth({
@@ -251,6 +302,34 @@ const App: React.FC = () => {
       s.id === pane.sessionId ? { ...s, customName: name } : s
     ));
   }, [tabManager.tabs, tabManager.setActiveSessions]);
+
+  // Mirror the UI language to Main-process plugins so their panels can
+  // re-render in the current language. Fires on every I18nContext change,
+  // plus once on mount to seed the plugin manager's last-known-language.
+  useEffect(() => {
+    const send = (window as any).electron?.plugin?.sendLanguageChange;
+    if (typeof send === 'function') send(language);
+  }, [language]);
+
+  // Notify Main-side plugins (e.g. claude_code_power) whenever the active
+  // terminal session changes — tab switch, pane focus, or split ops. Must
+  // report session.connectionId (the shellId/ptyId pluginManager registers
+  // under), NOT pane.sessionId (a Renderer-local Session.id). Those two IDs
+  // are unrelated; sending the wrong one breaks plugin PTY writes and PID
+  // lookups. connectionId arrives asynchronously via onConnectionReady, so
+  // this effect also re-fires when activeSessions updates.
+  useEffect(() => {
+    const sendActive = (window as any).electron?.plugin?.sendTerminalActiveChange;
+    if (typeof sendActive !== 'function') return;
+    let connectionId: string | null = null;
+    if (activeView === 'terminal') {
+      const tab = tabManager.tabs.find(t => t.id === tabManager.currentTabId);
+      const pane = tab ? findPaneNode(tab.layout, tab.activePaneId) : null;
+      const session = pane ? tabManager.activeSessions.find(s => s.id === pane.sessionId) : null;
+      connectionId = session?.connectionId ?? null;
+    }
+    sendActive(connectionId);
+  }, [activeView, tabManager.currentTabId, tabManager.tabs, tabManager.activeSessions]);
 
   // --- Local agent plugin: register modes/models via plugin extension point ---
   const localAgentDisposableRef = useRef<{ modeDisposable?: { dispose: () => void }; modelDisposable?: { dispose: () => void } } | null>(null);
@@ -420,15 +499,18 @@ const App: React.FC = () => {
         let savedUser = authService.getUser();
         let serverSeqs: import('@/core/commerce/types').SyncSeqs | null = null;
 
-        // If cached user info exists, validate token first
+        // If cached user info exists, validate token via bootstrap.
+        // Bootstrap replaces the previous get-profile + license/features +
+        // ai/get-models + commerce/config quartet — one network call hydrates
+        // everything we used to fetch separately on startup.
         if (savedUser) {
           try {
-            const profileResp = await apiService.getUserProfile() as any;
-            // getUserProfile now returns { user, seqs }
-            const profile = profileResp?.user ?? profileResp;
-            serverSeqs = profileResp?.seqs ?? null;
+            const machineId = await licenseService.getMachineId();
+            const result = await bootstrapService.bootstrap(machineId);
+            const profile = result.user as any;
+            serverSeqs = result.seqs;
 
-            // Token valid, update local cache with server's latest data
+            // Token valid, merge server's latest data into local cache.
             savedUser = {
               ...savedUser,
               gems: profile?.gems ?? savedUser.gems ?? 10,
@@ -437,27 +519,32 @@ const App: React.FC = () => {
             };
             if (!savedUser.tier) savedUser.tier = 'Standard';
             authService.setUser(savedUser);
-            // Start auto-refresh (with incremental sync callback)
+            // Start auto-refresh (with incremental sync callback).
+            // Use bootstrap's refreshIntervalMinutes so the interval matches
+            // the token bootstrap just issued — avoids default drift between
+            // /auth/refresh and /user/bootstrap.
             authService.startAutoRefresh(
               () => apiService.refreshToken(),
-              undefined,
+              result.refreshIntervalMinutes,
               (seqs) => {
-                hostService.syncBySeqs(seqs).then(result => {
-                  if (result.changed.hosts) hostManager.setHosts(result.hosts);
-                  if (result.changed.groups && result.groups.length > 0) hostManager.setGroups(result.groups);
-                  if (result.changed.proxies) hostManager.setProxies(result.proxies);
+                hostService.syncBySeqs(seqs).then(syncRes => {
+                  if (syncRes.changed.hosts) hostManager.setHosts(syncRes.hosts);
+                  if (syncRes.changed.groups && syncRes.groups.length > 0) hostManager.setGroups(syncRes.groups);
+                  if (syncRes.changed.proxies) hostManager.setProxies(syncRes.proxies);
                 }).catch(() => {});
                 commerceService.handleLoginSeqs(seqs);
               },
             );
-            logger.info(LOG_MODULE.APP, 'app.init.token_valid', 'Cached token validated, auto-login success', {
+            logger.info(LOG_MODULE.APP, 'app.init.token_valid', 'Cached token validated via bootstrap', {
               user_id: savedUser.id,
+              token_refreshed: !!result.refreshIntervalMinutes,
+              from_cache: result.fromCache,
             });
-            // Refresh license from server (non-blocking)
-            licenseService.checkLicense(true).catch(() => {});
           } catch (err) {
-            // Token invalid, clear cache and redirect to login
-            logger.info(LOG_MODULE.APP, 'app.init.token_invalid', 'Cached token invalid, redirecting to login', {
+            // Token invalid (401 → bootstrapService throws via apiService interceptor)
+            // OR network failure. apiService's 401 handler already triggered logout
+            // for the auth case; here we just route the user back to login.
+            logger.info(LOG_MODULE.APP, 'app.init.token_invalid', 'Bootstrap failed, redirecting to login', {
               user_id: savedUser.id,
               error: err instanceof Error ? err.message : 'Unknown error',
             });
@@ -482,11 +569,12 @@ const App: React.FC = () => {
         }
         hostService.setMode(savedUser ? savedMode : StorageMode.LOCAL);
 
-        // Logged-in user + Cloud mode: use seq incremental sync
+        // Logged-in user + Cloud mode: bootstrap already handled license/
+        // commerce/ai_models. Here we only need to fan out hosts/groups/
+        // proxies sync (driven by seqs returned from bootstrap).
         if (savedUser && !isLocalMode && serverSeqs) {
-          const [syncResult, _modelsResult, versionResult] = await Promise.allSettled([
+          const [syncResult, versionResult] = await Promise.allSettled([
             hostService.syncBySeqs(serverSeqs),
-            userAuth.fetchAIModels(),
             this_fetchVersionCheck(),
           ]);
 
@@ -511,18 +599,16 @@ const App: React.FC = () => {
             if (groups.length > 0) hostManager.setGroups(groups);
           }
 
-          // Commerce config seq sync
-          commerceService.handleLoginSeqs(serverSeqs);
-
           handleVersionResult(versionResult);
         } else {
-          // Guest mode / local mode / no seqs: use original full load logic
-          const [hostResult, _modelsResult, _proxiesResult, versionResult] = await Promise.allSettled([
+          // Guest mode / local mode / no seqs: use original full load logic.
+          // Cached AI models from aiModelsCache are auto-applied via the
+          // useUserAuth subscription, no fetchAIModels call needed here.
+          const [hostResult, _proxiesResult, versionResult] = await Promise.allSettled([
             (async () => {
               const hosts = await hostService.getHosts();
               return { success: true as const, hosts };
             })(),
-            savedUser ? userAuth.fetchAIModels() : Promise.resolve(),
             savedUser && !isLocalMode ? hostManager.loadProxies() : Promise.resolve(),
             this_fetchVersionCheck(),
           ]);
@@ -745,6 +831,43 @@ const App: React.FC = () => {
         )}
 
         <div className="flex-1 relative overflow-hidden" style={{ isolation: 'isolate' }}>
+          {/* Hidden staging container: receives TerminalView DOM when a session's
+              pane slot is not yet mounted (e.g. first paint, mid-cross-tab-move). */}
+          <div
+            ref={stagingRef}
+            aria-hidden
+            style={{
+              position: 'absolute',
+              visibility: 'hidden',
+              pointerEvents: 'none',
+              width: 800,
+              height: 400,
+              left: -99999,
+              top: -99999,
+            }}
+          />
+          {/* Flat terminal host layer: one TerminalView per session, projected
+              into its current pane slot via createPortal. Keeps xterm/SSH mounted
+              across tab/pane moves. */}
+          <TerminalHostLayer
+            activeSessions={tabManager.activeSessions}
+            tabs={tabManager.tabs}
+            currentTabId={tabManager.currentTabId}
+            slotMap={slotMap}
+            stagingRef={stagingRef}
+            panePortalMapRef={panePortalMapRef}
+            portalVersion={portalVersion}
+            theme={settings.theme}
+            terminalTheme={settings.terminalTheme}
+            terminalFontSize={settings.terminalFontSize}
+            defaultFocusTarget={settings.defaultFocusTarget}
+            minimalPanelStates={settings.minimalPanelStates}
+            setMinimalPanelStates={settings.setMinimalPanelStates}
+            setEffectiveHostnameMap={setEffectiveHostnameMap}
+            setActivePane={tabManager.setActivePane}
+            setActiveSessions={tabManager.setActiveSessions}
+            closePane={tabManager.closePane}
+          />
           {/* All tabs remain mounted, z-index controls stacking to preserve xterm.js instances */}
           {tabManager.tabs.map((tab) => {
             const isActiveTab = tabManager.currentTabId === tab.id;
@@ -796,7 +919,6 @@ const App: React.FC = () => {
                         }
 
                         const handlePaneDragEnter = (e: React.DragEvent) => {
-                          // Only show drop zone for termcat drag data
                           if (!e.dataTransfer.types.includes('text/termcat-drag')) return;
                           e.preventDefault();
                           setDropTargetPaneId(paneId);
@@ -810,7 +932,6 @@ const App: React.FC = () => {
                             const data = JSON.parse(raw) as { type: string; tabId?: string; paneId?: string };
                             if (data.type === 'pane' && data.tabId && data.paneId) {
                               if (data.paneId === paneId) return;
-                              // Cross-tab or same-tab pane move
                               tabManager.movePaneBetweenTabs(data.tabId, data.paneId, tab.id, paneId, edge);
                             } else if (data.type === 'tab' && data.tabId) {
                               tabManager.moveTabToPane(data.tabId, tab.id, paneId, edge);
@@ -844,40 +965,19 @@ const App: React.FC = () => {
                                 onSplitHorizontal={() => tabManager.splitPane(tab.id, paneId, 'horizontal')}
                               />
                             )}
-                            <div
-                              className="flex-1 min-h-0"
-                              onContextMenu={(e) => {
-                                e.preventDefault();
-                                setPaneContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id, paneId, sessionId });
+                            {/* Empty slot — TerminalHostLayer portals the TerminalView into this div.
+                                Keyed on sessionId via getSlotRef so slot identity follows the session
+                                across pane/tab moves. PaneSlot attaches a native dragenter listener
+                                because React's synthetic event cannot cross the portal boundary. */}
+                            <PaneSlot
+                              paneId={paneId}
+                              slotRef={getSlotRef(sessionId)}
+                              onDragEnterPane={setDropTargetPaneId}
+                              onContextMenu={(x, y) => {
+                                setPaneContextMenu({ x, y, tabId: tab.id, paneId, sessionId });
                               }}
-                            >
-                              <TerminalView
-                                host={session.host}
-                                onClose={() => tabManager.closePane(tab.id, paneId)}
-                                theme={settings.theme}
-                                terminalTheme={settings.terminalTheme}
-                                terminalFontSize={settings.terminalFontSize}
-                                isActive={isActiveTab}
-                                isPaneActive={isPaneActive}
-                                onPaneFocus={() => tabManager.setActivePane(tab.id, paneId)}
-                                paneOnly={isMultiPane && (!isPaneActive || !isActiveTab)}
-                                panelPortals={isMultiPane ? panePortalMapRef.current.get(paneId) : undefined}
-                                portalVersion={portalVersion}
-                                defaultFocusTarget={settings.defaultFocusTarget}
-                                minimalPanelStates={settings.minimalPanelStates}
-                                onMinimalPanelStatesChange={settings.setMinimalPanelStates}
-                                initialDirectory={session.initialDirectory}
-                                onConnectionReady={(connId) => {
-                                  tabManager.setActiveSessions(prev => prev.map(s =>
-                                    s.id === session.id ? { ...s, connectionId: connId } : s
-                                  ));
-                                }}
-                                onEffectiveHostnameChange={(hostname) => {
-                                  setEffectiveHostnameMap(prev => ({ ...prev, [session.id]: hostname }));
-                                }}
-                              />
-                            </div>
-                            {/* Drop zone overlay — shown when dragging over this pane */}
+                              className="flex-1 min-h-0"
+                            />
                             {dropTargetPaneId === paneId && (
                               <PaneDropZone
                                 onDrop={handlePaneDrop}
@@ -1237,6 +1337,7 @@ const App: React.FC = () => {
 
       <PluginStatusBar />
       <PluginNotifications />
+      <PluginDialogHost />
     </div>
     </AIServiceProvider>
   );

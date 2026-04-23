@@ -7,14 +7,16 @@
 import React from 'react';
 import {
   Activity, X, ChevronDown, ChevronRight, ChevronUp,
-  ArrowUp, ArrowDown, ArrowUpDown,
+  ArrowUp, ArrowDown, ArrowUpDown, ArrowLeft, ArrowRight,
   Monitor, Settings, Zap, Folder, File, FolderOpen,
   Terminal, Play, Square, Trash2, RefreshCw, Copy,
   CircleCheck, CircleX, Circle, AlertTriangle, Info,
   Download, Upload, Search, Filter, Plus, Minus,
   Eye, EyeOff, Lock, Unlock, Globe, Server, Database,
   HardDrive, Cpu, MemoryStick, Network, Wifi,
-  ScrollText, FileText, Code, Hash, Clock,
+  ScrollText, FileText, FilePen, Code, Hash, Clock,
+  Sparkles, Plug, Bot, Wrench, RotateCcw,
+  MessageSquare, BookOpen, Rocket, Tag,
 } from 'lucide-react';
 
 type IconComponent = React.ComponentType<{ className?: string }>;
@@ -65,9 +67,21 @@ const ICON_MAP: Record<string, IconComponent> = {
   'wifi': Wifi,
   'scroll-text': ScrollText,
   'file-text': FileText,
+  'file-pen': FilePen,
   'code': Code,
   'hash': Hash,
   'clock': Clock,
+  'sparkles': Sparkles,
+  'plug': Plug,
+  'bot': Bot,
+  'wrench': Wrench,
+  'rotate-ccw': RotateCcw,
+  'message-square': MessageSquare,
+  'book-open': BookOpen,
+  'rocket': Rocket,
+  'tag': Tag,
+  'arrow-left': ArrowLeft,
+  'arrow-right': ArrowRight,
 };
 
 /** 根据图标名获取 lucide 组件，不存在则返回 null */

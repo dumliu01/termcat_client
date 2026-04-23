@@ -208,6 +208,11 @@ export class LocalPtyService {
     return this.instances.has(ptyId);
   }
 
+  getPid(ptyId: string): number | null {
+    const instance = this.instances.get(ptyId);
+    return instance?.process.pid ?? null;
+  }
+
   /**
    * Health check: send Device Status Report (DSR) to PTY, expect \x1b[0n response.
    * Returns false if no response within timeout (fd likely stale after sleep).

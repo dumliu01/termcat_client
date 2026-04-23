@@ -91,11 +91,10 @@ export const AssistantTextBubble: React.FC<Props> = React.memo(({ block, languag
         )}
 
         {block.status !== 'error' && (
-          <div
-            ref={scrollContainerRef}
-            onScroll={handleScroll}
-            className="max-h-80 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
-          >
+          // Let the bubble grow to full content height — the outer MsgViewer
+          // (react-virtuoso) handles panel-level scrolling. No more internal
+          // capped scroll, so long replies don't require dragging a tiny bar.
+          <div ref={scrollContainerRef} onScroll={handleScroll}>
             {stableContent && <MarkdownRenderer content={stableContent} executableCodeLangs={block.executableCodeLangs} onExecuteCommand={onExecuteCommand} />}
             {tailContent && <MarkdownRenderer content={tailContent} executableCodeLangs={block.executableCodeLangs} onExecuteCommand={onExecuteCommand} />}
             {!stableContent && !tailContent && <MarkdownRenderer content="" />}

@@ -17,6 +17,9 @@ import { builtinPluginManager } from '@/plugins/builtin';
 import { AI_OPS_EVENTS } from '@/plugins/builtin/events';
 import { useI18n } from '@/base/i18n/I18nContext';
 import { licenseService } from '@/core/license/licenseService';
+import { aiModelsCache, AIModelsCachePayload } from '@/core/ai/aiModelsCache';
+import { bootstrapService } from '@/core/bootstrap/bootstrapService';
+import type { LoginResponseWithSeqs } from '@/core/commerce/types';
 
 const getDefaultGroups = (t: ReturnType<typeof useI18n>['t']): HostGroup[] => [
   { id: 'group_prod', name: t.dashboard.defaultGroupProduction, color: '#ef4444' },
@@ -57,30 +60,40 @@ export function useUserAuth(deps: UseUserAuthDeps) {
     codex: { name: 'X-Agent', icon: 'zap' },
   };
 
-  // Fetch AI available models list from server
+  // Apply a /ai/get-models payload (or its cached copy) into React state.
+  // Shared between manual fetchAIModels() and the aiModelsCache subscription
+  // so cached startups render instantly without waiting on the network.
+  const applyAIModelsData = useCallback((data: any) => {
+    if (!data) return;
+    setAvailableModels(data.models || []);
+    if (data.modes && Array.isArray(data.modes)) {
+      const modeInfos: AIModeInfo[] = (data.modes as Array<{ mode: string; cost_per_question?: number; allowed_models?: string[] }>).map(m => {
+        const modeId = m.mode === 'normal' ? 'ask' : m.mode;
+        const display = MODE_DISPLAY[modeId] || { name: modeId, icon: 'zap' };
+        return {
+          id: modeId,
+          name: display.name,
+          icon: display.icon,
+          allowedModels: m.allowed_models && m.allowed_models.length > 0 ? m.allowed_models : undefined,
+          costPerQuestion: m.cost_per_question,
+          source: 'server' as const,
+        };
+      });
+      if (modeInfos.length > 0) {
+        setAvailableModeInfos(modeInfos);
+        setAvailableModes(modeInfos.map(m => m.id));
+      }
+    }
+  }, []);
+
+  // Manual refresh of the AI model list (e.g. user clicks "refresh" in settings).
+  // The login / startup path no longer calls this — bootstrapService handles
+  // model sync via aiModelsCache, which in turn drives applyAIModelsData here.
   const fetchAIModels = useCallback(async () => {
     try {
       const response = await apiService.getAIModels();
       if (response.success && response.data) {
-        setAvailableModels(response.data.models || []);
-        if (response.data.modes && Array.isArray(response.data.modes)) {
-          const modeInfos: AIModeInfo[] = (response.data.modes as Array<{ mode: string; cost_per_question?: number; allowed_models?: string[] }>).map(m => {
-            const modeId = m.mode === 'normal' ? 'ask' : m.mode;
-            const display = MODE_DISPLAY[modeId] || { name: modeId, icon: 'zap' };
-            return {
-              id: modeId,
-              name: display.name,
-              icon: display.icon,
-              allowedModels: m.allowed_models && m.allowed_models.length > 0 ? m.allowed_models : undefined,
-              costPerQuestion: m.cost_per_question,
-              source: 'server' as const,
-            };
-          });
-          if (modeInfos.length > 0) {
-            setAvailableModeInfos(modeInfos);
-            setAvailableModes(modeInfos.map(m => m.id));
-          }
-        }
+        applyAIModelsData(response.data);
         logger.info(LOG_MODULE.APP, 'app.ai_models.fetched', 'AI models fetched', {
           count: response.data.models?.length || 0,
           modes: response.data.modes?.length || 0,
@@ -91,7 +104,17 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  }, []);
+  }, [applyAIModelsData]);
+
+  // Subscribe to aiModelsCache so bootstrap-triggered refreshes propagate to
+  // local state. Also apply whatever's already in cache on mount, so a cached
+  // startup paints the mode picker without waiting for any network call.
+  useEffect(() => {
+    applyAIModelsData(aiModelsCache.get()?.data);
+    return aiModelsCache.onChange((payload: AIModelsCachePayload | null) => {
+      applyAIModelsData(payload?.data);
+    });
+  }, [applyAIModelsData]);
 
   // Listen for authentication failure events (401 error)
   useEffect(() => {
@@ -194,7 +217,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
     }).catch(() => {});
   }, []);
 
-  const handleLogin = useCallback(async (newUser: User | null) => {
+  const handleLogin = useCallback(async (newUser: User | null, loginResp?: LoginResponseWithSeqs) => {
     if (newUser) {
       const userWithGems = {
         ...newUser,
@@ -203,11 +226,6 @@ export function useUserAuth(deps: UseUserAuthDeps) {
       };
       setUser(userWithGems);
       authService.setUser(userWithGems);
-      // Start auto-refresh
-      authService.startAutoRefresh(() => apiService.refreshToken());
-
-      // New login, no incremental sync callback needed (full fetch already done in handleLogin)
-      // App.tsx init path will configure auto-refresh with seqs callback
 
       // When switching users, close terminal sessions left by previous user/guest
       resetSessions();
@@ -222,60 +240,79 @@ export function useUserAuth(deps: UseUserAuthDeps) {
       setStorageMode(useLocal ? 'local' : 'server');
       hostService.setMode(useLocal ? StorageMode.LOCAL : StorageMode.CLOUD);
 
-      logger.info(LOG_MODULE.APP, 'app.login.sync_start', 'Starting post-login data load', {
+      // Persist seqs from the login response so /user/bootstrap can compare
+      // against them; this also removes the need for a follow-up get-profile.
+      if (loginResp?.seqs) {
+        hostStorageService.saveSeqs(loginResp.seqs);
+      }
+
+      logger.info(LOG_MODULE.APP, 'app.login.sync_start', 'Starting post-login bootstrap', {
         user_id: userWithGems.id,
         storage_mode: useLocal ? 'local' : 'cloud',
       });
 
-      // Fetch all user data in parallel: hosts, groups, proxies, AI models
-      const [hostResult, groupsResult, proxiesResult] = await Promise.allSettled([
-        hostService.getHosts().then(hosts => ({ success: true as const, hosts, error: undefined })),
-        hostService.getGroups(),
-        useLocal ? Promise.resolve([]) : apiService.getProxies(),
-      ]);
-
-      // Sync refresh hosts
-      if (hostResult.status === 'fulfilled' && hostResult.value.success) {
-        setHosts(hostResult.value.hosts);
-        logger.info(LOG_MODULE.APP, 'app.login.hosts_synced', 'Hosts synced after login', {
-          hosts_count: hostResult.value.hosts.length,
+      // Single bootstrap call replaces what used to be:
+      //   commerce/config + ai/get-models + license/features + user/get-profile.
+      // Bootstrap only ships sections whose local cache is stale, so a typical
+      // returning user pays only the bootstrap round-trip itself.
+      let bootstrapSeqs = loginResp?.seqs;
+      let refreshIntervalMinutes: number | undefined;
+      try {
+        const machineId = await licenseService.getMachineId();
+        // handleLogin is only entered right after /auth/login or an OAuth
+        // callback — the token is fresh, so skip the redundant re-sign.
+        const result = await bootstrapService.bootstrap(machineId, { skipTokenRefresh: true });
+        bootstrapSeqs = result.seqs;
+        refreshIntervalMinutes = result.refreshIntervalMinutes;
+      } catch (err) {
+        logger.warn(LOG_MODULE.APP, 'app.login.bootstrap_failed', 'Bootstrap failed; falling back to local cache', {
+          error: err instanceof Error ? err.message : String(err),
         });
+      }
+
+      // Kick off the auto-refresh timer with the interval bootstrap reported
+      // (falls back to the client default if bootstrap failed). Must happen
+      // after bootstrap so the timer aligns with the freshly-issued token.
+      authService.startAutoRefresh(() => apiService.refreshToken(), refreshIntervalMinutes);
+
+      // Hosts/groups/proxies sync uses the seqs that bootstrap (or login) returned.
+      // syncBySeqs internally skips any resource whose seq matches the local cache,
+      // so this is cheap when nothing changed.
+      let loginHostsCount = 0;
+      if (!useLocal && bootstrapSeqs) {
+        try {
+          const sync = await hostService.syncBySeqs(bootstrapSeqs);
+          setHosts(sync.hosts);
+          if (sync.groups.length > 0) setGroups(sync.groups);
+          setProxies(sync.proxies);
+          loginHostsCount = sync.hosts.length;
+          logger.info(LOG_MODULE.APP, 'app.login.synced', 'Login data synced', {
+            hosts: sync.hosts.length,
+            groups: sync.groups.length,
+            proxies: sync.proxies.length,
+            changed: sync.changed,
+          });
+        } catch (err) {
+          logger.warn(LOG_MODULE.APP, 'app.login.sync_failed', 'syncBySeqs failed; reading local cache', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          const localHosts = await hostService.getHosts();
+          const localGroups = await hostService.getGroups();
+          setHosts(localHosts);
+          if (localGroups.length > 0) setGroups(localGroups);
+          loginHostsCount = localHosts.length;
+        }
       } else {
-        const error = hostResult.status === 'rejected'
-          ? (hostResult.reason instanceof Error ? hostResult.reason.message : 'Unknown error')
-          : hostResult.value.error;
-        logger.warn(LOG_MODULE.APP, 'app.login.hosts_sync_failed', 'Failed to sync hosts after login', {
-          error,
-        });
+        // Local-only mode: nothing to sync, just read local storage.
+        const localHosts = await hostService.getHosts();
+        const localGroups = await hostService.getGroups();
+        setHosts(localHosts);
+        if (localGroups.length > 0) setGroups(localGroups);
+        loginHostsCount = localHosts.length;
       }
 
-      // Sync refresh groups
-      if (groupsResult.status === 'fulfilled' && groupsResult.value.length > 0) {
-        setGroups(groupsResult.value);
-        logger.info(LOG_MODULE.APP, 'app.login.groups_synced', 'Groups synced after login', {
-          groups_count: groupsResult.value.length,
-        });
-      } else if (groupsResult.status === 'rejected') {
-        logger.warn(LOG_MODULE.APP, 'app.login.groups_sync_failed', 'Failed to sync groups after login', {
-          error: groupsResult.reason instanceof Error ? groupsResult.reason.message : 'Unknown error',
-        });
-      }
-
-      // Sync refresh proxy list
-      if (proxiesResult.status === 'fulfilled') {
-        setProxies(proxiesResult.value);
-        logger.info(LOG_MODULE.APP, 'app.login.proxies_synced', 'Proxies synced after login', {
-          proxies_count: proxiesResult.value.length,
-        });
-      } else {
-        logger.warn(LOG_MODULE.APP, 'app.login.proxies_sync_failed', 'Failed to sync proxies after login', {
-          error: proxiesResult.reason instanceof Error ? proxiesResult.reason.message : 'Unknown error',
-        });
-      }
-
-      // First-time login for new account: if local hosts are empty, create default localhost
-      const loginHosts = hostResult.status === 'fulfilled' && hostResult.value.success ? hostResult.value.hosts : [];
-      if (loginHosts.length === 0) {
+      // First-time login for new account: if local hosts are empty, create defaults.
+      if (loginHostsCount === 0) {
         const defaultHosts = getDefaultHosts(t);
         for (const host of defaultHosts) {
           await hostService.addHost(host);
@@ -283,27 +320,10 @@ export function useUserAuth(deps: UseUserAuthDeps) {
         setHosts(defaultHosts);
       }
 
-      // Commerce config (non-blocking for login flow)
-      commerceService.fetchConfig();
-
-      // AI model list (non-blocking for login flow)
-      fetchAIModels();
-
-      // License check (force refresh to sync with server)
-      licenseService.checkLicense(true);
-
-      // Get and save seqs, so next startup can do incremental sync
-      apiService.getUserProfile().then((resp: any) => {
-        if (resp?.seqs) {
-          hostStorageService.saveSeqs(resp.seqs);
-        }
-      }).catch(() => {});
-
       // First login prompt: if this user has never selected a storage mode -> prompt to enable cloud sync
       const CLOUD_PROMPTED_KEY = `termcat_cloud_prompted_${userWithGems.id}`;
       if (!localStorage.getItem(CLOUD_PROMPTED_KEY)) {
         localStorage.setItem(CLOUD_PROMPTED_KEY, '1');
-        // Only prompt when currently in local mode (already in cloud mode doesn't need prompt)
         if (useLocal) {
           setShowCloudSyncPrompt(true);
         }
@@ -337,7 +357,7 @@ export function useUserAuth(deps: UseUserAuthDeps) {
       }
     }
     setShowLogin(false);
-  }, [t, setHosts, setGroups, setProxies, setStorageMode, resetSessions, setActiveView, fetchAIModels]);
+  }, [t, setHosts, setGroups, setProxies, setStorageMode, resetSessions, setActiveView]);
 
   const handleLogout = useCallback(async (clearServerCache?: boolean) => {
     // Get userId before clearing token in logout, for clearing server cache

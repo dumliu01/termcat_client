@@ -220,6 +220,24 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('plugin:terminal:write', listener);
       return () => ipcRenderer.removeListener('plugin:terminal:write', listener);
     },
+    onTerminalFocus: (callback: (data: { sessionId: string }) => void) => {
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on('plugin:terminal:focus', listener);
+      return () => ipcRenderer.removeListener('plugin:terminal:focus', listener);
+    },
+    // UI dialog requests (plugin → renderer → modal host component)
+    onUiDialog: (
+      kind: 'message' | 'confirm' | 'inputbox' | 'quickpick',
+      callback: (payload: any) => void,
+    ) => {
+      const channel = `plugin:ui:${kind}`;
+      const listener = (_event: any, data: any) => callback(data);
+      ipcRenderer.on(channel, listener);
+      return () => ipcRenderer.removeListener(channel, listener);
+    },
+    // Response back from renderer modal → main → plugin-api promise resolver.
+    sendUiResponse: (payload: { requestId: string; result: unknown }) =>
+      ipcRenderer.send('plugin:ui:response', payload),
     onTerminalExec: (callback: (data: { sessionId: string; command: string; responseChannel: string }) => void) => {
       const listener = (_event: any, data: any) => callback(data);
       ipcRenderer.on('plugin:terminal:exec', listener);
@@ -232,6 +250,15 @@ contextBridge.exposeInMainWorld('electron', {
     },
     // Respond to plugin requests
     sendResponse: (channel: string, data: any) => ipcRenderer.send(channel, data),
+    // Forward a panel template's onEvent callback to the owning Main-side plugin.
+    sendPanelEvent: (payload: { panelId: string; sectionId: string; eventId: string; data?: any }) =>
+      ipcRenderer.send('plugin:panel:event', payload),
+    // Notify Main-side plugins that the active terminal has changed (tab/pane focus).
+    sendTerminalActiveChange: (sessionId: string | null) =>
+      ipcRenderer.send('plugin:terminal:active-change', sessionId),
+    // Notify Main-side plugins that the UI language has changed.
+    sendLanguageChange: (language: string) =>
+      ipcRenderer.send('plugin:i18n:language-change', language),
     // External plugin panel operations (Main -> Renderer)
     onPanelRegister: (callback: (data: any) => void) => {
       const listener = (_event: any, data: any) => callback(data);
@@ -488,9 +515,16 @@ declare global {
         onNotification: (callback: (data: any) => void) => () => void;
         onStatusBarUpdated: (callback: () => void) => () => void;
         onTerminalWrite: (callback: (data: { sessionId: string; data: string }) => void) => () => void;
+        onTerminalFocus: (callback: (data: { sessionId: string }) => void) => () => void;
+        onUiDialog: (
+          kind: 'message' | 'confirm' | 'inputbox' | 'quickpick',
+          callback: (payload: any) => void,
+        ) => () => void;
+        sendUiResponse: (payload: { requestId: string; result: unknown }) => void;
         onTerminalExec: (callback: (data: { sessionId: string; command: string; responseChannel: string }) => void) => () => void;
         onSSHExec: (callback: (data: { sessionId: string; command: string; responseChannel: string }) => void) => () => void;
         sendResponse: (channel: string, data: any) => void;
+        sendPanelEvent: (payload: { panelId: string; sectionId: string; eventId: string; data?: any }) => void;
         onPanelRegister: (callback: (data: any) => void) => () => void;
         onPanelUnregister: (callback: (data: any) => void) => () => void;
         onPanelSetData: (callback: (data: any) => void) => () => void;
