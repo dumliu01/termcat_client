@@ -13,6 +13,7 @@ import { createPortal } from 'react-dom';
 import { TerminalView } from './TerminalView';
 import { findPaneNode, countPanes, collectAllPaneIds } from '../utils/split-layout';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
+import { getBackendContainer } from '../backend-container-registry';
 import type { Tab } from '../types';
 import type { Session, ThemeType, TerminalThemeType } from '@/utils/types';
 import type { MinimalPanelStates } from '@/features/shared/components/Header';
@@ -115,13 +116,26 @@ export const TerminalHostLayer: React.FC<TerminalHostLayerProps> = (props) => {
   }, [props.activeSessions]);
 
   // Subscribe to plugin-initiated focus requests. When a plugin asks us to
-  // move keyboard focus to a session's xterm, find the stable container
-  // for that session and focus the embedded helper textarea.
+  // move keyboard focus to a session's xterm, find the matching container
+  // and focus the embedded helper textarea.
+  //
+  // The id from the plugin is the backend id (ptyId / SSH connectionId),
+  // because main.ts registers terminals with `sessionId: backendId`. Our
+  // own `containersRef` is keyed by `Session.id` (renderer-generated random
+  // string). They never match, so the primary lookup is the backend-id
+  // registry; `containersRef` is only consulted as a fallback in case a
+  // future caller passes a real Session.id.
+  //
+  // Synchronous focus is correct: PluginDialogHost flushSync's any pending
+  // modal close before sending the IPC response that wakes the plugin, so by
+  // the time we get here the DOM is already settled.
   useEffect(() => {
     const api = (window as any).electron?.plugin?.onTerminalFocus;
     if (typeof api !== 'function') return;
     const off = api((data: { sessionId: string }) => {
-      const container = containersRef.current.get(data.sessionId);
+      const container =
+        getBackendContainer(data.sessionId) ??
+        containersRef.current.get(data.sessionId);
       if (!container) return;
       const textarea = container.querySelector(
         '.xterm-helper-textarea',

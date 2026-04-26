@@ -20,6 +20,7 @@ import { PanelRenderer, panelEventBus } from '@/plugins/ui-contribution';
 import { CommandInputArea, CommandInputAreaRef } from './CommandInputArea';
 import { COMMAND_LIBRARY_EVENTS, AI_OPS_EVENTS } from '@/plugins/builtin/events';
 import { TabbedPanelGroup, TabItem } from './TabbedPanelGroup';
+import { registerBackendContainer, unregisterBackendContainer } from '../backend-container-registry';
 
 import { MinimalPanelStates } from '@/features/shared/components/Header';
 
@@ -250,6 +251,15 @@ const TerminalViewInner: React.FC<TerminalViewProps> = ({
       }
     }, 100);
   }, [isActive, defaultFocusTarget]);
+
+  // Register backend.id → container so plugin focus IPC (which carries the
+  // backend id, not the renderer Session.id) can find the right xterm.
+  useEffect(() => {
+    const el = terminalContainerRef.current;
+    if (!terminalId || !el) return;
+    registerBackendContainer(terminalId, el);
+    return () => unregisterBackendContainer(terminalId);
+  }, [terminalId]);
 
 
 

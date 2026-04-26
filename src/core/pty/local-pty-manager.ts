@@ -214,42 +214,28 @@ export class LocalPtyService {
   }
 
   /**
-   * Health check: send Device Status Report (DSR) to PTY, expect \x1b[0n response.
-   * Returns false if no response within timeout (fd likely stale after sleep).
+   * Health check: verify the shell process is still alive. macOS sleep does
+   * not invalidate node-pty file descriptors held in this process, so as long
+   * as the shell pid responds to signal 0 the PTY is functional.
+   *
+   * Previously this used a DSR probe (`\x1b[5n` → expect `\x1b[0n`), but TUI
+   * apps in alternate-screen mode (claude code, vim, htop, less, …) consume
+   * the DSR without replying, which produced a false-negative that triggered
+   * the destructive rebuild path and killed the user's session on every wake.
    */
-  async healthCheck(ptyId: string, timeoutMs = 3000): Promise<boolean> {
+  async healthCheck(ptyId: string): Promise<boolean> {
     const instance = this.instances.get(ptyId);
     if (!instance) return false;
-
-    return new Promise((resolve) => {
-      let responded = false;
-      const timer = setTimeout(() => {
-        if (!responded) {
-          log.warn('pty.health_check.timeout', 'PTY health check timed out', { pty_id: ptyId });
-          disposable.dispose();
-          resolve(false);
-        }
-      }, timeoutMs);
-
-      const disposable = instance.process.onData((data) => {
-        if (data.includes('\x1b[0n')) {
-          responded = true;
-          clearTimeout(timer);
-          disposable.dispose();
-          resolve(true);
-        }
-      });
-
-      try {
-        instance.process.write('\x1b[5n');
-      } catch (err) {
-        responded = true;
-        clearTimeout(timer);
-        disposable.dispose();
-        log.error('pty.health_check.write_error', 'Failed to write DSR to PTY', { pty_id: ptyId });
-        resolve(false);
-      }
-    });
+    const pid = instance.process.pid;
+    if (!pid) return false;
+    try {
+      // Signal 0: existence check, no signal delivered.
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      log.warn('pty.health_check.proc_dead', 'Shell process gone', { pty_id: ptyId, pid });
+      return false;
+    }
   }
 
   /**

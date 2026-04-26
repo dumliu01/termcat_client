@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 
 type MessageOpts = {
   requestId: string;
@@ -69,9 +70,17 @@ export const PluginDialogHost: React.FC = () => {
   }, []);
 
   const respond = useCallback((requestId: string, result: unknown) => {
+    // Commit the modal unmount synchronously BEFORE waking the plugin. If we
+    // sent the IPC response first, the plugin would race back with follow-up
+    // actions (e.g. terminal focus) while React still has the modal mounted,
+    // and the user's mouse-up would steal focus to <body> as the modal vanishes.
+    // flushSync forces the DOM update to land before sendUiResponse fires, so
+    // any subsequent plugin-initiated focus / write lands on a settled DOM.
+    flushSync(() => {
+      setQueue((q) => q.slice(1));
+    });
     const api = (window as any).electron?.plugin;
     api?.sendUiResponse?.({ requestId, result });
-    setQueue((q) => q.slice(1));
   }, []);
 
   if (!current) return null;
