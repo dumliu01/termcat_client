@@ -598,9 +598,16 @@ export class PluginManager {
       // 4. 重新发现插件（只扫描用户目录，bundled 不变）
       await this.discoverPluginsFromDir(this.pluginsDir, false);
 
-      // 5. 安装后立即激活插件
+      // 5. Install is an explicit user intent — force-enable, overriding any
+      //    leftover `false` from a prior disable/uninstall cycle. Without this,
+      //    a plugin that was previously disabled will be discovered but skipped
+      //    by the activation check below, leaving it silently inert.
+      this.pluginConfig.enabled[pluginName] = true;
+      this.saveConfig();
+
       const instance = this.plugins.get(pluginName);
-      if (instance && instance.enabled) {
+      if (instance) {
+        instance.enabled = true;
         try {
           await this.activatePlugin(pluginName);
         } catch (err) {
@@ -644,7 +651,14 @@ export class PluginManager {
         fs.rmSync(pluginDir, { recursive: true, force: true });
       }
 
-      // 4. 通知 Renderer
+      // 4. Clear the persisted enabled flag — a stale `enabled[id] = false`
+      //    would otherwise survive uninstall and silently disable the next
+      //    fresh install of the same plugin id. Settings (e.g. API keys) are
+      //    intentionally preserved so reinstalling a plugin doesn't wipe user data.
+      delete this.pluginConfig.enabled[pluginId];
+      this.saveConfig();
+
+      // 5. 通知 Renderer
       this.broadcastToRenderer(PLUGIN_IPC_CHANNELS.PLUGIN_STATE_CHANGED, {
         pluginId,
         event: 'uninstalled',

@@ -110,16 +110,12 @@ const PluginDetailView: React.FC<{
             <p className="text-xs text-red-400 mt-2 p-2 rounded-lg bg-red-500/5 border border-red-500/10">{plugin.error}</p>
           )}
         </div>
-        {/* 启用/禁用按钮 */}
+        {/* 启用/禁用按钮 — 同色中性 action 风格，由 icon 区分动作而非颜色 */}
         {plugin.disableable !== false && (
           <button
             onClick={() => onToggle(plugin)}
             disabled={operating}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors shrink-0 ${
-              plugin.enabled
-                ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
-                : 'bg-green-500/10 text-green-400 hover:bg-green-500/20'
-            } disabled:opacity-50`}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors shrink-0 border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-white/5 hover:text-[var(--text-primary)] hover:border-[var(--text-tertiary)] disabled:opacity-50"
           >
             {plugin.enabled ? (
               <><PowerOff className="w-3.5 h-3.5" />{t.extensions.disable}</>
@@ -573,11 +569,7 @@ export const ExtensionsView: React.FC = () => {
                         <button
                           onClick={(e) => { e.stopPropagation(); handleToggle(plugin); }}
                           disabled={operating === plugin.manifest.id}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
-                            plugin.enabled
-                              ? 'text-orange-400 hover:bg-orange-500/10'
-                              : 'text-green-400 hover:bg-green-500/10'
-                          } disabled:opacity-50`}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-white/5 hover:text-[var(--text-primary)] hover:border-[var(--text-tertiary)] disabled:opacity-50"
                         >
                           {plugin.enabled ? (
                             <>

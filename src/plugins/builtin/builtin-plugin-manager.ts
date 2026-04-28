@@ -240,7 +240,19 @@ class BuiltinPluginManager {
    */
   setConnectionInfo(info: ConnectionInfo | null): void {
     const prev = this.currentConnectionInfo;
-    this.currentConnectionInfo = info;
+
+    // isVisible/isActive are managed exclusively by updateVisibility(). If we
+    // overwrote them here, a subsequent updateVisibility() call would compare
+    // the new value against itself (since we already wrote it into
+    // currentConnectionInfo) and never fire visibilityHandlers. That made the
+    // monitoring panel stay empty forever after toggling the sidebar.
+    let nextInfo: ConnectionInfo | null;
+    if (info && prev) {
+      nextInfo = { ...info, isVisible: prev.isVisible, isActive: prev.isActive };
+    } else {
+      nextInfo = info;
+    }
+    this.currentConnectionInfo = nextInfo;
 
     // Only notify handlers when connection identity actually changes
     const connectionChanged = !prev && !info ? false
@@ -253,7 +265,7 @@ class BuiltinPluginManager {
 
     if (connectionChanged) {
       for (const handler of this.connectionHandlers) {
-        try { handler(info); } catch { /* ignore */ }
+        try { handler(nextInfo); } catch { /* ignore */ }
       }
     }
   }

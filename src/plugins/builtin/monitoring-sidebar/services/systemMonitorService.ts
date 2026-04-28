@@ -114,14 +114,20 @@ export class SystemMonitorService {
    * 停止监控
    */
   stop() {
+    // Skip the log for monitors that were created but never started — those
+    // emit a misleading `monitor.stopping` that tricks debugging into thinking
+    // a running monitor was just torn down.
+    const wasRunning = this._isRunning;
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
     this._isRunning = false;
-    logger.info(LOG_MODULE.TERMINAL, 'monitor.stopping', 'System monitor stopped', {
-      is_local: this.isLocal,
-    });
+    if (wasRunning) {
+      logger.info(LOG_MODULE.TERMINAL, 'monitor.stopping', 'System monitor stopped', {
+        is_local: this.isLocal,
+      });
+    }
   }
 
   /**
