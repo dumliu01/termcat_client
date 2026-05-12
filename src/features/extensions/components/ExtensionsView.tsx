@@ -249,13 +249,42 @@ const PluginDetailView: React.FC<{
 
 // ==================== 主组件 ====================
 
-export const ExtensionsView: React.FC = () => {
+export interface ExtensionsViewProps {
+  /**
+   * Plugin ID the caller wants to highlight. When set, the view picks the
+   * correct tab on entry:
+   *   - installed plugin → stays on "installed", selects it in the side list
+   *   - missing plugin  → switches to "recommended" so the user can install
+   * Called back via onFocusHandled once the focus has been applied so the
+   * caller can clear its state (otherwise a later manual tab switch would
+   * be overridden on every re-render).
+   */
+  focusPluginId?: string;
+  onFocusHandled?: () => void;
+}
+
+export const ExtensionsView: React.FC<ExtensionsViewProps> = ({ focusPluginId, onFocusHandled }) => {
   const { language, t } = useI18n();
   const { plugins, loading, refresh, enablePlugin, disablePlugin } = usePluginList(language);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'installed' | 'recommended'>('installed');
   const [operating, setOperating] = useState<string | null>(null);
   const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
+
+  // Apply focusPluginId once the plugin list has loaded. We wait on `loading`
+  // because usePluginList resolves async; jumping to "recommended" before the
+  // installed list is known would mis-route already-installed plugins.
+  useEffect(() => {
+    if (!focusPluginId || loading) return;
+    const installed = plugins.some(p => p.manifest.id === focusPluginId);
+    if (installed) {
+      setActiveTab('installed');
+      setSelectedPluginId(focusPluginId);
+    } else {
+      setActiveTab('recommended');
+    }
+    onFocusHandled?.();
+  }, [focusPluginId, loading, plugins, onFocusHandled]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Server store data

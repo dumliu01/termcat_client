@@ -16,6 +16,8 @@ export const AI_OPS_EVENTS = {
   LICENSE_CHANGED: 'license:changed',
   /** Request to open payment modal (payload: { type, amount, tierId? }) */
   OPEN_PAYMENT: 'ai-ops:open-payment',
+  /** Request to switch to extensions view and focus a specific plugin (payload: { pluginId: string }) */
+  OPEN_EXTENSIONS_WITH_PLUGIN: 'ai-ops:open-extensions-with-plugin',
 } as const;
 
 /** Command library plugin events */

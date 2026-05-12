@@ -50,6 +50,7 @@ const App: React.FC = () => {
   const { language, setLanguage, t } = useI18n();
   const [activeView, setActiveView] = useState<ViewState>('dashboard');
   const [settingsInitialTab, setSettingsInitialTab] = useState<string | undefined>(undefined);
+  const [extensionsFocusPluginId, setExtensionsFocusPluginId] = useState<string | undefined>(undefined);
 
   // Payment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -491,6 +492,18 @@ const App: React.FC = () => {
     });
     return () => disposable.dispose();
   }, [handleOpenPayment]);
+
+  // --- Listen to open extensions view event (v3 freemium: guides users to
+  //     download local-agent plugin when server-side gems purchase is off).
+  //     payload.pluginId tells ExtensionsView which plugin to focus; the
+  //     view checks installation status and lands on the right tab. ---
+  useEffect(() => {
+    const disposable = builtinPluginManager.on(AI_OPS_EVENTS.OPEN_EXTENSIONS_WITH_PLUGIN, (data: any) => {
+      setExtensionsFocusPluginId(data?.pluginId || undefined);
+      setActiveView('extensions');
+    });
+    return () => disposable.dispose();
+  }, []);
 
   // --- Initialize data ---
   useEffect(() => {
@@ -1195,7 +1208,10 @@ const App: React.FC = () => {
           {activeView === 'extensions' && (
             <div data-testid="view-extensions" className="absolute inset-0 z-50 bg-[var(--bg-main)]">
               <React.Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" size={24} /></div>}>
-                <ExtensionsView />
+                <ExtensionsView
+                  focusPluginId={extensionsFocusPluginId}
+                  onFocusHandled={() => setExtensionsFocusPluginId(undefined)}
+                />
               </React.Suspense>
             </div>
           )}

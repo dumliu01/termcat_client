@@ -38,6 +38,11 @@ export const PersonalCenter: React.FC<PersonalCenterProps> = ({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [clearCache, setClearCache] = useState(false);
 
+  // Re-render when commerce config arrives / refreshes (v3 gems_purchase_enabled)
+  const [, setCommerceVersion] = useState(0);
+  useEffect(() => commerceService.onChange(() => setCommerceVersion(v => v + 1)), []);
+  const gemsPurchaseEnabled = commerceService.isGemsPurchaseEnabled();
+
   const isDirty = draft.nickname !== (user.nickname || '') ||
     draft.gender !== (user.gender || 'other') ||
     draft.birthday !== (user.birthday || '');
@@ -172,7 +177,8 @@ export const PersonalCenter: React.FC<PersonalCenterProps> = ({
         </div>
       </section>
 
-      {/* Gems Balance + Recharge — highlighted */}
+      {/* Gems Balance + Recharge — highlighted (hidden when ops disables gems purchase) */}
+      {gemsPurchaseEnabled && (
       <section className="relative rounded-xl border border-indigo-500/30 bg-[#1a1a2e] overflow-hidden shadow-lg" data-testid="account-gems-section">
         {/* Decorative glows */}
         <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-indigo-500/15 blur-3xl pointer-events-none" />
@@ -220,6 +226,7 @@ export const PersonalCenter: React.FC<PersonalCenterProps> = ({
           ))}
         </div>
       </section>
+      )}
 
       {/* Clear Cache + Logout */}
       <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)]">

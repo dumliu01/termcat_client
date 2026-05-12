@@ -34,6 +34,7 @@ import { ConversationList } from './components/ConversationList';
 import { builtinPluginManager } from '../builtin-plugin-manager';
 import { AI_OPS_EVENTS } from '../events';
 import { licenseService } from '@/core/license/licenseService';
+import { commerceService } from '@/core/commerce/commerceService';
 
 export interface AIOpsPluginPanelProps {
   user: User | null;
@@ -117,16 +118,22 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
     return unsubscribe;
   }, []);
 
+  // Track commerce config changes so the agent_pack price flows from server
+  const [commerceVersion, setCommerceVersion] = useState(0);
+  useEffect(() => commerceService.onChange(() => setCommerceVersion(v => v + 1)), []);
+
   // Handler for purchase
   const handlePurchaseClick = useCallback(() => {
+    void commerceVersion; // re-run when commerce config updates
     setShowPurchaseDialog(false);
-    // Read product/price from the first locked mode's pluginData (declared by plugin)
+    // Read product from the first locked mode's pluginData; price always
+    // comes from server commerce config (v3 freemium strategy).
     const lockedMode = mergedModes.find(m => m.locked && m.pluginData?.licenseProduct);
     builtinPluginManager.emit(AI_OPS_EVENTS.OPEN_PAYMENT, {
       type: lockedMode?.pluginData?.licenseProduct || 'agent_pack',
-      amount: lockedMode?.pluginData?.licensePrice || 69,
+      amount: commerceService.getAgentPackPrice(),
     });
-  }, [mergedModes]);
+  }, [mergedModes, commerceVersion]);
 
   // Handler for device activation
   const handleActivateDevice = useCallback(async () => {
@@ -546,6 +553,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
           isOpen={ai.showInsufficientGems}
           onClose={() => ai.setShowInsufficientGems(false)}
           onRecharge={() => builtinPluginManager.emit(AI_OPS_EVENTS.OPEN_MEMBERSHIP, null)}
+          onDownloadLocalAgent={() => builtinPluginManager.emit(AI_OPS_EVENTS.OPEN_EXTENSIONS_WITH_PLUGIN, { pluginId: 'local-ops-aiagent' })}
           mode={ai.mode === 'code' || ai.mode === 'x-agent' ? 'agent' : ai.mode}
         />
       )}
@@ -572,6 +580,7 @@ export const AIOpsPluginPanel: React.FC<AIOpsPluginPanelProps> = ({
           await licenseService.activateDevice();
           setShowPurchaseDialog(false);
         }}
+        price={commerceService.getAgentPackPrice()}
       />
 
       {/* Device Activation Dialog */}

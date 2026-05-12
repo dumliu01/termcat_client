@@ -30,6 +30,8 @@ export const es: typeof zh = {
   insufficientGemsMessage: 'Tu saldo de gemas es insuficiente, por favor recarga para continuar.',
   insufficientGemsAgentMode: 'El modo Agente requiere 2 gemas por solicitud debido a las capacidades avanzadas de IA.',
   recharge: 'Recargar',
+  insufficientGemsLocalHint: 'La recarga de IA en servidor está deshabilitada. Instala el plugin local para usar el modo Ask gratis.',
+  downloadLocalAgent: 'Obtener Plugin de IA Local',
 
   // Área de entrada
   modeAsk: 'Ask',
@@ -107,6 +109,8 @@ export const es: typeof zh = {
   featurePersistent: 'Licencia permanente + sesiones persistentes',
   featureBYOK: 'Use su propia API Key, sin costo adicional',
   buyNow: (price: number) => `Comprar ¥${price}`,
+  buyFree: 'Obtener Gratis',
+  priceFree: 'Gratis durante el lanzamiento — reclamar ahora',
   purchasedOnOther: '¿Comprado en otro dispositivo?',
   purchasedOnOtherDesc: 'Después de comprar, puede activar en hasta 3 dispositivos. Haga clic abajo para activar — no necesita código de activación.',
   activateSuccess: '¡Activado! Funciones desbloqueadas',

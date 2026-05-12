@@ -180,6 +180,31 @@ class CommerceService {
     return unique.length > 0 ? unique : ['open_source', 'advanced', 'premium'];
   }
 
+  // ---- v3 Freemium Strategy ----
+
+  /**
+   * Whether the gems-purchase UI should be shown. Defaults to true when the
+   * server has not declared the field (backward compat with v2).
+   */
+  isGemsPurchaseEnabled(): boolean {
+    return this.config?.gems_purchase_enabled !== false;
+  }
+
+  /**
+   * Current effective price for the Agent capability pack. Returns 69 when
+   * the server has not declared `license_packs.agent_pack` (v2 behavior).
+   */
+  getAgentPackPrice(): number {
+    const pack = this.config?.license_packs?.agent_pack;
+    if (!pack) return 69;
+    return pack.price;
+  }
+
+  /** True when Agent capability pack is currently free. */
+  isAgentPackFree(): boolean {
+    return this.getAgentPackPrice() === 0;
+  }
+
   // ---- Version Compatibility ----
 
   /** Parse tier's features, divide into supported and unsupported groups */

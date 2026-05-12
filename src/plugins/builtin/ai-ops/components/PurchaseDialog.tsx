@@ -101,8 +101,12 @@ export const PurchaseDialog: React.FC<PurchaseDialogProps> = ({
           <div className="space-y-4">
             {/* Price highlight */}
             <div className="text-center py-3 bg-amber-500/5 border border-amber-500/10 rounded-xl">
-              <span className="text-2xl font-black text-amber-400">&yen;{price}</span>
-              <p className="text-[10px] text-slate-400 mt-1">{t.priceOneTime}</p>
+              {price === 0 ? (
+                <span className="text-2xl font-black text-emerald-400">{t.buyFree}</span>
+              ) : (
+                <span className="text-2xl font-black text-amber-400">&yen;{price}</span>
+              )}
+              <p className="text-[10px] text-slate-400 mt-1">{price === 0 ? t.priceFree : t.priceOneTime}</p>
             </div>
 
             {/* Features */}
@@ -135,12 +139,16 @@ export const PurchaseDialog: React.FC<PurchaseDialogProps> = ({
               </p>
             </div>
 
-            {/* Buy button */}
+            {/* Buy button (free or paid) */}
             <button
               onClick={onPurchaseClick}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-black text-xs font-black rounded-xl shadow-lg shadow-amber-500/20 transition-all active:scale-[0.98]"
+              className={`w-full py-3 text-xs font-black rounded-xl shadow-lg transition-all active:scale-[0.98] ${
+                price === 0
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                  : 'bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/20'
+              }`}
             >
-              {t.buyNow(price)}
+              {price === 0 ? t.buyFree : t.buyNow(price)}
             </button>
           </div>
         )}

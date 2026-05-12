@@ -28,6 +28,9 @@ export const zh = {
   insufficientGemsMessage: '您的积分余额不足，请充值后继续使用。',
   insufficientGemsAgentMode: 'Agent 模式由于需要消耗更多推理资源，单次请求需 2 个积分。',
   recharge: '充值',
+  // v3 freemium: when server-side gems purchase is off, guide users to local plugin
+  insufficientGemsLocalHint: '服务端 AI 暂未开放充值。下载本地 AI 插件可免费使用 Ask 模式。',
+  downloadLocalAgent: '下载本地 AI 插件',
 
   // 输入区域
   modeAsk: 'Ask',
@@ -105,6 +108,9 @@ export const zh = {
   featurePersistent: '永久授权 + 持久会话',
   featureBYOK: '自备 API Key，无额外费用',
   buyNow: (price: number) => `立即购买 ¥${price}`,
+  // v3: free pickup variants when server price is 0
+  buyFree: '免费领取',
+  priceFree: '首发免费，立即领取',
   purchasedOnOther: '已在其他设备购买？',
   purchasedOnOtherDesc: '同一账户购买后，可在最多 3 台设备上激活使用。点击下方按钮即可激活当前设备，无需输入激活码。',
   activateSuccess: '激活成功！功能已解锁',

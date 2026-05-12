@@ -30,6 +30,8 @@ export const en: typeof zh = {
   insufficientGemsMessage: 'Your gem balance is insufficient, please recharge to continue.',
   insufficientGemsAgentMode: 'Agent mode requires 2 gems per request due to advanced AI capabilities.',
   recharge: 'Recharge',
+  insufficientGemsLocalHint: 'Server AI recharge is currently disabled. Install the local AI plugin to use Ask mode for free.',
+  downloadLocalAgent: 'Get Local AI Plugin',
 
   // Input area
   modeAsk: 'Ask',
@@ -107,6 +109,8 @@ export const en: typeof zh = {
   featurePersistent: 'Permanent license + persistent sessions',
   featureBYOK: 'Bring your own API Key, no extra cost',
   buyNow: (price: number) => `Buy Now ¥${price}`,
+  buyFree: 'Get for Free',
+  priceFree: 'Free during launch — claim now',
   purchasedOnOther: 'Purchased on another device?',
   purchasedOnOtherDesc: 'After purchasing on any device, you can activate on up to 3 devices. Click below to activate — no activation code needed.',
   activateSuccess: 'Activated! Features unlocked',

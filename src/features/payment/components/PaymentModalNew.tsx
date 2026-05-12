@@ -120,8 +120,11 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
     }
   };
 
+  // Free agent_pack pickup: server-side price is 0, skip payment gateway
+  const isFreeAgentPack = type === 'agent_pack' && amount === 0;
+
   const handlePayment = async () => {
-    if (!selectedPayMethod) {
+    if (!isFreeAgentPack && !selectedPayMethod) {
       setError(t.payment.selectPaymentMethod);
       return;
     }
@@ -139,6 +142,18 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
     }
 
     try {
+      // Free claim: server validates amount=0 against commerce config, then
+      // creates License + activates device in a single round-trip.
+      if (isFreeAgentPack) {
+        const response = await paymentService.createOrder(type, 0, 'free_pickup', tierId, machineId, machineName);
+        setOrderNo(response.order_no);
+        const paidOrder = response.order ?? await paymentService.getOrder(response.order_no);
+        setCompletedOrder(paidOrder);
+        setStep('success');
+        onPaymentSuccess(type, paidOrder);
+        return;
+      }
+
       if (selectedPayMethod === 'mock_pay') {
         // Mock payment: create order with any method, then mock-pay it directly
         const response = await paymentService.createOrder(type, amount, 'mock_pay', tierId, machineId, machineName);
@@ -278,7 +293,42 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
             </div>
           )}
 
-          {(step === 'method') && (
+          {(step === 'method') && isFreeAgentPack && (
+            <div className="space-y-6 py-6 text-center">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                <BadgeCheck className="w-8 h-8 text-emerald-400" />
+              </div>
+              <div>
+                <h4 className="text-xl font-black text-[var(--text-main)] mb-2">
+                  {language === 'zh' ? '本地 Agent 能力包' : 'Local Agent Pack'}
+                </h4>
+                <p className="text-2xl font-black text-emerald-400 mb-1">
+                  {language === 'zh' ? '免费领取' : 'Free Pickup'}
+                </p>
+                <p className="text-[11px] text-[var(--text-dim)] opacity-70 px-6 leading-relaxed">
+                  {language === 'zh'
+                    ? '首发期免费解锁本地 Agent 能力包，自动激活当前设备。'
+                    : 'Free during launch — unlocks the local Agent pack and auto-activates this device.'}
+                </p>
+              </div>
+              {error && (
+                <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-center gap-3 text-left">
+                  <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
+                  <span className="text-sm text-rose-500">{error}</span>
+                </div>
+              )}
+              <button
+                disabled={loading}
+                onClick={handlePayment}
+                className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-emerald-500/30 disabled:opacity-50 active:scale-95 transition-all"
+                data-testid="payment-free-claim-btn"
+              >
+                {language === 'zh' ? '立即免费领取' : 'Claim for Free'}
+              </button>
+            </div>
+          )}
+
+          {(step === 'method') && !isFreeAgentPack && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-black uppercase tracking-widest text-indigo-400">{t.payment.selectPaymentMethod}</h4>
@@ -391,7 +441,9 @@ export const PaymentModalNew: React.FC<PaymentModalProps> = ({
               <p className="text-xs text-[var(--text-dim)] opacity-60 mb-10 px-12">
                 {type === 'gems'
                   ? (language === 'zh' ? t.payment.gemsCredited.replace('{gems}', String(completedOrder?.gems ?? amount * 100)) : `Credited ${completedOrder?.gems ?? amount * 100} Gems to your vault.`)
-                  : (language === 'zh' ? t.payment.vipUnlocked : `${completedOrder?.tier_type || 'VIP'} Privileges unlocked instantly.`)}
+                  : type === 'agent_pack'
+                    ? (language === 'zh' ? '本地 Agent 能力包已解锁，当前设备已激活。' : 'Local Agent pack unlocked — this device is activated.')
+                    : (language === 'zh' ? t.payment.vipUnlocked : `${completedOrder?.tier_type || 'VIP'} Privileges unlocked instantly.`)}
               </p>
               <button
                 onClick={handleClose}

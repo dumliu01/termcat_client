@@ -27,6 +27,14 @@ export interface GemPackage {
   [key: string]: unknown;
 }
 
+/** License-class product config (Agent Pack etc.) */
+export interface LicensePackConfig {
+  enabled: boolean;
+  price: number;
+  currency: string;
+  [key: string]: unknown;
+}
+
 /** Complete commerce config */
 export interface CommerceConfig {
   seq: number;
@@ -34,6 +42,9 @@ export interface CommerceConfig {
   gem_packages: GemPackage[];
   feature_meta?: Record<string, Record<string, string>>; // feature ID → { zh: "...", en: "..." }
   mock_pay_enabled?: boolean; // Server-side mock payment toggle (test env only)
+  // v3 freemium strategy fields
+  gems_purchase_enabled?: boolean;
+  license_packs?: Record<string, LicensePackConfig>;
   [key: string]: unknown; // Allow unknown fields
 }
 
