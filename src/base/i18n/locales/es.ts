@@ -127,6 +127,14 @@ export const es: TranslationKeys = {
     cloudSyncEnable: 'Activar Ahora',
     cloudSyncLater: 'Quizás Después',
     localTerminal: 'Terminal Local',
+    localTerminalConfig: {
+      title: 'Configuración de Terminal Local',
+      editTooltip: 'Configurar terminal local',
+      shellType: 'Tipo de Shell',
+      systemDefault: 'Predeterminado del Sistema',
+      startDir: 'Directorio Inicial',
+      startDirPlaceholder: 'Dejar vacío para usar el directorio de inicio',
+    },
   },
 
   // Terminal

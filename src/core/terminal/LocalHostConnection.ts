@@ -43,6 +43,7 @@ export class LocalHostConnection implements IHostConnection {
     this._id = `local-${Date.now()}`;
     this._terminal = new LocalTerminalBackend({
       shell: host.localConfig?.shell,
+      args: host.localConfig?.args,
       cwd: host.localConfig?.cwd,
       env: host.localConfig?.env,
     });

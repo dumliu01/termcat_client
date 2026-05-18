@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Host, OSType, Proxy, HostGroup } from '@/utils/types';
 import { Plus, Server, Trash2, Power, Search, Monitor, Laptop, Globe, Shield, Terminal, Pencil, FileCode, HardDrive, Network, Settings2, CheckSquare, Square, X, Folder, Layers, MoreHorizontal, ChevronRight, Hash, Move, ExternalLink } from 'lucide-react';
 import { HostConfigModal } from './HostConfigModal';
+import { LocalTerminalConfigModal } from './LocalTerminalConfigModal';
 import { useTranslation } from '@/base/i18n/I18nContext';
 
 interface DashboardProps {
@@ -43,6 +44,7 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
   const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ host: Host; x: number; y: number } | null>(null);
   const [localContextMenu, setLocalContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showLocalConfig, setShowLocalConfig] = useState(false);
 
   useEffect(() => {
     if (!contextMenu && !localContextMenu) return;
@@ -248,6 +250,16 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
                 setLocalContextMenu({ x: e.clientX, y: e.clientY });
               }}
               className="group relative border border-emerald-500/30 bg-[var(--bg-card)] rounded-[1.25rem] p-5 transition-all hover:border-emerald-500/60 hover:-translate-y-1 shadow-lg hover:shadow-2xl">
+              {/* Actions: Top-Right Tiny Buttons (local terminal is fixed, only configurable) */}
+              <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                <button
+                  onClick={() => setShowLocalConfig(true)}
+                  title={t.dashboard.localTerminalConfig.editTooltip}
+                  className="p-1.5 hover:bg-white/5 rounded-lg text-[var(--text-dim)] hover:text-emerald-400"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              </div>
               <div className="flex items-start gap-4 mb-5">
                 <div className="w-10 h-10 shrink-0 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 group-hover:bg-emerald-600 group-hover:text-white transition-all duration-300">
                   <Terminal className="w-5 h-5" />
@@ -411,7 +423,17 @@ export const Dashboard: React.FC<DashboardProps> = React.memo(({
           >
             {t.dashboard.openInNewWindow}
           </button>
+          <button
+            className="w-full px-4 py-2 text-left text-xs hover:bg-white/5 text-[var(--text-primary)]"
+            onClick={() => setShowLocalConfig(true)}
+          >
+            {t.dashboard.localTerminalConfig.title}
+          </button>
         </div>
+      )}
+
+      {showLocalConfig && (
+        <LocalTerminalConfigModal onClose={() => setShowLocalConfig(false)} />
       )}
 
       {showGroupModal && (

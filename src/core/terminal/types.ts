@@ -29,6 +29,7 @@ export interface ShellInfo {
 
 export interface LocalTerminalConfig {
   shell?: string;
+  args?: string[];
   cwd?: string;
   env?: Record<string, string>;
 }

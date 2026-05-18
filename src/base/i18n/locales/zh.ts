@@ -125,6 +125,14 @@ export const zh = {
     cloudSyncEnable: '立即开启',
     cloudSyncLater: '暂不需要',
     localTerminal: '本地终端',
+    localTerminalConfig: {
+      title: '本地终端配置',
+      editTooltip: '配置本地终端',
+      shellType: 'Shell 类型',
+      systemDefault: '系统默认',
+      startDir: '启动目录',
+      startDirPlaceholder: '留空使用用户主目录',
+    },
   },
 
   // 终端

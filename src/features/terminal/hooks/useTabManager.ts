@@ -7,6 +7,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Host, Session, ViewState } from '@/utils/types';
 import { logger, LOG_MODULE } from '@/base/logger/logger';
+import { loadLocalTerminalConfig } from '@/core/terminal/localTerminalConfig';
 import { useSplitLayout } from './useSplitLayout';
 import { findPaneNode, countPanes, collectAllPaneIds, removePaneFromTree, insertPaneAt, firstPaneId } from '../utils/split-layout';
 import type { Tab, DropEdge } from '../types';
@@ -43,6 +44,7 @@ export function useTabManager(setActiveView: (v: ViewState) => void) {
 
   const createLocalSession = useCallback((options?: {
     shell?: string;
+    args?: string[];
     cwd?: string;
     name?: string;
   }): Session => {
@@ -61,6 +63,7 @@ export function useTabManager(setActiveView: (v: ViewState) => void) {
         connectionType: 'local' as const,
         localConfig: {
           shell: options?.shell,
+          args: options?.args,
           cwd: options?.cwd,
         },
       },
@@ -90,14 +93,24 @@ export function useTabManager(setActiveView: (v: ViewState) => void) {
   /** Create a new Tab with a local terminal */
   const handleLocalConnect = useCallback((options?: {
     shell?: string;
+    args?: string[];
     cwd?: string;
     name?: string;
   }) => {
+    // Merge persisted config: explicit options (e.g. duplicate keeps source
+    // shell) win, otherwise fall back to the user's saved shell/cwd choice.
+    const saved = loadLocalTerminalConfig();
+    const merged = {
+      shell: options?.shell ?? saved.shellPath,
+      args: options?.args ?? saved.shellArgs,
+      cwd: options?.cwd ?? saved.cwd,
+      name: options?.name,
+    };
     logger.info(LOG_MODULE.APP, 'app.tab.local_connecting', 'Opening local terminal (tab)', {
       module: LOG_MODULE.TERMINAL,
-      shell: options?.shell,
+      shell: merged.shell,
     });
-    const session = createLocalSession(options);
+    const session = createLocalSession(merged);
     const tabId = generateId();
     const paneId = generateId();
 
@@ -237,7 +250,11 @@ export function useTabManager(setActiveView: (v: ViewState) => void) {
     }
 
     if (isLocal) {
-      handleLocalConnect({ cwd });
+      handleLocalConnect({
+        cwd,
+        shell: session.host.localConfig?.shell,
+        args: session.host.localConfig?.args,
+      });
     } else {
       handleConnect(session.host, cwd);
     }
